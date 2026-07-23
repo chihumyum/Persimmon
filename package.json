@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "pnpm@10.17.1",
   "engines": {
-    "node": ">=22.13 <24"
+    "node": ">=22.13 <23"
   },
   "scripts": {
     "dev:web": "pnpm --filter @persimmon/app web",
