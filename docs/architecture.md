@@ -4,6 +4,30 @@ Persimmon 的目标不是在 React Native 里包一层网页阅读器，而是�
 编译成自己的阅读模型，再由 Skia 直接排版和绘制。Web 使用相同的
 BookIR、分页器和渲染器，只把 Skia 后端换成 CanvasKit。
 
+## 决策摘要
+
+```text
+Expo + React Native
+        ↓
+共享 TypeScript BookIR
+        ↓
+共享 Skia Paragraph 分页器
+        ↓
+共享 Skia 页面渲染器
+        ↓
+iOS / Android / Web 薄平台适配
+```
+
+- 原生端使用 React Native New Architecture 和 React Native Skia；
+  Web 使用 CanvasKit，不使用 WebView。
+- 页面始终由 live Paragraph 和 Skia scene 绘制，翻页不依赖页面截图。
+- 共享内容模型、分页、位置、阅读会话和渲染语义；文件系统、字体加载、
+  持久化、输入和平台生命周期由薄适配层处理。
+- 不追求 UI 组件的最大复用。为了手势、交互和平台习惯，三端界面可以
+  分别实现，只要它们消费相同的阅读核心。
+- 优先保证连续输入、稳定帧时和可中断动画。只有基准测试证明
+  TypeScript/Skia 成为瓶颈时，才把明确热点下沉到原生代码。
+
 ```text
 EPUB / Drifting project
           ↓
