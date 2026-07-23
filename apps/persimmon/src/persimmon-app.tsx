@@ -462,15 +462,19 @@ const styles = StyleSheet.create({
   },
   cover: {
     backgroundColor: "#e8d4bd",
+    ...(Platform.OS === "web"
+      ? { boxShadow: "0 10px 16px rgba(62, 44, 32, 0.16)" }
+      : {
+          shadowColor: "#3e2c20",
+          shadowOffset: { width: 0, height: 10 },
+          shadowOpacity: 0.16,
+          shadowRadius: 16,
+        }),
     borderRadius: 7,
     height: 238,
     justifyContent: "space-between",
     overflow: "hidden",
     padding: 20,
-    shadowColor: "#3e2c20",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.16,
-    shadowRadius: 16,
   },
   coverFruit: {
     alignItems: "center",
@@ -558,14 +562,13 @@ const styles = StyleSheet.create({
   },
   readerPage: {
     backgroundColor: "#fbf7f0",
+    ...(Platform.OS === "web"
+      ? { boxShadow: "0 10px 24px rgba(61, 48, 38, 0.12)" }
+      : {}),
     borderRadius: Platform.OS === "web" ? 12 : 0,
     flex: 1,
     maxWidth: 920,
     overflow: "hidden",
-    shadowColor: "#3d3026",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: Platform.OS === "web" ? 0.12 : 0,
-    shadowRadius: 24,
     width: "100%",
   },
   readerScreen: {

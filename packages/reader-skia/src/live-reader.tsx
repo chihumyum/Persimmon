@@ -359,7 +359,6 @@ export function LiveReader({
       <View
         accessibilityLabel={`第 ${shownPage} 页，共 ${pageCount} 页，目标第 ${targetNumber} 页`}
         accessibilityLiveRegion="polite"
-        pointerEvents="none"
         style={styles.pageBadge}
       >
         <Text style={styles.pageText}>
@@ -392,6 +391,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     bottom: 14,
     left: 0,
+    pointerEvents: "none",
     position: "absolute",
     right: 0,
   },
