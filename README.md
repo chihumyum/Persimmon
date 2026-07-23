@@ -11,9 +11,24 @@ with React Native Skia on iOS, Android, and the web.
 ## Workspace
 
 - `apps/persimmon`: Expo application for iOS, Android, and web.
-- `packages/book-core`: BookIR, locators, annotations, and EPUB importing.
+- `packages/book-core`: versioned BookIR, stable locators, and validation.
+- `packages/epub-import`: bounded EPUB ZIP/XML/XHTML compilation into BookIR.
 - `packages/layout`: paragraph layout, pagination, and page scenes.
-- `packages/reader-skia`: Skia page and turn rendering.
+- `packages/reader-skia`: live SkParagraph layout and Skia page rendering.
+
+## First working slice
+
+- A local bookshelf with a built-in Chinese/English sample.
+- Reflowable EPUB import with archive limits and path traversal protection.
+- Live SkParagraph pagination; pages never become screenshots.
+- Rapid page input coalesced into one desired target instead of a FIFO queue.
+- A short slide transition rendered from two live page scenes.
+- Font-size repagination anchored to a stable BookIR text position.
+- Local bookshelf and reading-position persistence.
+
+Web bundles one complete Noto Serif SC weight because CanvasKit cannot read
+browser system fonts. The reader surface and its 15 MB CJK font are lazy-loaded
+only after a book is opened.
 
 ## Development
 
@@ -38,4 +53,5 @@ pnpm build:web
 
 The first release targets reflowable, novel-style EPUB files. Fixed-layout
 books, scripts, MathML, and browser-level CSS compatibility are deliberately
-outside the first milestone.
+outside the first milestone. EPUB images currently keep their layout position
+as placeholders; decoding and cached image rendering is the next media step.
