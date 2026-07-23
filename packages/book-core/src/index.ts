@@ -1,1 +1,29 @@
-export const BOOK_IR_VERSION = 1;
+export {
+  BOOK_IR_VERSION,
+  isTextBlock,
+  logicalLength,
+  textOf,
+  type BlockIR,
+  type BookIR,
+  type BookLocator,
+  type BookPosition,
+  type ExternalSourceRef,
+  type HeadingBlockIR,
+  type ImageAssetIR,
+  type ImageBlockIR,
+  type InlineMark,
+  type InlineRunIR,
+  type ParagraphBlockIR,
+  type SectionIR,
+  type Size,
+  type SourceSpan,
+  type TextBlockIR,
+} from "./model";
+export {
+  BookValidationError,
+  assertValidBookIR,
+  validateBookIR,
+  type BookValidationIssue,
+  type BookValidationIssueCode,
+} from "./validate";
+export { SAMPLE_BOOK } from "./fixtures/sample-book";
