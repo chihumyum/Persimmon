@@ -1,0 +1,16 @@
+{
+  "name": "@persimmon/epub-import",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run src",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@persimmon/book-core": "workspace:*",
+    "@xmldom/xmldom": "0.9.10",
+    "fflate": "0.8.3"
+  }
+}
