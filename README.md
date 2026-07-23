@@ -8,6 +8,9 @@ The reading core intentionally does not use a WebView. EPUB content is compiled
 into a versioned TypeScript `BookIR`, laid out with Skia Paragraph, and rendered
 with React Native Skia on iOS, Android, and the web.
 
+See [docs/architecture.md](docs/architecture.md) for the rendering invariants,
+package boundaries, and next milestones.
+
 ## Workspace
 
 - `apps/persimmon`: Expo application for iOS, Android, and web.
