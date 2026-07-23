@@ -1,0 +1,1 @@
+export const READER_RENDERER_VERSION = 1;

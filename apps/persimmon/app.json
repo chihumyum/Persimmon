@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "scheme": "persimmon",
+    "web": {
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "name": "Persimmon",
+    "slug": "persimmon",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light"
+  }
+}

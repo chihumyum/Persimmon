@@ -1,0 +1,20 @@
+{
+  "name": "persimmon",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.17.1",
+  "engines": {
+    "node": ">=22.13 <24"
+  },
+  "scripts": {
+    "dev:web": "pnpm --filter @persimmon/app web",
+    "build:web": "pnpm --filter @persimmon/app build:web",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
