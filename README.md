@@ -44,9 +44,40 @@ pnpm install
 pnpm dev:web
 ```
 
+### Native development build
+
+Persimmon uses a project-specific Expo development build rather than Expo Go.
+Xcode is required for iOS builds; Android builds require Android Studio/SDK and
+USB debugging on physical devices.
+
+Build and install the development client the first time:
+
+```bash
+pnpm native:ios:device
+pnpm native:android:device
+```
+
+Only run the command for the platform currently being tested. After the client
+is installed, normal TypeScript/JavaScript changes only need Metro:
+
+```bash
+pnpm dev:native
+```
+
+The device and development machine should be on the same local network. If
+local discovery is unavailable, use the slower tunnel fallback:
+
+```bash
+pnpm dev:native:tunnel
+```
+
+Rebuild the native client after changing native dependencies, Expo app config,
+or the Expo SDK.
+
 Validation:
 
 ```bash
+pnpm check:expo
 pnpm typecheck
 pnpm test
 pnpm build:web

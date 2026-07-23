@@ -8,6 +8,13 @@
   },
   "scripts": {
     "dev:web": "pnpm --filter @persimmon/app web",
+    "dev:native": "pnpm --filter @persimmon/app run dev:client",
+    "dev:native:tunnel": "pnpm --filter @persimmon/app run dev:client:tunnel",
+    "native:ios": "pnpm --filter @persimmon/app run native:ios",
+    "native:ios:device": "pnpm --filter @persimmon/app run native:ios:device",
+    "native:android": "pnpm --filter @persimmon/app run native:android",
+    "native:android:device": "pnpm --filter @persimmon/app run native:android:device",
+    "check:expo": "pnpm --filter @persimmon/app run doctor",
     "build:web": "pnpm --filter @persimmon/app build:web",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",

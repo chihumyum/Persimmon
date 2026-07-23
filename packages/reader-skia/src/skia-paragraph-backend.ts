@@ -101,7 +101,9 @@ export function createSkiaParagraphBackend(
       }
 
       const paragraph = builder.build();
-      builder.dispose();
+      if (typeof builder.dispose === "function") {
+        builder.dispose();
+      }
       paragraph.layout(input.width);
       const lines = paragraph.getLineMetrics().map(lineGeometry);
 

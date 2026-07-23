@@ -10,6 +10,13 @@
     "name": "Persimmon",
     "slug": "persimmon",
     "orientation": "portrait",
-    "userInterfaceStyle": "light"
+    "userInterfaceStyle": "light",
+    "ios": {
+      "bundleIdentifier": "dev.chihum.persimmon",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "dev.chihum.persimmon"
+    }
   }
 }
