@@ -5,7 +5,7 @@ import {
   type AutomaticPageTurnTuning,
 } from "./automatic-page-turn-tuning";
 
-export const PAGE_TURN_LANE_HARD_LIMIT = 20;
+export const PAGE_TURN_LANE_HARD_LIMIT = 25;
 export const PAGE_TURN_GESTURE_LANE_RESERVE = 1;
 export const PAGE_TURN_TAP_LANE_HEADROOM_MULTIPLIER = 2;
 

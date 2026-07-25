@@ -40,16 +40,26 @@ describe("page turn concurrency", () => {
     });
   });
 
-  it("caps doubled timing headroom at the hard pool limit", () => {
-    expect(
-      calculatePageTurnConcurrency(
-        { ...DEFAULT_AUTOMATIC_PAGE_TURN_TUNING, playbackSpeed: 0.25 },
-        150,
-      ),
-    ).toMatchObject({
+  it("covers the slowest legal click animation without a capacity gap", () => {
+    const result = calculatePageTurnConcurrency(
+      {
+        ...DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
+        releaseX: 0.8,
+        liftVelocity: 0.7,
+        liftToLeft: 1.4,
+        playbackSpeed: 0.5,
+      },
+      150,
+    );
+
+    expect(result).toMatchObject({
+      estimatedTapDurationMs: 3435,
       maximumConcurrentTapTurns: PAGE_TURN_LANE_HARD_LIMIT - 1,
       maximumConcurrentTurns: PAGE_TURN_LANE_HARD_LIMIT,
     });
+    expect(result.maximumConcurrentTapTurns).toBeGreaterThanOrEqual(
+      Math.ceil(result.estimatedTapDurationMs / 150),
+    );
   });
 
   it("uses the hard limit for a non-positive interval", () => {

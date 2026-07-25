@@ -383,6 +383,56 @@ export function useNativePageTurnPool({
     onStarted,
     onOutcome,
   );
+  const frame20 = useNativeProgrammaticPageTurnLane(
+    width,
+    height,
+    spread,
+    automaticTuning,
+    gestureTuning,
+    commands[20],
+    onStarted,
+    onOutcome,
+  );
+  const frame21 = useNativeProgrammaticPageTurnLane(
+    width,
+    height,
+    spread,
+    automaticTuning,
+    gestureTuning,
+    commands[21],
+    onStarted,
+    onOutcome,
+  );
+  const frame22 = useNativeProgrammaticPageTurnLane(
+    width,
+    height,
+    spread,
+    automaticTuning,
+    gestureTuning,
+    commands[22],
+    onStarted,
+    onOutcome,
+  );
+  const frame23 = useNativeProgrammaticPageTurnLane(
+    width,
+    height,
+    spread,
+    automaticTuning,
+    gestureTuning,
+    commands[23],
+    onStarted,
+    onOutcome,
+  );
+  const frame24 = useNativeProgrammaticPageTurnLane(
+    width,
+    height,
+    spread,
+    automaticTuning,
+    gestureTuning,
+    commands[24],
+    onStarted,
+    onOutcome,
+  );
   return {
     frames: [
       frame0,
@@ -405,6 +455,11 @@ export function useNativePageTurnPool({
       frame17,
       frame18,
       frame19,
+      frame20,
+      frame21,
+      frame22,
+      frame23,
+      frame24,
     ],
   };
 }
