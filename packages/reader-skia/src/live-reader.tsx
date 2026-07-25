@@ -101,6 +101,7 @@ import {
   type PageTurnSchedulerState,
   type ScheduledPageTurn,
 } from "./page-turn-scheduler";
+import { visiblePageTurnsInPaintOrder } from "./page-turn-stack";
 
 export interface ReaderProgress {
   locator: BookLocator;
@@ -1350,11 +1351,7 @@ function LazyReaderEngine({
       ? [oldestFrom[0], newestTarget[1]]
       : [newestTarget[0], oldestFrom[1]];
   })();
-  const visiblePaperTurns = renderableTurns.filter((turn) => !turn.completed);
-  const stackedPaperTurns =
-    oldestRenderableTurn?.direction === 1
-      ? [...visiblePaperTurns].reverse()
-      : visiblePaperTurns;
+  const stackedPaperTurns = visiblePageTurnsInPaintOrder(renderableTurns);
   const renderPageSlots = (
     addresses: readonly (PageAddress | undefined)[],
     layer: string,

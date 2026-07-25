@@ -8,6 +8,7 @@ import { updateDynamicPageTurnShadow } from "./page-turn-shadow-physics";
 import {
   PAGE_TURN_CAMERA_DISTANCE,
   PAGE_TURN_MAX_PERSPECTIVE_SCALE,
+  PAGE_TURN_PERSPECTIVE_LIFT_RAMP,
   pageTurnCameraBookX,
   projectPageTurnBookX,
 } from "./page-turn-perspective";
@@ -83,7 +84,7 @@ export function createPageTurnNativeFrame(
         pageTurnCameraBookX(minimumBookX, maximumBookX),
         PAGE_TURN_CAMERA_DISTANCE,
         PAGE_TURN_MAX_PERSPECTIVE_SCALE,
-        0,
+        PAGE_TURN_PERSPECTIVE_LIFT_RAMP,
       ],
       profile: new Array<number>(
         DEFAULT_PAGE_PROFILE_POINTS * PROFILE_FLOATS_PER_POINT,

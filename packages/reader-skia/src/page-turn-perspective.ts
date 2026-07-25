@@ -5,6 +5,14 @@
  */
 export const PAGE_TURN_CAMERA_DISTANCE = 4;
 export const PAGE_TURN_MAX_PERSPECTIVE_SCALE = 1.34;
+/**
+ * A buckling sheet gains lift proportional to the square root of its initial
+ * compression. Applying full pinhole projection at zero lift would therefore
+ * move some interior material outward for one frame even while the finger and
+ * physical sheet are moving inward. Smooth the first shallow 0.16 page-widths
+ * of depth; established curls retain the full Play Books-like perspective.
+ */
+export const PAGE_TURN_PERSPECTIVE_LIFT_RAMP = 0.16;
 
 export function pageTurnCameraBookX(
   minimumBookX: number,
@@ -26,10 +34,16 @@ export function pageTurnCameraBookXForLayout(spread: boolean): number {
 export function pageTurnPerspectiveScale(depth: number): number {
   "worklet";
   const visibleDepth = Math.max(0, depth);
+  const rampProgress = Math.min(
+    1,
+    visibleDepth / PAGE_TURN_PERSPECTIVE_LIFT_RAMP,
+  );
+  const ramp = rampProgress * rampProgress * (3 - 2 * rampProgress);
+  const projectedDepth = visibleDepth * ramp;
   return Math.min(
     PAGE_TURN_MAX_PERSPECTIVE_SCALE,
     PAGE_TURN_CAMERA_DISTANCE /
-      Math.max(0.001, PAGE_TURN_CAMERA_DISTANCE - visibleDepth),
+      Math.max(0.001, PAGE_TURN_CAMERA_DISTANCE - projectedDepth),
   );
 }
 

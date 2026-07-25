@@ -19,6 +19,7 @@ import { NATURAL_PAGE_SHADOW_SHADER } from "./page-turn-shader";
 import {
   PAGE_TURN_CAMERA_DISTANCE,
   PAGE_TURN_MAX_PERSPECTIVE_SCALE,
+  PAGE_TURN_PERSPECTIVE_LIFT_RAMP,
   pageTurnCameraBookX,
 } from "./page-turn-perspective";
 import type { PageTurnRenderFrame } from "./page-turn-worklet-frame";
@@ -204,7 +205,7 @@ const LookupPageTurnMesh = forwardRef<PageTurnMeshHandle, PageTurnMeshProps>(
         cameraBookX,
         PAGE_TURN_CAMERA_DISTANCE,
         PAGE_TURN_MAX_PERSPECTIVE_SCALE,
-        0,
+        PAGE_TURN_PERSPECTIVE_LIFT_RAMP,
       ],
       mapping: fallbackFrame.value.mapping,
     }));
@@ -282,9 +283,15 @@ ${nativeProfileSelector(0, profilePointCount, "  ")}
 }
 
 float perspectiveScale(float depth) {
+  float visibleDepth = max(0.0, depth);
+  float rampProgress =
+    clamp(visibleDepth / max(0.001, perspective.w), 0.0, 1.0);
+  float ramp =
+    rampProgress * rampProgress * (3.0 - 2.0 * rampProgress);
+  float projectedDepth = visibleDepth * ramp;
   return min(
     perspective.z,
-    perspective.y / max(0.001, perspective.y - max(0.0, depth))
+    perspective.y / max(0.001, perspective.y - projectedDepth)
   );
 }
 
@@ -406,9 +413,15 @@ ${pageTurnLookupSelector(sampleCount, 0, sampleCount, "  ")}
 }
 
 float perspectiveScale(float depth) {
+  float visibleDepth = max(0.0, depth);
+  float rampProgress =
+    clamp(visibleDepth / max(0.001, perspective.w), 0.0, 1.0);
+  float ramp =
+    rampProgress * rampProgress * (3.0 - 2.0 * rampProgress);
+  float projectedDepth = visibleDepth * ramp;
   return min(
     perspective.z,
-    perspective.y / max(0.001, perspective.y - max(0.0, depth))
+    perspective.y / max(0.001, perspective.y - projectedDepth)
   );
 }
 
