@@ -10,6 +10,7 @@ import {
   movePageTurnWorkletDrag,
   playPageTurnWorklet,
   setPageTurnWorkletTuning,
+  type ReleasedPageTurnGesture,
   type PageTurnTuning,
 } from "@persimmon/page-turn-core";
 import { Gesture } from "react-native-gesture-handler";
@@ -66,6 +67,7 @@ export interface PageGestureReleaseInput {
   readonly throwAcceleration: number;
   readonly turnProgress: number;
   readonly settlingIncomingPage: boolean;
+  readonly releasedGesture?: ReleasedPageTurnGesture;
 }
 
 export interface NativePageTurnDriver {
@@ -445,13 +447,12 @@ export function useNativePageTurnDriver({
       })
       .onEnd(() => {
         "worklet";
-        if (gestureProbe.value.mode !== 0) {
-          const probe = gestureProbe.value;
-          const interactiveRelease = probe.mode === 1;
-          const probedRelease = probe.mode === 2;
+        const releasedAtSeconds = workletTimeSeconds();
+        const probe = gestureProbe.value;
+        if (probe.mode === 2) {
           scheduleOnRN(onGestureRelease, {
             direction: probe.direction,
-            interactive: interactiveRelease,
+            interactive: false,
             startBookX: probe.startBookX,
             currentBookX: probe.currentBookX,
             throwVelocity: probe.throwVelocity,
@@ -463,10 +464,13 @@ export function useNativePageTurnDriver({
             current.mode = 0;
             return current;
           });
-          if (probedRelease) {
-            return;
-          }
+          return;
         }
+        const interactiveProbe = probe.mode === 1 ? probe : undefined;
+        gestureProbe.modify((current) => {
+          current.mode = 0;
+          return current;
+        });
         if (state.value.phase !== PAGE_TURN_WORKLET_DRAG) {
           return;
         }
@@ -485,8 +489,30 @@ export function useNativePageTurnDriver({
               return mutableTarget;
             });
           }
-          endPageTurnWorkletDrag(current, workletTimeSeconds());
+          const settlingProgress = current.settlingProgress;
+          const outcome = endPageTurnWorkletDrag(current, releasedAtSeconds);
           updatePageTurnNativeSharedFrame(current, frame);
+          if (interactiveProbe && outcome > 0) {
+            scheduleOnRN(onGestureRelease, {
+              direction: interactiveProbe.direction,
+              interactive: true,
+              startBookX: interactiveProbe.startBookX,
+              currentBookX: current.lastBookX,
+              throwVelocity: interactiveProbe.throwVelocity,
+              throwAcceleration: interactiveProbe.throwAcceleration,
+              turnProgress: interactiveProbe.turnProgress,
+              settlingIncomingPage:
+                !spread && interactiveProbe.direction === -1,
+              releasedGesture: {
+                pressedEdgeX: current.driveStartX,
+                heldRollTilt: current.driveStartRotation,
+                speedScale: current.driveSpeedScale,
+                turnProgress: current.driveStartProgress,
+                settlingProgress,
+                releasedAtSeconds,
+              },
+            });
+          }
           return current;
         }, true);
       })

@@ -5,6 +5,7 @@ import { DEFAULT_PAGE_TURN_TUNING } from "./page-turn-gesture";
 import {
   advancePageTurnWorklet,
   beginPageTurnWorkletDrag,
+  catchUpPageTurnWorklet,
   createPageTurnWorkletState,
   endPageTurnWorkletDrag,
   movePageTurnWorkletDrag,
@@ -142,6 +143,44 @@ describe("UI-runtime page-turn engine", () => {
     expect(worklet.driveStartRotation).toBe(0.7);
     expect(worklet.driveSpeedScale).toBe(1.8);
     expect(worklet.profile.at(-4)).toBeLessThan(0.25);
+  });
+
+  it("catches a handoff lane up to the advancing interactive sheet", () => {
+    const interactive = createPageTurnWorkletState();
+    beginPageTurnWorkletDrag(interactive, 1, 0.95, 0.5, 1, false);
+    movePageTurnWorkletDrag(interactive, -0.12, 0.5, 0, 1.08);
+    expect(endPageTurnWorkletDrag(interactive, 1.08)).toBe(1);
+
+    const release = {
+      pressedEdgeX: interactive.driveStartX,
+      heldRollTilt: interactive.driveStartRotation,
+      speedScale: interactive.driveSpeedScale,
+      turnProgress: interactive.driveStartProgress,
+      settlingProgress: interactive.settlingProgress,
+      releasedAtSeconds: 1.08,
+    };
+    const handoffDelay = 0.09;
+    advancePageTurnWorklet(interactive, handoffDelay);
+
+    const lane = createPageTurnWorkletState();
+    playReleasedPageTurnWorklet(lane, 1, false, release);
+    const staleEdgeX = lane.profile.at(-4)!;
+    const continuedEdgeX = interactive.profile.at(-4)!;
+    expect(staleEdgeX).toBeGreaterThan(continuedEdgeX);
+
+    catchUpPageTurnWorklet(lane, handoffDelay);
+    expect(lane.profile).toEqual(interactive.profile);
+  });
+
+  it("settles an incoming previous page without an external unroll constant", () => {
+    const worklet = createPageTurnWorkletState();
+    playPageTurnWorklet(worklet, -1, true);
+
+    for (let frame = 0; frame < 60; frame += 1) {
+      advancePageTurnWorklet(worklet, 1 / 60);
+    }
+
+    expect(worklet.outcome).toBe(1);
   });
 });
 

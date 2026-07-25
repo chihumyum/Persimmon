@@ -160,6 +160,7 @@ export interface PageTurnWorkletState {
   driveSpeedScale: number;
   driveStartProgress: number;
   driveStartRotation: number;
+  defaultUnrollStart: number;
   driveUnrollStart: number;
   revertPressedStartX: number;
   revertCompleteness: number;
@@ -235,6 +236,7 @@ export function createPageTurnWorkletState(
     driveSpeedScale: 1,
     driveStartProgress: 0,
     driveStartRotation: 0,
+    defaultUnrollStart: TURN_UNROLL_START,
     driveUnrollStart: TURN_UNROLL_START,
     revertPressedStartX: tuning.releaseX,
     revertCompleteness: 0,
@@ -546,7 +548,7 @@ function rebuildTurnProfile(
   startX: number,
   startRotation: number,
   deltaTime: number,
-  unrollStart = TURN_UNROLL_START,
+  unrollStart: number,
 ): void {
   "worklet";
   const safeProgress = clamp(progress, 0, 1);
@@ -615,7 +617,7 @@ function beginTurnDrive(
   startProgress: number,
   speedScale: number,
   startRotation: number,
-  unrollStart = TURN_UNROLL_START,
+  unrollStart: number,
 ): void {
   "worklet";
   state.phase = PAGE_TURN_WORKLET_TURN;
@@ -646,6 +648,7 @@ function beginSettlingDrive(
     1,
   );
   state.driveStartRotation = 0;
+  state.driveUnrollStart = state.defaultUnrollStart;
 }
 
 function beginRevertDrive(
@@ -684,7 +687,7 @@ function advancePageTurnWorkletStep(
       state.driveStartX = state.tuningReleaseX;
       state.driveStartProgress = 0;
       state.driveStartRotation = 0;
-      state.driveUnrollStart = TURN_UNROLL_START;
+      state.driveUnrollStart = state.defaultUnrollStart;
     }
     return;
   }
@@ -720,9 +723,23 @@ function advancePageTurnWorkletStep(
     const easedProgress = 1 - (1 - segmentProgress) ** 2;
     const progress =
       state.driveStartProgress + (1 - state.driveStartProgress) * easedProgress;
-    rebuildTurnProfile(state, progress, state.driveStartX, 0, deltaTime);
+    rebuildTurnProfile(
+      state,
+      progress,
+      state.driveStartX,
+      0,
+      deltaTime,
+      state.defaultUnrollStart,
+    );
     if (state.driveElapsed >= duration) {
-      rebuildTurnProfile(state, 1, state.driveStartX, 0, deltaTime);
+      rebuildTurnProfile(
+        state,
+        1,
+        state.driveStartX,
+        0,
+        deltaTime,
+        state.defaultUnrollStart,
+      );
       state.phase = PAGE_TURN_WORKLET_COMPLETED;
       state.outcome = PAGE_TURN_WORKLET_COMMITTED;
       state.meanSpeed = 0;
@@ -778,7 +795,7 @@ export function resetPageTurnWorklet(state: PageTurnWorkletState): void {
   state.dragTurnProgress = 0;
   state.settlingProgress = 0;
   state.driveElapsed = 0;
-  state.driveUnrollStart = TURN_UNROLL_START;
+  state.driveUnrollStart = state.defaultUnrollStart;
   state.meanSpeed = 0;
   setFlatProfile(state);
 }
@@ -817,6 +834,7 @@ export function beginPageTurnWorkletDrag(
       state.tuningReleaseX,
       0,
       0,
+      state.defaultUnrollStart,
     );
   } else {
     applyDraggedProfile(state, startBookX, 0);
@@ -847,6 +865,7 @@ export function movePageTurnWorkletDrag(
       state.tuningReleaseX,
       0,
       deltaTime,
+      state.defaultUnrollStart,
     );
     return true;
   }
@@ -901,6 +920,7 @@ export function playPageTurnWorklet(
       state.tuningReleaseX,
       0,
       0,
+      state.defaultUnrollStart,
     );
     beginSettlingDrive(state, SETTLING_PAGE_START_PROGRESS);
     return;
@@ -927,7 +947,14 @@ export function playReleasedPageTurnWorklet(
     const startProgress = landingTurnProgress(
       Math.min(1, Math.max(0, release.settlingProgress)),
     );
-    rebuildTurnProfile(state, startProgress, state.tuningReleaseX, 0, 0);
+    rebuildTurnProfile(
+      state,
+      startProgress,
+      state.tuningReleaseX,
+      0,
+      0,
+      state.defaultUnrollStart,
+    );
     beginSettlingDrive(state, startProgress);
     return;
   }
@@ -1036,6 +1063,26 @@ export function advancePageTurnWorklet(
   ) {
     const step = Math.min(0.05, remainingTime);
     advancePageTurnWorkletStep(state, step);
+    remainingTime -= step;
+    advanced = true;
+  }
+  return advanced;
+}
+
+export function catchUpPageTurnWorklet(
+  state: PageTurnWorkletState,
+  elapsedSeconds: number,
+): boolean {
+  "worklet";
+  let remainingTime = Number.isFinite(elapsedSeconds)
+    ? Math.min(1, Math.max(0, elapsedSeconds))
+    : 0;
+  let advanced = false;
+  while (remainingTime > 0) {
+    const step = Math.min(0.25, remainingTime);
+    if (!advancePageTurnWorklet(state, step)) {
+      break;
+    }
     remainingTime -= step;
     advanced = true;
   }

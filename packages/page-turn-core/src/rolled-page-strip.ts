@@ -55,11 +55,8 @@ export function gestureTurnUnrollStart(startRotation: number): number {
   "worklet";
   const rotation = Math.min(MAX_PRESSED_ROLL_TILT, Math.max(0, startRotation));
   return Math.min(
-    MAX_TURN_UNROLL_START,
-    Math.max(
-      TURN_UNROLL_START,
-      (Math.PI * 0.5 - rotation) / (Math.PI - rotation),
-    ),
+    0.5,
+    Math.max(0.08, (Math.PI * 0.5 - rotation) / (Math.PI - rotation)),
   );
 }
 
@@ -275,7 +272,7 @@ function turnParameters(
 export function turnBendRetention(
   progress: number,
   curvatureRelaxation: number,
-  unrollStart = TURN_UNROLL_START,
+  unrollStart: number,
 ): number {
   "worklet";
   const safeProgress = Math.min(1, Math.max(0, progress));

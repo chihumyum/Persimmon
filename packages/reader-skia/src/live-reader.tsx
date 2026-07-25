@@ -607,33 +607,41 @@ function LazyReaderEngine({
       if (pageGestureModeForStart(input.startBookX) !== "full") {
         return;
       }
-      const fingerX = anchoredGestureFingerX(
-        input.startBookX,
-        input.currentBookX,
-      );
-      if (
-        !shouldCommitTurn(
-          {
+      const release = (() => {
+        if (input.releasedGesture) {
+          return input.releasedGesture;
+        }
+        const fingerX = anchoredGestureFingerX(
+          input.startBookX,
+          input.currentBookX,
+        );
+        if (
+          !shouldCommitTurn(
+            {
+              fingerX,
+              throwVelocity: input.throwVelocity,
+              throwAcceleration: input.throwAcceleration,
+              pageWeight: coreTuning.pageWeight,
+            },
+            coreTuning,
+          )
+        ) {
+          return undefined;
+        }
+        return {
+          pressedEdgeX: Math.max(MIN_PRESSED_EDGE_X, fingerX),
+          heldRollTilt: gestureLiftRotationForFingerX(fingerX),
+          speedScale: gestureTurnSpeedScale(input.throwVelocity, coreTuning),
+          turnProgress: postHingeTurnProgressForFingerX(
             fingerX,
-            throwVelocity: input.throwVelocity,
-            throwAcceleration: input.throwAcceleration,
-            pageWeight: coreTuning.pageWeight,
-          },
-          coreTuning,
-        )
-      ) {
+            input.startBookX,
+          ),
+          settlingProgress: input.turnProgress,
+        };
+      })();
+      if (!release) {
         return;
       }
-      const release = {
-        pressedEdgeX: Math.max(MIN_PRESSED_EDGE_X, fingerX),
-        heldRollTilt: gestureLiftRotationForFingerX(fingerX),
-        speedScale: gestureTurnSpeedScale(input.throwVelocity, coreTuning),
-        turnProgress: postHingeTurnProgressForFingerX(
-          fingerX,
-          input.startBookX,
-        ),
-        settlingProgress: input.turnProgress,
-      };
       if (input.interactive) {
         const interactiveTurnId =
           nativeInteractiveTurnIdRef.current ??

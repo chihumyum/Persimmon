@@ -3,6 +3,7 @@ import {
   PAGE_TURN_WORKLET_IDLE,
   PAGE_TURN_WORKLET_NO_OUTCOME,
   advancePageTurnWorklet,
+  catchUpPageTurnWorklet,
   createPageTurnWorkletState,
   playPageTurnWorklet,
   playReleasedPageTurnWorklet,
@@ -121,11 +122,28 @@ function useNativeProgrammaticPageTurnLane(
               settlingIncomingPage,
               release,
             );
+            const releasedAtSeconds = release.releasedAtSeconds;
+            const catchUpSeconds =
+              releasedAtSeconds !== undefined &&
+              Number.isFinite(releasedAtSeconds)
+                ? Math.min(
+                    1,
+                    Math.max(0, Date.now() / 1000 - releasedAtSeconds),
+                  )
+                : 0;
+            catchUpPageTurnWorklet(current, catchUpSeconds);
           } else {
             playPageTurnWorklet(current, nextDirection, settlingIncomingPage);
           }
           updatePageTurnNativeSharedFrame(current, frame);
           scheduleOnRN(onStarted, commandId);
+          if (
+            current.outcome !== PAGE_TURN_WORKLET_NO_OUTCOME &&
+            !current.outcomeNotified
+          ) {
+            current.outcomeNotified = true;
+            scheduleOnRN(onOutcome, commandId, current.outcome);
+          }
           return current;
         }, true);
       },
@@ -144,6 +162,7 @@ function useNativeProgrammaticPageTurnLane(
     frame,
     commandMotion,
     onStarted,
+    onOutcome,
     settlingIncomingPage,
     state,
     gestureRelease,

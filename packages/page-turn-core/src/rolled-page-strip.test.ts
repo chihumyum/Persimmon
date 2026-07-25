@@ -168,11 +168,11 @@ describe("continuous-curvature page strip", () => {
   });
 
   it("retains curl through the latter half and eases flat without a snap", () => {
-    const start = turnBendRetention(TURN_UNROLL_START, 7);
-    const middle = turnBendRetention(0.5, 7);
-    const later = turnBendRetention(0.75, 7);
-    const nearlyFlat = turnBendRetention(0.99, 7);
-    const flat = turnBendRetention(1, 7);
+    const start = turnBendRetention(TURN_UNROLL_START, 7, TURN_UNROLL_START);
+    const middle = turnBendRetention(0.5, 7, TURN_UNROLL_START);
+    const later = turnBendRetention(0.75, 7, TURN_UNROLL_START);
+    const nearlyFlat = turnBendRetention(0.99, 7, TURN_UNROLL_START);
+    const flat = turnBendRetention(1, 7, TURN_UNROLL_START);
 
     expect(start).toBe(1);
     expect(middle).toBeGreaterThan(0.55);
@@ -182,7 +182,7 @@ describe("continuous-curvature page strip", () => {
     expect(nearlyFlat).toBeLessThan(0.0001);
     expect(flat).toBe(0);
     expect(nearlyFlat - flat).toBeLessThan(
-      turnBendRetention(0.98, 7) - nearlyFlat,
+      turnBendRetention(0.98, 7, TURN_UNROLL_START) - nearlyFlat,
     );
   });
 

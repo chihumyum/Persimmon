@@ -30,6 +30,7 @@ export interface ReleasedPageTurnGesture {
   readonly speedScale: number;
   readonly turnProgress: number;
   readonly settlingProgress: number;
+  readonly releasedAtSeconds?: number;
 }
 
 export type PageGestureMode = "full" | "weak";
