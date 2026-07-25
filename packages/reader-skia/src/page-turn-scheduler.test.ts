@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { PageAddress } from "./section-navigation";
+import { PAGE_TURN_LANE_HARD_LIMIT } from "./page-turn-concurrency";
 import {
-  MAX_CONCURRENT_PAGE_TURNS,
   PAGE_TURN_START_INTERVAL_MS,
   beginScheduledInteractivePageTurn,
   createPageTurnSchedulerState,
@@ -100,7 +100,7 @@ describe("page-turn scheduler", () => {
   it("drops input at capacity and reuses a lane only for a later input", () => {
     const scheduler = createHarness();
     let state = createPageTurnSchedulerState(page(0));
-    for (let index = 0; index < MAX_CONCURRENT_PAGE_TURNS; index += 1) {
+    for (let index = 0; index < PAGE_TURN_LANE_HARD_LIMIT; index += 1) {
       state = requestScheduledPageTurn(
         state,
         1,
@@ -109,16 +109,26 @@ describe("page-turn scheduler", () => {
       );
     }
 
-    const atCapacity = requestScheduledPageTurn(state, 1, scheduler, 1_000);
+    const atCapacity = requestScheduledPageTurn(
+      state,
+      1,
+      scheduler,
+      PAGE_TURN_LANE_HARD_LIMIT * PAGE_TURN_START_INTERVAL_MS,
+    );
     expect(atCapacity).toBe(state);
-    expect(state.desired).toEqual(page(4));
+    expect(state.desired).toEqual(page(PAGE_TURN_LANE_HARD_LIMIT));
 
     state = resolveScheduledPageTurn(state, "turn:1", true);
-    state = requestScheduledPageTurn(state, 1, scheduler, 1_250);
+    state = requestScheduledPageTurn(
+      state,
+      1,
+      scheduler,
+      (PAGE_TURN_LANE_HARD_LIMIT + 1) * PAGE_TURN_START_INTERVAL_MS,
+    );
     expect(state.turns.at(-1)).toMatchObject({
-      id: "turn:5",
-      from: page(4),
-      to: page(5),
+      id: "turn:11",
+      from: page(10),
+      to: page(11),
       lane: 0,
     });
   });
@@ -126,7 +136,7 @@ describe("page-turn scheduler", () => {
   it("supports uniformly spaced backward turns", () => {
     const scheduler = createHarness();
     let state = createPageTurnSchedulerState(page(10));
-    for (let index = 0; index < MAX_CONCURRENT_PAGE_TURNS; index += 1) {
+    for (let index = 0; index < PAGE_TURN_LANE_HARD_LIMIT; index += 1) {
       state = requestScheduledPageTurn(
         state,
         -1,
@@ -136,9 +146,40 @@ describe("page-turn scheduler", () => {
     }
 
     expect(state.turns.map((turn) => turn.from.pageIndex)).toEqual([
-      10, 9, 8, 7,
+      10, 9, 8, 7, 6, 5, 4, 3, 2, 1,
     ]);
-    expect(scheduledPageAddress(state)).toEqual(page(6));
+    expect(scheduledPageAddress(state)).toEqual(page(0));
+  });
+
+  it("reserves the dynamically calculated spare lane for a gesture", () => {
+    const scheduler = {
+      ...createHarness(),
+      maximumConcurrentTurns: 6,
+      maximumConcurrentTapTurns: 5,
+    };
+    let state = createPageTurnSchedulerState(page(0));
+    for (let index = 0; index < 6; index += 1) {
+      state = requestScheduledPageTurn(
+        state,
+        1,
+        scheduler,
+        index * PAGE_TURN_START_INTERVAL_MS,
+      );
+    }
+
+    expect(state.turns).toHaveLength(5);
+    state = beginScheduledInteractivePageTurn(
+      state,
+      1,
+      scheduler,
+      6 * PAGE_TURN_START_INTERVAL_MS,
+    );
+    expect(state.turns).toHaveLength(6);
+    expect(state.turns.at(-1)).toMatchObject({
+      lane: 5,
+      interactive: true,
+      motion: "gesture",
+    });
   });
 
   it("collapses out-of-order completions only after predecessors land", () => {
@@ -228,7 +269,7 @@ describe("page-turn scheduler", () => {
   it("keeps rapid flicks in gesture lanes and drops excess releases", () => {
     const scheduler = createHarness();
     let state = createPageTurnSchedulerState(page(0));
-    for (let index = 0; index < MAX_CONCURRENT_PAGE_TURNS + 2; index += 1) {
+    for (let index = 0; index < PAGE_TURN_LANE_HARD_LIMIT + 2; index += 1) {
       state = requestScheduledGesturePageTurn(
         state,
         1,
@@ -238,12 +279,14 @@ describe("page-turn scheduler", () => {
       );
     }
 
-    expect(state.turns).toHaveLength(MAX_CONCURRENT_PAGE_TURNS);
-    expect(state.turns.map((turn) => turn.lane)).toEqual([0, 1, 2, 3]);
+    expect(state.turns).toHaveLength(PAGE_TURN_LANE_HARD_LIMIT);
+    expect(state.turns.map((turn) => turn.lane)).toEqual([
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+    ]);
     expect(state.turns.every((turn) => turn.motion === "gesture")).toBe(true);
     expect(state.turns.every((turn) => turn.gestureRelease === release)).toBe(
       true,
     );
-    expect(state.desired).toEqual(page(4));
+    expect(state.desired).toEqual(page(PAGE_TURN_LANE_HARD_LIMIT));
   });
 });

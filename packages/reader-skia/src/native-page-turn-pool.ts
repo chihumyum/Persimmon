@@ -1,6 +1,7 @@
 import type { PageTurnNativeSharedFrame } from "./page-turn-native-shared-frame";
 import type { AutomaticPageTurnTuning } from "./automatic-page-turn-tuning";
 import type { GesturePageTurnTuning } from "./gesture-page-turn-tuning";
+import type { PAGE_TURN_LANE_HARD_LIMIT } from "./page-turn-concurrency";
 import type { ReleasedPageTurnGesture } from "@persimmon/page-turn-core";
 
 export interface NativeProgrammaticPageTurnCommand {
@@ -24,13 +25,19 @@ export interface NativePageTurnPoolOptions {
 }
 
 export interface NativePageTurnPool {
-  readonly frames: readonly [
+  readonly frames: FixedLengthArray<
     PageTurnNativeSharedFrame,
-    PageTurnNativeSharedFrame,
-    PageTurnNativeSharedFrame,
-    PageTurnNativeSharedFrame,
-  ];
+    typeof PAGE_TURN_LANE_HARD_LIMIT
+  >;
 }
+
+type FixedLengthArray<
+  Value,
+  Length extends number,
+  Result extends readonly Value[] = [],
+> = Result["length"] extends Length
+  ? Result
+  : FixedLengthArray<Value, Length, readonly [...Result, Value]>;
 
 /**
  * The Web renderer owns one reference controller per paper and never consumes

@@ -104,6 +104,9 @@ test("imports, reads, navigates, resumes, and deletes a local EPUB", async ({
   await expect(page.getByLabel(/本章第 1 页/)).toBeVisible();
 
   await page.getByRole("button", { name: "下一页" }).click();
+  // Model two accepted user taps rather than an instantaneous synthetic burst,
+  // whose second input is intentionally dropped by the 150 ms start gate.
+  await page.waitForTimeout(180);
   await page.getByRole("button", { name: "下一页" }).click();
   await expect(page.getByLabel(/本章第 3 页/)).toBeVisible({
     timeout: 10_000,

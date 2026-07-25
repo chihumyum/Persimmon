@@ -25,6 +25,11 @@ import {
   revertEasedProgress,
   revertPressedEdgeX,
 } from "./revert-kinematics";
+import {
+  AUTOMATIC_PAGE_TURN_PRESS_DURATION_SECONDS,
+  INCOMING_PAGE_SETTLE_DURATION_SECONDS,
+  PAGE_TURN_PROPAGATION_SPEED_SCALE,
+} from "./page-turn-timing";
 
 export type NaturalPageTurnPhase =
   | "idle"
@@ -64,10 +69,7 @@ interface NaturalPageTurnDrive {
   revertStartRotation: number;
 }
 
-const PRESS_DURATION = 0.12;
-const SETTLING_PAGE_DURATION = 0.52;
 const SETTLING_PAGE_START_PROGRESS = 0.5;
-const TURN_SPEED_SCALE = 1.15;
 const GESTURE_VELOCITY_TIME_CONSTANT = 0.045;
 const GESTURE_ACCELERATION_TIME_CONSTANT = 0.06;
 const MAX_TRACKED_GESTURE_VELOCITY = 6;
@@ -340,7 +342,10 @@ export class NaturalPageTurnController {
     drive.elapsed += safeDelta;
 
     if (drive.phase === "press") {
-      const progress = Math.min(1, drive.elapsed / PRESS_DURATION);
+      const progress = Math.min(
+        1,
+        drive.elapsed / AUTOMATIC_PAGE_TURN_PRESS_DURATION_SECONDS,
+      );
       const edgeX = 1 + (drive.tuning.releaseX - 1) * progress;
       this.sheet.setPressedEdge(edgeX, safeDelta);
       if (progress >= 1) {
@@ -465,7 +470,10 @@ export class NaturalPageTurnController {
   ): void {
     const remainingRatio =
       (1 - drive.startProgress) / (1 - SETTLING_PAGE_START_PROGRESS);
-    const duration = Math.max(1 / 60, SETTLING_PAGE_DURATION * remainingRatio);
+    const duration = Math.max(
+      1 / 60,
+      INCOMING_PAGE_SETTLE_DURATION_SECONDS * remainingRatio,
+    );
     const easedProgress = settleEasedProgress(drive.elapsed, duration);
     const progress =
       drive.startProgress + (1 - drive.startProgress) * easedProgress;
@@ -536,7 +544,9 @@ export class NaturalPageTurnController {
 
 function fullTurnDuration(drive: NaturalPageTurnDrive): number {
   const propagationSpeed =
-    turnPropagationSpeed(drive.tuning) * TURN_SPEED_SCALE * drive.speedScale;
+    turnPropagationSpeed(drive.tuning) *
+    PAGE_TURN_PROPAGATION_SPEED_SCALE *
+    drive.speedScale;
   const remainingRotationRatio = (Math.PI - drive.startRotation) / Math.PI;
   return (
     ((drive.startX + 1) * remainingRotationRatio) /

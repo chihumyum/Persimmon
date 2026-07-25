@@ -54,6 +54,10 @@ import {
 } from "./page-turn-shader";
 import { pageTurnCameraBookXForLayout } from "./page-turn-perspective";
 import { bookXForGestureTravel } from "./page-turn-gesture-direction";
+import {
+  PAGE_TURN_LANE_HARD_LIMIT,
+  calculatePageTurnConcurrency,
+} from "./page-turn-concurrency";
 import { ReaderPageLayer } from "./reader-page-layer";
 import {
   bookForSection,
@@ -82,7 +86,7 @@ import {
   type NativeProgrammaticPageTurnCommand,
 } from "./native-page-turn-pool";
 import {
-  MAX_CONCURRENT_PAGE_TURNS,
+  PAGE_TURN_START_INTERVAL_MS,
   beginScheduledInteractivePageTurn,
   createPageTurnSchedulerState,
   handoffScheduledInteractivePageTurn,
@@ -178,10 +182,18 @@ function LazyReaderEngine({
   onProgress,
   onTurningChange,
 }: LazyReaderEngineProps) {
+  const turnConcurrency = useMemo(
+    () =>
+      calculatePageTurnConcurrency(
+        automaticPageTurnTuning,
+        PAGE_TURN_START_INTERVAL_MS,
+      ),
+    [automaticPageTurnTuning],
+  );
   const pagesPerView = layout === "spread" ? 2 : 1;
   const physicalPageWidth = layout === "spread" ? width * 0.5 : width;
   const captureByteBudget = pageCaptureEntryBudget(
-    (1 + MAX_CONCURRENT_PAGE_TURNS * 2) * pagesPerView,
+    (1 + turnConcurrency.maximumConcurrentTurns * 2) * pagesPerView,
   );
   const backend = useMemo(
     () => createSkiaParagraphBackend(fontProvider),
@@ -273,9 +285,16 @@ function LazyReaderEngine({
     () => ({
       adjacent,
       createId: createTurnId,
-      maximumConcurrentTurns: MAX_CONCURRENT_PAGE_TURNS,
+      maximumConcurrentTurns: turnConcurrency.maximumConcurrentTurns,
+      maximumConcurrentTapTurns: turnConcurrency.maximumConcurrentTapTurns,
+      minimumTurnIntervalMs: PAGE_TURN_START_INTERVAL_MS,
     }),
-    [adjacent, createTurnId],
+    [
+      adjacent,
+      createTurnId,
+      turnConcurrency.maximumConcurrentTapTurns,
+      turnConcurrency.maximumConcurrentTurns,
+    ],
   );
   const [readerState, setReaderState] = useState(() =>
     createPageTurnSchedulerState(initialAddress),
@@ -622,7 +641,7 @@ function LazyReaderEngine({
           (turn) => turn.interactive || turn.handoffPending,
         ) ||
         currentReaderState.turns.filter((turn) => !turn.completed).length >=
-          MAX_CONCURRENT_PAGE_TURNS
+          turnConcurrency.maximumConcurrentTurns
       ) {
         return false;
       }
@@ -669,6 +688,7 @@ function LazyReaderEngine({
       publishTurnFrame,
       layout,
       stopRunningTurn,
+      turnConcurrency.maximumConcurrentTurns,
       turnScheduler,
     ],
   );
@@ -971,8 +991,9 @@ function LazyReaderEngine({
   );
   const settledPagination = ensurePagination(readerState.settled.sectionIndex);
   const pageCaptureKey = useCallback(
-    (address: PageAddress) => `${address.sectionIndex}:${address.pageIndex}`,
-    [],
+    (address: PageAddress) =>
+      `${captureByteBudget}:${address.sectionIndex}:${address.pageIndex}`,
+    [captureByteBudget],
   );
   const ensurePageCapture = useCallback(
     (address: PageAddress): CapturedPage | null => {
@@ -1037,7 +1058,11 @@ function LazyReaderEngine({
     const viewStarts: PageAddress[] = [readerState.settled];
     let backward = readerState.settled;
     let forward = readerState.settled;
-    for (let depth = 0; depth < MAX_CONCURRENT_PAGE_TURNS; depth += 1) {
+    for (
+      let depth = 0;
+      depth < turnConcurrency.maximumConcurrentTurns;
+      depth += 1
+    ) {
       backward = adjacent(backward, -1);
       forward = adjacent(forward, 1);
       viewStarts.push(backward, forward);
@@ -1056,12 +1081,13 @@ function LazyReaderEngine({
     addressesForView,
     pageCaptureKey,
     readerState.settled,
+    turnConcurrency.maximumConcurrentTurns,
   ]);
 
-  // Keep enough already-rasterized paper for the complete four-lane burst.
+  // Keep enough already-rasterized paper for the currently permitted overlap.
   // Captures are created outside the animation frame path and retained while a
-  // sheet references them, so a rapid second/third/fourth tap does no texture
-  // work on the React or UI runtime.
+  // sheet references them, so rapid successive taps do no texture work on the
+  // React or UI runtime.
   useEffect(() => {
     const keepKeys = new Set(captureAddresses.map(pageCaptureKey));
     let addedCapture = false;
@@ -1165,7 +1191,7 @@ function LazyReaderEngine({
     canStartInteractive:
       driverTurn === undefined &&
       activeTurns.filter((turn) => !turn.completed).length <
-        MAX_CONCURRENT_PAGE_TURNS,
+        turnConcurrency.maximumConcurrentTurns,
     tuning: gesturePageTurnTuning,
     command: nativeCommand,
     onCenterTap: onCenterPress ?? noop,
@@ -1176,7 +1202,7 @@ function LazyReaderEngine({
   });
   const nativePoolCommands = useMemo(() => {
     const commands: (NativeProgrammaticPageTurnCommand | undefined)[] =
-      new Array(MAX_CONCURRENT_PAGE_TURNS).fill(undefined);
+      new Array(PAGE_TURN_LANE_HARD_LIMIT).fill(undefined);
     for (const turn of renderableTurns) {
       if (turn.completed || turn.interactive || !textureReadyForTurn(turn)) {
         continue;
@@ -1504,7 +1530,7 @@ interface AutomaticWebPageTurnMeshProps {
 
 /**
  * Web keeps one controller per visible paper so repeated edge clicks can
- * overlap just like the fixed native lane pool. This reference renderer is
+ * overlap just like the hard-capped native lane pool. This reference renderer is
  * intentionally isolated from the native gesture/physics hot path.
  */
 function AutomaticWebPageTurnMesh({

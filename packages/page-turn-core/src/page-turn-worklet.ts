@@ -8,6 +8,11 @@ import {
   MAX_PRESSED_ROLL_TILT,
   MIN_PRESSED_EDGE_X,
 } from "./rolled-page-strip";
+import {
+  AUTOMATIC_PAGE_TURN_PRESS_DURATION_SECONDS,
+  INCOMING_PAGE_SETTLE_DURATION_SECONDS,
+  PAGE_TURN_PROPAGATION_SPEED_SCALE,
+} from "./page-turn-timing";
 
 export const PAGE_TURN_WORKLET_IDLE = 0;
 export const PAGE_TURN_WORKLET_DRAG = 1;
@@ -30,10 +35,7 @@ const SUBSTEPS_PER_PROFILE_SEGMENT = 8;
 const PROFILE_BEND_AMPLITUDE_SLICES = 257;
 const MAX_PROFILE_BEND_AMPLITUDE = 2.3382951135873746;
 const TURN_UNROLL_START = 0.08;
-const PRESS_DURATION = 0.12;
-const SETTLING_PAGE_DURATION = 0.52;
 const SETTLING_PAGE_START_PROGRESS = 0.5;
-const TURN_SPEED_SCALE = 1.15;
 const GESTURE_VELOCITY_TIME_CONSTANT = 0.045;
 const GESTURE_ACCELERATION_TIME_CONSTANT = 0.06;
 const MAX_TRACKED_GESTURE_VELOCITY = 6;
@@ -649,7 +651,10 @@ function advancePageTurnWorkletStep(
   state.driveElapsed += deltaTime;
 
   if (state.phase === PAGE_TURN_WORKLET_PRESS) {
-    const progress = Math.min(1, state.driveElapsed / PRESS_DURATION);
+    const progress = Math.min(
+      1,
+      state.driveElapsed / AUTOMATIC_PAGE_TURN_PRESS_DURATION_SECONDS,
+    );
     const edgeX = 1 + (state.tuningReleaseX - 1) * progress;
     rebuildPressedProfile(state, edgeX, 0, deltaTime);
     if (progress >= 1) {
@@ -685,7 +690,10 @@ function advancePageTurnWorkletStep(
   if (state.phase === PAGE_TURN_WORKLET_SETTLE) {
     const remainingRatio =
       (1 - state.driveStartProgress) / (1 - SETTLING_PAGE_START_PROGRESS);
-    const duration = Math.max(1 / 60, SETTLING_PAGE_DURATION * remainingRatio);
+    const duration = Math.max(
+      1 / 60,
+      INCOMING_PAGE_SETTLE_DURATION_SECONDS * remainingRatio,
+    );
     const segmentProgress = clamp(state.driveElapsed / duration, 0, 1);
     const easedProgress = 1 - (1 - segmentProgress) ** 2;
     const progress =
@@ -706,7 +714,7 @@ function advancePageTurnWorkletStep(
     const propagationSpeed =
       state.tuningLiftVelocity *
       state.tuningLiftToLeft *
-      TURN_SPEED_SCALE *
+      PAGE_TURN_PROPAGATION_SPEED_SCALE *
       state.driveSpeedScale;
     const remainingRotationRatio =
       (Math.PI - state.driveStartRotation) / Math.PI;

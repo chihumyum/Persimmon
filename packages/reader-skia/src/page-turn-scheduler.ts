@@ -1,8 +1,8 @@
 import type { ReleasedPageTurnGesture } from "@persimmon/page-turn-core";
 
+import { PAGE_TURN_LANE_HARD_LIMIT } from "./page-turn-concurrency";
 import { samePageAddress, type PageAddress } from "./section-navigation";
 
-export const MAX_CONCURRENT_PAGE_TURNS = 4;
 export const PAGE_TURN_START_INTERVAL_MS = 150;
 
 export interface ScheduledPageTurn {
@@ -37,6 +37,7 @@ export interface PageTurnScheduler {
   readonly adjacent: (address: PageAddress, direction: 1 | -1) => PageAddress;
   readonly createId: () => string;
   readonly maximumConcurrentTurns?: number;
+  readonly maximumConcurrentTapTurns?: number;
   readonly minimumTurnIntervalMs?: number;
 }
 
@@ -205,15 +206,35 @@ function tryStartScheduledTurn(
     return state;
   }
 
-  const maximumConcurrentTurns = Math.max(
-    1,
-    Math.floor(scheduler.maximumConcurrentTurns ?? MAX_CONCURRENT_PAGE_TURNS),
+  const maximumConcurrentTurns = Math.min(
+    PAGE_TURN_LANE_HARD_LIMIT,
+    Math.max(
+      1,
+      Math.floor(scheduler.maximumConcurrentTurns ?? PAGE_TURN_LANE_HARD_LIMIT),
+    ),
   );
   const occupiedLanes = new Set(
     state.turns.filter((turn) => !turn.completed).map((turn) => turn.lane),
   );
   if (occupiedLanes.size >= maximumConcurrentTurns) {
     return state;
+  }
+  if (motion === "tap") {
+    const maximumConcurrentTapTurns = Math.min(
+      maximumConcurrentTurns,
+      Math.max(
+        1,
+        Math.floor(
+          scheduler.maximumConcurrentTapTurns ?? maximumConcurrentTurns,
+        ),
+      ),
+    );
+    const activeTapTurns = state.turns.filter(
+      (turn) => !turn.completed && turn.motion === "tap",
+    ).length;
+    if (activeTapTurns >= maximumConcurrentTapTurns) {
+      return state;
+    }
   }
 
   const lastTurn = state.turns.at(-1);

@@ -168,9 +168,10 @@ function useNativeProgrammaticPageTurnLane(
 }
 
 /**
- * Four persistent animation lanes back rapid edge taps without allocating a
- * controller, profile, or render buffer for each turn. Every lane advances on
- * the UI runtime and sends React only its terminal turn id and outcome.
+ * A hard-capped persistent pool backs the dynamically enabled lane count
+ * without allocating a controller, profile, or render buffer during a burst.
+ * Every lane advances on the UI runtime and sends React only its terminal turn
+ * id and outcome.
  */
 export function useNativePageTurnPool({
   width,
@@ -222,7 +223,78 @@ export function useNativePageTurnPool({
     onStarted,
     onOutcome,
   );
+  const frame4 = useNativeProgrammaticPageTurnLane(
+    width,
+    height,
+    spread,
+    automaticTuning,
+    gestureTuning,
+    commands[4],
+    onStarted,
+    onOutcome,
+  );
+  const frame5 = useNativeProgrammaticPageTurnLane(
+    width,
+    height,
+    spread,
+    automaticTuning,
+    gestureTuning,
+    commands[5],
+    onStarted,
+    onOutcome,
+  );
+  const frame6 = useNativeProgrammaticPageTurnLane(
+    width,
+    height,
+    spread,
+    automaticTuning,
+    gestureTuning,
+    commands[6],
+    onStarted,
+    onOutcome,
+  );
+  const frame7 = useNativeProgrammaticPageTurnLane(
+    width,
+    height,
+    spread,
+    automaticTuning,
+    gestureTuning,
+    commands[7],
+    onStarted,
+    onOutcome,
+  );
+  const frame8 = useNativeProgrammaticPageTurnLane(
+    width,
+    height,
+    spread,
+    automaticTuning,
+    gestureTuning,
+    commands[8],
+    onStarted,
+    onOutcome,
+  );
+  const frame9 = useNativeProgrammaticPageTurnLane(
+    width,
+    height,
+    spread,
+    automaticTuning,
+    gestureTuning,
+    commands[9],
+    onStarted,
+    onOutcome,
+  );
   return {
-    frames: [frame0, frame1, frame2, frame3],
+    frames: [
+      frame0,
+      frame1,
+      frame2,
+      frame3,
+      frame4,
+      frame5,
+      frame6,
+      frame7,
+      frame8,
+      frame9,
+    ],
   };
 }

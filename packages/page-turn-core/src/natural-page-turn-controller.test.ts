@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DEFAULT_PAGE_TURN_TUNING,
   NaturalPageTurnController,
   MIN_PRESSED_EDGE_X,
   SLOW_COMMIT_EDGE_X,
+  automaticPageTurnSolverDurationSeconds,
 } from "./index";
 
 describe("natural page turn controller", () => {
@@ -18,7 +20,7 @@ describe("natural page turn controller", () => {
     expect(controller.getMetrics().maxLift).toBeCloseTo(0, 5);
   });
 
-  it("finishes an automatic edge tap fast enough for a four-lane burst", () => {
+  it("matches the duration used for concurrency sizing", () => {
     const controller = new NaturalPageTurnController();
     controller.play();
     let elapsed = 0;
@@ -28,7 +30,11 @@ describe("natural page turn controller", () => {
     }
 
     expect(controller.getPhase()).toBe("completed");
-    expect(elapsed).toBeLessThan(0.72);
+    const estimatedDuration = automaticPageTurnSolverDurationSeconds(
+      DEFAULT_PAGE_TURN_TUNING,
+    );
+    expect(elapsed).toBeGreaterThanOrEqual(estimatedDuration);
+    expect(elapsed).toBeLessThan(estimatedDuration + 1 / 120);
   });
 
   it("keeps the dragged sheet attached to relative finger travel", () => {
