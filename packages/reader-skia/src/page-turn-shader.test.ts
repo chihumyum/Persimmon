@@ -190,7 +190,7 @@ describe("natural Skia page shader input", () => {
     expect(shadow.center).toBeCloseTo(1, 6);
   });
 
-  it("boosts a flattening roll, fades on reversal, and clears after crossing", () => {
+  it("boosts flattening without reversing the edge and clears after crossing", () => {
     const controller = new NaturalPageTurnController();
     controller.beginDrag(0.96, 0.5, 0);
     for (let index = 1; index <= 21; index += 1) {
@@ -202,30 +202,31 @@ describe("natural Skia page shader input", () => {
       edgeX: number;
       velocityX: number;
       strength: number;
+      flatteningBoost: number;
     }[] = [];
     for (let frame = 0; frame < 32; frame += 1) {
       controller.advance(1 / 240);
       const metrics = controller.getMetrics();
+      const shadow = summarizePageTurnShadow(controller.getPoints(), metrics);
+      const withoutFlattening = summarizePageTurnShadow(
+        controller.getPoints(),
+        { ...metrics, flatteningRate: 0 },
+      );
       samples.push({
         edgeX: metrics.edgeX,
         velocityX: metrics.edgeVelocityX,
-        strength: summarizePageTurnShadow(controller.getPoints(), metrics)
-          .strength,
+        strength: shadow.strength,
+        flatteningBoost: shadow.strength - withoutFlattening.strength,
       });
     }
 
-    const outward = samples.reduce((peak, sample) =>
-      sample.velocityX > 0 && sample.strength > peak.strength ? sample : peak,
-    );
-    const reversing = samples.find(
-      (sample) => sample.edgeX > 0 && sample.velocityX < -1.2,
+    const flattening = samples.reduce((peak, sample) =>
+      sample.flatteningBoost > peak.flatteningBoost ? sample : peak,
     );
     const crossed = samples.find((sample) => sample.edgeX < -0.035);
 
-    expect(outward.velocityX).toBeGreaterThan(0);
-    expect(outward.strength).toBeGreaterThan(0.08);
-    expect(reversing).toBeDefined();
-    expect(reversing!.strength).toBeLessThan(outward.strength);
+    expect(samples.every((sample) => sample.velocityX <= 0)).toBe(true);
+    expect(flattening.flatteningBoost).toBeGreaterThan(0);
     expect(crossed).toBeDefined();
     expect(crossed!.strength).toBe(0);
   });

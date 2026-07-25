@@ -46,6 +46,7 @@ import {
 import { pageCaptureEntryBudget } from "./page-capture-budget";
 import {
   PageTurnMesh,
+  buildWebPageTurnRenderFrame,
   preparePageTurnRenderer,
   type PageTurnMeshHandle,
 } from "./page-turn-mesh";
@@ -101,7 +102,10 @@ import {
   type PageTurnSchedulerState,
   type ScheduledPageTurn,
 } from "./page-turn-scheduler";
-import { visiblePageTurnsInPaintOrder } from "./page-turn-stack";
+import {
+  spreadPageTurnPaintPasses,
+  type PageTurnFace,
+} from "./page-turn-stack";
 
 export interface ReaderProgress {
   locator: BookLocator;
@@ -396,7 +400,50 @@ function LazyReaderEngine({
     undefined,
   );
   const gestureMoveFrameRef = useRef(0);
-  const pageTurnMeshRef = useRef<PageTurnMeshHandle>(null);
+  const webPageTurnMeshRefs = useRef(
+    new Map<
+      string,
+      Partial<Record<PageTurnFace | "both", PageTurnMeshHandle>>
+    >(),
+  );
+  const webPageTurnFrames = useRef(
+    new Map<string, ReturnType<typeof buildWebPageTurnRenderFrame>>(),
+  );
+  useEffect(() => {
+    const activeTurnIds = new Set(activeTurns.map((turn) => turn.id));
+    for (const turnId of webPageTurnFrames.current.keys()) {
+      if (!activeTurnIds.has(turnId)) {
+        webPageTurnFrames.current.delete(turnId);
+      }
+    }
+  }, [activeTurns]);
+  const registerWebPageTurnMesh = useCallback(
+    (
+      turnId: string,
+      face: PageTurnFace | "both",
+      handle: PageTurnMeshHandle | null,
+    ) => {
+      const current = webPageTurnMeshRefs.current.get(turnId);
+      if (handle) {
+        const handles = current ?? {};
+        handles[face] = handle;
+        webPageTurnMeshRefs.current.set(turnId, handles);
+        const latestFrame = webPageTurnFrames.current.get(turnId);
+        if (latestFrame) {
+          handle.updateFrame(latestFrame);
+        }
+        return;
+      }
+      if (!current) {
+        return;
+      }
+      delete current[face];
+      if (Object.keys(current).length === 0) {
+        webPageTurnMeshRefs.current.delete(turnId);
+      }
+    },
+    [],
+  );
   const readerViewRef = useRef<View>(null);
   const readerOriginRef = useRef({ x: 0, y: 0 });
   const measureReaderOrigin = useCallback(() => {
@@ -462,6 +509,7 @@ function LazyReaderEngine({
   );
   const publishTurnFrame = useCallback(
     (
+      turnId: string,
       controller: NaturalPageTurnController,
       turnDirection: 1 | -1,
       _settlingIncomingPage = false,
@@ -474,14 +522,19 @@ function LazyReaderEngine({
         xScale,
         pageTurnCameraBookXForLayout(layout === "spread"),
       );
-      pageTurnMeshRef.current?.updateFrame(packed, [
-        summary.center,
-        summary.width,
-        summary.strength,
-        summary.direction,
-      ]);
+      const frame = buildWebPageTurnRenderFrame(
+        packed,
+        [summary.center, summary.width, summary.strength, summary.direction],
+        width,
+        layout === "spread",
+      );
+      webPageTurnFrames.current.set(turnId, frame);
+      const handles = webPageTurnMeshRefs.current.get(turnId);
+      handles?.back?.updateFrame(frame);
+      handles?.front?.updateFrame(frame);
+      handles?.both?.updateFrame(frame);
     },
-    [layout],
+    [layout, width],
   );
   const stopRunningTurn = useCallback(() => {
     const running = runningTurnRef.current;
@@ -513,6 +566,7 @@ function LazyReaderEngine({
           remainingTime -= step;
         }
         publishTurnFrame(
+          running.turnId,
           running.controller,
           running.direction,
           running.settlingIncomingPage,
@@ -684,7 +738,12 @@ function LazyReaderEngine({
         animationFrame: 0,
         previousFrameTime: eventTime * 1000,
       };
-      publishTurnFrame(controller, requestedDirection, settlingIncomingPage);
+      publishTurnFrame(
+        active.id,
+        controller,
+        requestedDirection,
+        settlingIncomingPage,
+      );
       mutateReaderState(() => scheduled);
       return true;
     },
@@ -732,6 +791,7 @@ function LazyReaderEngine({
         running.controller.moveDrag(bookX, bookY, eventTime);
       }
       publishTurnFrame(
+        running.turnId,
         running.controller,
         running.direction,
         running.settlingIncomingPage,
@@ -792,6 +852,7 @@ function LazyReaderEngine({
         running.controller.endDrag(eventTime);
       }
       publishTurnFrame(
+        running.turnId,
         running.controller,
         running.direction,
         running.settlingIncomingPage,
@@ -1351,7 +1412,17 @@ function LazyReaderEngine({
       ? [oldestFrom[0], newestTarget[1]]
       : [newestTarget[0], oldestFrom[1]];
   })();
-  const stackedPaperTurns = visiblePageTurnsInPaintOrder(renderableTurns);
+  const visiblePaperTurns = renderableTurns.filter((turn) => !turn.completed);
+  const paperPaintPasses: readonly {
+    readonly turn: ScheduledPageTurn;
+    readonly face: PageTurnFace | "both";
+  }[] =
+    layout === "spread" && visiblePaperTurns.length > 1
+      ? spreadPageTurnPaintPasses(visiblePaperTurns)
+      : (oldestRenderableTurn?.direction === 1
+          ? [...visiblePaperTurns].reverse()
+          : visiblePaperTurns
+        ).map((turn) => ({ turn, face: "both" }));
   const renderPageSlots = (
     addresses: readonly (PageAddress | undefined)[],
     layer: string,
@@ -1399,22 +1470,41 @@ function LazyReaderEngine({
         ) : (
           <>
             {renderPageSlots(turnBackgroundSlots, "background")}
-            {stackedPaperTurns.map((turn) => {
+            {Platform.OS === "web"
+              ? visiblePaperTurns
+                  .filter((turn) => !turn.interactive)
+                  .map((turn) => (
+                    <AutomaticWebPageTurnDriver
+                      key={`driver:${turn.id}`}
+                      automaticPageTurnTuning={automaticPageTurnTuning}
+                      gesturePageTurnTuning={gesturePageTurnTuning}
+                      onComplete={settleTurn}
+                      onFrame={publishTurnFrame}
+                      spread={layout === "spread"}
+                      turn={turn}
+                    />
+                  ))
+              : null}
+            {paperPaintPasses.map(({ turn, face }) => {
               const texture = turnTextures.get(turn.id);
               if (!texture?.frontImage) {
                 return null;
               }
-              if (Platform.OS === "web" && !turn.interactive) {
+              if (Platform.OS === "web") {
                 return (
-                  <AutomaticWebPageTurnMesh
-                    key={turn.id}
+                  <WebPageTurnFaceMesh
+                    key={`${turn.id}:${face}`}
                     automaticPageTurnTuning={automaticPageTurnTuning}
                     backImage={texture.backImage ?? undefined}
+                    drawShadow={face !== "back"}
+                    face={face}
+                    gesturePageTurnTuning={gesturePageTurnTuning}
                     height={height}
-                    onComplete={settleTurn}
+                    onRef={(handle) =>
+                      registerWebPageTurnMesh(turn.id, face, handle)
+                    }
                     paperImage={texture.frontImage}
                     spread={layout === "spread"}
-                    gesturePageTurnTuning={gesturePageTurnTuning}
                     turn={turn}
                     width={width}
                   />
@@ -1422,29 +1512,15 @@ function LazyReaderEngine({
               }
               return (
                 <PageTurnMesh
-                  key={turn.id}
-                  ref={
-                    turn.interactive || turn.handoffPending
-                      ? pageTurnMeshRef
-                      : undefined
-                  }
+                  key={`${turn.id}:${face}`}
                   backImage={texture.backImage ?? undefined}
+                  drawShadow={face !== "back"}
+                  face={face}
                   paperImage={texture.frontImage}
-                  initialProfile={
-                    Platform.OS === "web"
-                      ? initialPageTurnProfile(
-                          turn,
-                          layout,
-                          DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
-                        )
-                      : undefined
-                  }
                   nativeFrame={
-                    Platform.OS === "web"
-                      ? undefined
-                      : turn.interactive || turn.handoffPending
-                        ? nativePageTurn.frame
-                        : nativePageTurnPool.frames[turn.lane]
+                    turn.interactive || turn.handoffPending
+                      ? nativePageTurn.frame
+                      : nativePageTurnPool.frames[turn.lane]
                   }
                   spread={layout === "spread"}
                   width={width}
@@ -1518,7 +1594,7 @@ function LazyReaderEngine({
   );
 }
 
-interface AutomaticWebPageTurnMeshProps {
+interface WebPageTurnFaceMeshProps {
   readonly turn: ScheduledPageTurn;
   readonly automaticPageTurnTuning: AutomaticPageTurnTuning;
   readonly gesturePageTurnTuning: GesturePageTurnTuning;
@@ -1527,15 +1603,12 @@ interface AutomaticWebPageTurnMeshProps {
   readonly width: number;
   readonly height: number;
   readonly spread: boolean;
-  readonly onComplete: (turnId: string) => void;
+  readonly face: PageTurnFace | "both";
+  readonly drawShadow: boolean;
+  readonly onRef: (handle: PageTurnMeshHandle | null) => void;
 }
 
-/**
- * Web keeps one controller per visible paper so repeated edge clicks can
- * overlap just like the hard-capped native lane pool. This reference renderer is
- * intentionally isolated from the native gesture/physics hot path.
- */
-function AutomaticWebPageTurnMesh({
+function WebPageTurnFaceMesh({
   turn,
   automaticPageTurnTuning,
   gesturePageTurnTuning,
@@ -1544,27 +1617,63 @@ function AutomaticWebPageTurnMesh({
   width,
   height,
   spread,
-  onComplete,
-}: AutomaticWebPageTurnMeshProps) {
-  const meshRef = useRef<PageTurnMeshHandle>(null);
-  const initialProfile = useMemo(() => {
-    if (turn.motion === "gesture" && turn.gestureRelease) {
-      const controller = new NaturalPageTurnController(
-        gestureTuningForCore(gesturePageTurnTuning),
-      );
-      controller.playReleasedGesture(
-        turn.gestureRelease,
-        !spread && turn.direction === -1,
-      );
-      return packPageTurnProfile(controller.getPoints(), turn.direction);
-    }
-    return initialPageTurnProfile(
-      turn,
-      spread ? "spread" : "single",
-      automaticPageTurnTuning,
-    );
-  }, [automaticPageTurnTuning, gesturePageTurnTuning, spread, turn]);
+  face,
+  drawShadow,
+  onRef,
+}: WebPageTurnFaceMeshProps) {
+  const initialProfile = useMemo(
+    () =>
+      initialWebPageTurnProfile(
+        turn,
+        spread,
+        automaticPageTurnTuning,
+        gesturePageTurnTuning,
+      ),
+    [automaticPageTurnTuning, gesturePageTurnTuning, spread, turn],
+  );
 
+  return (
+    <PageTurnMesh
+      ref={onRef}
+      backImage={backImage}
+      drawShadow={drawShadow}
+      face={face}
+      height={height}
+      initialProfile={initialProfile}
+      paperImage={paperImage}
+      spread={spread}
+      width={width}
+    />
+  );
+}
+
+interface AutomaticWebPageTurnDriverProps {
+  readonly turn: ScheduledPageTurn;
+  readonly automaticPageTurnTuning: AutomaticPageTurnTuning;
+  readonly gesturePageTurnTuning: GesturePageTurnTuning;
+  readonly spread: boolean;
+  readonly onComplete: (turnId: string) => void;
+  readonly onFrame: (
+    turnId: string,
+    controller: NaturalPageTurnController,
+    direction: 1 | -1,
+    settlingIncomingPage?: boolean,
+  ) => void;
+}
+
+/**
+ * Web keeps one controller per visible paper and broadcasts each solved frame
+ * to both face passes. The geometry and lookup are therefore computed once,
+ * even though concurrent spread pages require interleaved back/front drawing.
+ */
+function AutomaticWebPageTurnDriver({
+  turn,
+  automaticPageTurnTuning,
+  gesturePageTurnTuning,
+  spread,
+  onComplete,
+  onFrame,
+}: AutomaticWebPageTurnDriverProps) {
   useEffect(() => {
     const gestureRelease =
       turn.motion === "gesture" ? turn.gestureRelease : undefined;
@@ -1581,22 +1690,8 @@ function AutomaticWebPageTurnMesh({
     } else {
       controller.play();
     }
-    const publish = () => {
-      const xScale = turn.direction === -1 ? -1 : 1;
-      const packed = packPageTurnProfile(controller.getPoints(), xScale);
-      const summary = summarizePageTurnShadow(
-        controller.getPoints(),
-        controller.getMetrics(),
-        xScale,
-        pageTurnCameraBookXForLayout(spread),
-      );
-      meshRef.current?.updateFrame(packed, [
-        summary.center,
-        summary.width,
-        summary.strength,
-        summary.direction,
-      ]);
-    };
+    const publish = () =>
+      onFrame(turn.id, controller, turn.direction, settlingIncomingPage);
     publish();
 
     let previousFrameTime = performanceNow();
@@ -1629,6 +1724,7 @@ function AutomaticWebPageTurnMesh({
     automaticPageTurnTuning,
     gesturePageTurnTuning,
     onComplete,
+    onFrame,
     spread,
     turn.direction,
     turn.gestureRelease,
@@ -1636,16 +1732,29 @@ function AutomaticWebPageTurnMesh({
     turn.motion,
   ]);
 
-  return (
-    <PageTurnMesh
-      ref={meshRef}
-      backImage={backImage}
-      height={height}
-      initialProfile={initialProfile}
-      paperImage={paperImage}
-      spread={spread}
-      width={width}
-    />
+  return null;
+}
+
+function initialWebPageTurnProfile(
+  turn: ScheduledPageTurn,
+  spread: boolean,
+  automaticPageTurnTuning: AutomaticPageTurnTuning,
+  gesturePageTurnTuning: GesturePageTurnTuning,
+): number[] {
+  if (turn.motion === "gesture" && turn.gestureRelease) {
+    const controller = new NaturalPageTurnController(
+      gestureTuningForCore(gesturePageTurnTuning),
+    );
+    controller.playReleasedGesture(
+      turn.gestureRelease,
+      !spread && turn.direction === -1,
+    );
+    return packPageTurnProfile(controller.getPoints(), turn.direction);
+  }
+  return initialPageTurnProfile(
+    turn,
+    spread ? "spread" : "single",
+    automaticPageTurnTuning,
   );
 }
 

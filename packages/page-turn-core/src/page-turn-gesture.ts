@@ -228,6 +228,9 @@ export function heldRollTiltForFingerX(fingerX: number): number {
  */
 export function gestureLiftRotationForFingerX(fingerX: number): number {
   const safeFingerX = Number.isFinite(fingerX) ? fingerX : 1;
+  if (safeFingerX < MIN_PRESSED_EDGE_X) {
+    return MAX_PRESSED_ROLL_TILT;
+  }
   const progress = clamp(
     (GESTURE_LIFT_START_X - safeFingerX) /
       (GESTURE_LIFT_START_X - SLOW_COMMIT_EDGE_X),

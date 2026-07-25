@@ -84,6 +84,21 @@ describe("natural page turn controller", () => {
     expect(controller.getPoints()).toEqual(releaseProfile);
   });
 
+  it("does not pull the page edge backward on a post-hinge release", () => {
+    const controller = new NaturalPageTurnController();
+    const startBookX = 0.9;
+    const postHingeFingerX = -0.12;
+    const currentBookX = startBookX + postHingeFingerX - 1;
+    expect(controller.beginDrag(startBookX, 0.7, 0)).toBe(true);
+    controller.moveDrag(currentBookX, 0.7, 0.2);
+    const draggedEdgeX = controller.getMetrics().edgeX;
+
+    expect(controller.endDrag(0.2)).toBe("turn");
+    controller.advance(1 / 240);
+
+    expect(controller.getMetrics().edgeX).toBeLessThan(draggedEdgeX);
+  });
+
   it("always rebounds a weak inboard grip", () => {
     const controller = new NaturalPageTurnController();
     expect(controller.beginDrag(0.5, 0.7, 0)).toBe(true);

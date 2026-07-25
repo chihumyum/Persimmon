@@ -19,9 +19,9 @@ import { NATURAL_PAGE_SHADOW_SHADER } from "./page-turn-shader";
 import {
   PAGE_TURN_CAMERA_DISTANCE,
   PAGE_TURN_MAX_PERSPECTIVE_SCALE,
-  PAGE_TURN_PERSPECTIVE_LIFT_RAMP,
   pageTurnCameraBookX,
 } from "./page-turn-perspective";
+import type { PageTurnFace } from "./page-turn-stack";
 import type { PageTurnRenderFrame } from "./page-turn-worklet-frame";
 
 let cachedShadowEffect:
@@ -31,9 +31,10 @@ const cachedPaperEffects = new Map<
   string,
   NonNullable<ReturnType<typeof Skia.RuntimeEffect.Make>>
 >();
-let cachedNativePaperEffect:
-  | NonNullable<ReturnType<typeof Skia.RuntimeEffect.Make>>
-  | undefined;
+const cachedNativePaperEffects = new Map<
+  PageTurnFace | "both",
+  NonNullable<ReturnType<typeof Skia.RuntimeEffect.Make>>
+>();
 
 interface PageTurnMeshProps {
   readonly paperImage: SkImage;
@@ -43,10 +44,29 @@ interface PageTurnMeshProps {
   readonly width: number;
   readonly height: number;
   readonly spread?: boolean;
+  readonly face?: PageTurnFace | "both";
+  readonly drawShadow?: boolean;
 }
 
 export interface PageTurnMeshHandle {
-  updateFrame(profile: readonly number[], shadow: readonly number[]): void;
+  updateFrame(frame: PageTurnRenderFrame): void;
+}
+
+export function buildWebPageTurnRenderFrame(
+  profile: readonly number[],
+  shadow: readonly number[],
+  viewportWidth: number,
+  spread: boolean,
+): PageTurnRenderFrame {
+  return {
+    mapping: buildPageTurnLookup(
+      profile,
+      pageTurnLookupSampleCount(viewportWidth),
+      spread ? -1 : 0,
+      1,
+    ),
+    shadow: [...shadow],
+  };
 }
 
 /**
@@ -62,15 +82,20 @@ export function preparePageTurnRenderer(
     "page shadow",
   );
   const sampleCount = pageTurnLookupSampleCount(viewportWidth);
-  const key = paperEffectKey(sampleCount, spread);
-  if (!cachedPaperEffects.has(key)) {
-    cachedPaperEffects.set(
-      key,
-      requireRuntimeEffect(
-        pageTurnPaperShader(sampleCount, spread),
-        spread ? "two-sided paper texture" : "paper texture",
-      ),
-    );
+  const faces: readonly (PageTurnFace | "both")[] = spread
+    ? ["both", "back", "front"]
+    : ["both"];
+  for (const face of faces) {
+    const key = paperEffectKey(sampleCount, spread, face);
+    if (!cachedPaperEffects.has(key)) {
+      cachedPaperEffects.set(
+        key,
+        requireRuntimeEffect(
+          pageTurnPaperShader(sampleCount, spread, face),
+          spread ? `${face} paper texture` : "paper texture",
+        ),
+      );
+    }
   }
 }
 
@@ -81,6 +106,8 @@ export const PageTurnMesh = forwardRef<PageTurnMeshHandle, PageTurnMeshProps>(
         <NativePageTurnMesh
           backImage={props.backImage}
           height={props.height}
+          face={props.face}
+          drawShadow={props.drawShadow}
           nativeFrame={props.nativeFrame}
           paperImage={props.paperImage}
           width={props.width}
@@ -97,6 +124,8 @@ interface NativePageTurnMeshProps {
   readonly nativeFrame: PageTurnNativeSharedFrame;
   readonly width: number;
   readonly height: number;
+  readonly face?: PageTurnFace | "both";
+  readonly drawShadow?: boolean;
 }
 
 /**
@@ -110,6 +139,8 @@ function NativePageTurnMesh({
   nativeFrame,
   width,
   height,
+  face = "both",
+  drawShadow = true,
 }: NativePageTurnMeshProps) {
   const actualBackImage = backImage ?? paperImage;
   const { shadowUniforms, paperUniforms, paperRect } = nativeFrame;
@@ -117,18 +148,26 @@ function NativePageTurnMesh({
     NATURAL_PAGE_SHADOW_SHADER,
     "page shadow",
   );
-  cachedNativePaperEffect ??= requireRuntimeEffect(
-    nativePageTextureShader(),
-    "native pixel paper texture",
-  );
+  if (!cachedNativePaperEffects.has(face)) {
+    cachedNativePaperEffects.set(
+      face,
+      requireRuntimeEffect(
+        nativePageTextureShader(face),
+        `native ${face} pixel paper texture`,
+      ),
+    );
+  }
+  const paperEffect = cachedNativePaperEffects.get(face)!;
 
   return (
     <>
-      <Rect x={0} y={0} width={width} height={height}>
-        <Shader source={cachedShadowEffect} uniforms={shadowUniforms} />
-      </Rect>
+      {drawShadow ? (
+        <Rect x={0} y={0} width={width} height={height}>
+          <Shader source={cachedShadowEffect} uniforms={shadowUniforms} />
+        </Rect>
+      ) : null}
       <Rect rect={paperRect}>
-        <Shader source={cachedNativePaperEffect} uniforms={paperUniforms}>
+        <Shader source={paperEffect} uniforms={paperUniforms}>
           <ImageShader
             fit="fill"
             image={paperImage}
@@ -159,7 +198,16 @@ function NativePageTurnMesh({
 
 const LookupPageTurnMesh = forwardRef<PageTurnMeshHandle, PageTurnMeshProps>(
   function LookupPageTurnMesh(
-    { paperImage, backImage, initialProfile, width, height, spread = false },
+    {
+      paperImage,
+      backImage,
+      initialProfile,
+      width,
+      height,
+      spread = false,
+      face = "both",
+      drawShadow = true,
+    },
     ref,
   ) {
     const lookupSamples = pageTurnLookupSampleCount(width);
@@ -171,7 +219,7 @@ const LookupPageTurnMesh = forwardRef<PageTurnMeshHandle, PageTurnMeshProps>(
     preparePageTurnRenderer(width, spread);
     const shadowEffect = cachedShadowEffect!;
     const paperEffect = cachedPaperEffects.get(
-      paperEffectKey(lookupSamples, spread),
+      paperEffectKey(lookupSamples, spread, face),
     )!;
     const initialLookup = useMemo(() => {
       if (!initialProfile) {
@@ -205,7 +253,7 @@ const LookupPageTurnMesh = forwardRef<PageTurnMeshHandle, PageTurnMeshProps>(
         cameraBookX,
         PAGE_TURN_CAMERA_DISTANCE,
         PAGE_TURN_MAX_PERSPECTIVE_SCALE,
-        PAGE_TURN_PERSPECTIVE_LIFT_RAMP,
+        0,
       ],
       mapping: fallbackFrame.value.mapping,
     }));
@@ -213,26 +261,20 @@ const LookupPageTurnMesh = forwardRef<PageTurnMeshHandle, PageTurnMeshProps>(
     useImperativeHandle(
       ref,
       () => ({
-        updateFrame(profile, shadow) {
-          fallbackFrame.value = {
-            mapping: buildPageTurnLookup(
-              profile,
-              lookupSamples,
-              minimumBookX,
-              maximumBookX,
-            ),
-            shadow: [...shadow],
-          };
+        updateFrame(frame) {
+          fallbackFrame.value = frame;
         },
       }),
-      [fallbackFrame, lookupSamples, maximumBookX, minimumBookX],
+      [fallbackFrame],
     );
 
     return (
       <>
-        <Rect x={0} y={0} width={width} height={height}>
-          <Shader source={shadowEffect} uniforms={shadowUniforms} />
-        </Rect>
+        {drawShadow ? (
+          <Rect x={0} y={0} width={width} height={height}>
+            <Shader source={shadowEffect} uniforms={shadowUniforms} />
+          </Rect>
+        ) : null}
         <Rect x={0} y={0} width={width} height={height}>
           <Shader source={paperEffect} uniforms={paperUniforms}>
             <ImageShader
@@ -258,7 +300,7 @@ const LookupPageTurnMesh = forwardRef<PageTurnMeshHandle, PageTurnMeshProps>(
   },
 );
 
-function nativePageTextureShader(): string {
+function nativePageTextureShader(face: PageTurnFace | "both"): string {
   const profilePointCount = PAGE_TURN_SEGMENT_COUNT + 1;
   const sampleRuns = new Array(NATIVE_PAGE_PROFILE_RUNS)
     .fill(0)
@@ -283,15 +325,9 @@ ${nativeProfileSelector(0, profilePointCount, "  ")}
 }
 
 float perspectiveScale(float depth) {
-  float visibleDepth = max(0.0, depth);
-  float rampProgress =
-    clamp(visibleDepth / max(0.001, perspective.w), 0.0, 1.0);
-  float ramp =
-    rampProgress * rampProgress * (3.0 - 2.0 * rampProgress);
-  float projectedDepth = visibleDepth * ramp;
   return min(
     perspective.z,
-    perspective.y / max(0.001, perspective.y - projectedDepth)
+    perspective.y / max(0.001, perspective.y - max(0.0, depth))
   );
 }
 
@@ -357,6 +393,7 @@ ${sampleRuns}
   if (visible.z < -99999.0) {
     return half4(0.0);
   }
+${pageTurnFaceGuard("visible.w", face)}
 
   float sourceMaterial =
     visible.w > 0.0 ? visible.x : 1.0 - visible.x;
@@ -393,11 +430,19 @@ function nativeProfileSelector(
   ].join("\n");
 }
 
-function paperEffectKey(sampleCount: number, twoSided: boolean): string {
-  return `${sampleCount}:${twoSided ? "two-sided" : "front-only"}`;
+function paperEffectKey(
+  sampleCount: number,
+  twoSided: boolean,
+  face: PageTurnFace | "both",
+): string {
+  return `${sampleCount}:${twoSided ? "two-sided" : "front-only"}:${face}`;
 }
 
-function pageTurnPaperShader(sampleCount: number, twoSided: boolean): string {
+function pageTurnPaperShader(
+  sampleCount: number,
+  twoSided: boolean,
+  face: PageTurnFace | "both",
+): string {
   return `
 uniform shader paperTexture;
 ${twoSided ? "uniform shader backTexture;" : ""}
@@ -413,15 +458,9 @@ ${pageTurnLookupSelector(sampleCount, 0, sampleCount, "  ")}
 }
 
 float perspectiveScale(float depth) {
-  float visibleDepth = max(0.0, depth);
-  float rampProgress =
-    clamp(visibleDepth / max(0.001, perspective.w), 0.0, 1.0);
-  float ramp =
-    rampProgress * rampProgress * (3.0 - 2.0 * rampProgress);
-  float projectedDepth = visibleDepth * ramp;
   return min(
     perspective.z,
-    perspective.y / max(0.001, perspective.y - projectedDepth)
+    perspective.y / max(0.001, perspective.y - max(0.0, depth))
   );
 }
 
@@ -437,6 +476,7 @@ half4 main(float2 position) {
   if (abs(pageMap.w) < 0.5) {
     return half4(0.0);
   }
+${pageTurnFaceGuard("pageMap.w", face)}
 
   float cellCenter =
     geometry.z +
@@ -467,6 +507,23 @@ half4 main(float2 position) {
   return half4(paper.rgb * pageMap.z, 1.0);
 }
 `;
+}
+
+function pageTurnFaceGuard(
+  signedFace: string,
+  face: PageTurnFace | "both",
+): string {
+  if (face === "front") {
+    return `  if (${signedFace} <= 0.0) {
+    return half4(0.0);
+  }`;
+  }
+  if (face === "back") {
+    return `  if (${signedFace} >= 0.0) {
+    return half4(0.0);
+  }`;
+  }
+  return "";
 }
 
 function pageTurnLookupSelector(

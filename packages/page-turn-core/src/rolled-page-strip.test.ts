@@ -6,6 +6,7 @@ import {
   RolledPageStrip,
   TURN_UNROLL_START,
   TURN_VALIDATION_FRAME_COUNT,
+  gestureTurnUnrollStart,
   pressedRollCompleteness,
   pressedRollHingeGeometry,
   turnBendRetention,
@@ -113,6 +114,37 @@ describe("continuous-curvature page strip", () => {
     expect(strip.getMetrics().edgeX).toBeCloseTo(-1, 5);
     expect(strip.getMetrics().edgeZ).toBeCloseTo(0, 5);
     expect(strip.getMetrics().maxLift).toBeCloseTo(0, 5);
+  });
+
+  it("keeps the free edge moving toward the landing side while unrolling", () => {
+    for (const startRotation of [0, MAX_PRESSED_ROLL_TILT]) {
+      for (const curvatureRelaxation of [3.5, 7, 14]) {
+        const strip = new RolledPageStrip();
+        strip.setTurnProgress(
+          0,
+          MIN_PRESSED_EDGE_X,
+          0,
+          startRotation,
+          curvatureRelaxation,
+          gestureTurnUnrollStart(startRotation),
+        );
+        let previousEdgeX = strip.getMetrics().edgeX;
+
+        for (let step = 1; step <= 240; step += 1) {
+          strip.setTurnProgress(
+            step / 240,
+            MIN_PRESSED_EDGE_X,
+            1 / 240,
+            startRotation,
+            curvatureRelaxation,
+            gestureTurnUnrollStart(startRotation),
+          );
+          const edgeX = strip.getMetrics().edgeX;
+          expect(edgeX).toBeLessThanOrEqual(previousEdgeX + 0.000001);
+          previousEdgeX = edgeX;
+        }
+      }
+    }
   });
 
   it("has no shape jump at either unroll boundary", () => {

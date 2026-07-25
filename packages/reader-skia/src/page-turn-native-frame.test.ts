@@ -120,7 +120,7 @@ describe("native profile page-turn frame", () => {
     expect(frame.shadowUniforms.geometry).toBe(shadowGeometry);
     expect(frame.shadowUniforms.pageSize).toBe(shadowPageSize);
     expect(frame.paperRect).toBe(paperRect);
-    expect(paperGeometry).toEqual([500, 500, 64, 3]);
+    expect(paperGeometry).toEqual([500, 500, 64, NATIVE_PAGE_PROFILE_RUNS]);
     expect(paperPageSize).toEqual([1_000, 700]);
     expect(shadowGeometry).toEqual([500, 500, -1, 2]);
     expect(shadowPageSize).toEqual([1_000, 700]);

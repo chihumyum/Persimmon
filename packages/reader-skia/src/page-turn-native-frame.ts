@@ -8,7 +8,6 @@ import { updateDynamicPageTurnShadow } from "./page-turn-shadow-physics";
 import {
   PAGE_TURN_CAMERA_DISTANCE,
   PAGE_TURN_MAX_PERSPECTIVE_SCALE,
-  PAGE_TURN_PERSPECTIVE_LIFT_RAMP,
   pageTurnCameraBookX,
   projectPageTurnBookX,
 } from "./page-turn-perspective";
@@ -19,10 +18,11 @@ const PROFILE_NORMAL_X = 2;
 /**
  * The profile tangent is cos(rotation + amplitude * cos(PI * material)).
  * Its angle is monotonic across the sheet and spans less than 2 PI for every
- * supported amplitude, so it crosses at most two vertical tangents and forms
- * at most three screen-x monotonic runs.
+ * supported amplitude. Perspective can introduce one additional projected
+ * extremum while a hand-held roll stays tightly curved through the vertical
+ * pose, so reserve four screen-x monotonic runs.
  */
-export const NATIVE_PAGE_PROFILE_RUNS = 3;
+export const NATIVE_PAGE_PROFILE_RUNS = 4;
 
 export interface PageTurnShadowUniforms {
   readonly [name: string]: number[];
@@ -84,7 +84,7 @@ export function createPageTurnNativeFrame(
         pageTurnCameraBookX(minimumBookX, maximumBookX),
         PAGE_TURN_CAMERA_DISTANCE,
         PAGE_TURN_MAX_PERSPECTIVE_SCALE,
-        PAGE_TURN_PERSPECTIVE_LIFT_RAMP,
+        0,
       ],
       profile: new Array<number>(
         DEFAULT_PAGE_PROFILE_POINTS * PROFILE_FLOATS_PER_POINT,

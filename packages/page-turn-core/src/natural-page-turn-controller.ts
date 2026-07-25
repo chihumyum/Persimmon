@@ -2,6 +2,8 @@ import {
   MAX_PRESSED_ROLL_TILT,
   MIN_PRESSED_EDGE_X,
   RolledPageStrip,
+  TURN_UNROLL_START,
+  gestureTurnUnrollStart,
   pressedRollCompleteness,
   type RolledPageMetrics,
   type RolledPagePoint,
@@ -66,6 +68,7 @@ interface NaturalPageTurnDrive {
   speedScale: number;
   startProgress: number;
   startRotation: number;
+  unrollStart: number;
   revertPressedStartX: number;
   revertCompleteness: number;
   revertStartRotation: number;
@@ -113,6 +116,7 @@ export class NaturalPageTurnController {
       speedScale: 1,
       startProgress: 0,
       startRotation: 0,
+      unrollStart: TURN_UNROLL_START,
       revertPressedStartX: this.tuning.releaseX,
       revertCompleteness: 0,
       revertStartRotation: 0,
@@ -170,12 +174,14 @@ export class NaturalPageTurnController {
       0,
       startRotation,
       this.tuning.curvatureRelaxation,
+      gestureTurnUnrollStart(startRotation),
     );
     this.beginTurn(
       startX,
       startProgress,
       clamp(release.speedScale, 0.5, 3),
       startRotation,
+      gestureTurnUnrollStart(startRotation),
     );
   }
 
@@ -342,6 +348,7 @@ export class NaturalPageTurnController {
         drag.turnProgress,
         speedScale,
         drag.heldRollTilt,
+        gestureTurnUnrollStart(drag.heldRollTilt),
       );
       return "turn";
     }
@@ -396,6 +403,7 @@ export class NaturalPageTurnController {
       safeDelta,
       drive.startRotation,
       drive.tuning.curvatureRelaxation,
+      drive.unrollStart,
     );
     if (progress >= 1) {
       this.drive = null;
@@ -435,6 +443,7 @@ export class NaturalPageTurnController {
     startProgress: number,
     speedScale: number,
     startRotation = 0,
+    unrollStart = TURN_UNROLL_START,
   ): void {
     this.completed = false;
     this.drive = {
@@ -445,6 +454,7 @@ export class NaturalPageTurnController {
       speedScale,
       startProgress,
       startRotation,
+      unrollStart,
       revertPressedStartX: startX,
       revertCompleteness: 0,
       revertStartRotation: 0,
@@ -462,6 +472,7 @@ export class NaturalPageTurnController {
       speedScale: 1,
       startProgress: 0,
       startRotation: 0,
+      unrollStart: TURN_UNROLL_START,
       revertPressedStartX: safePressedEdgeX,
       revertCompleteness: pressedRollCompleteness(safePressedEdgeX),
       revertStartRotation: startRotation,
@@ -478,6 +489,7 @@ export class NaturalPageTurnController {
       speedScale: 1,
       startProgress: clamp(startProgress, SETTLING_PAGE_START_PROGRESS, 1),
       startRotation: 0,
+      unrollStart: TURN_UNROLL_START,
       revertPressedStartX: this.tuning.releaseX,
       revertCompleteness: 0,
       revertStartRotation: 0,
@@ -570,6 +582,7 @@ export class NaturalPageTurnController {
         deltaTime,
         MAX_PRESSED_ROLL_TILT,
         this.tuning.curvatureRelaxation,
+        gestureTurnUnrollStart(MAX_PRESSED_ROLL_TILT),
       );
       return;
     }

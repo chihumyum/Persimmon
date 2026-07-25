@@ -8,6 +8,8 @@ import {
   DEFAULT_PAGE_PROFILE_POINTS,
   MAX_PRESSED_ROLL_TILT,
   MIN_PRESSED_EDGE_X,
+  TURN_UNROLL_START,
+  gestureTurnUnrollStart,
   turnBendRetention,
 } from "./rolled-page-strip";
 import {
@@ -158,6 +160,7 @@ export interface PageTurnWorkletState {
   driveSpeedScale: number;
   driveStartProgress: number;
   driveStartRotation: number;
+  driveUnrollStart: number;
   revertPressedStartX: number;
   revertCompleteness: number;
   revertStartRotation: number;
@@ -232,6 +235,7 @@ export function createPageTurnWorkletState(
     driveSpeedScale: 1,
     driveStartProgress: 0,
     driveStartRotation: 0,
+    driveUnrollStart: TURN_UNROLL_START,
     revertPressedStartX: tuning.releaseX,
     revertCompleteness: 0,
     revertStartRotation: 0,
@@ -542,6 +546,7 @@ function rebuildTurnProfile(
   startX: number,
   startRotation: number,
   deltaTime: number,
+  unrollStart = TURN_UNROLL_START,
 ): void {
   "worklet";
   const safeProgress = clamp(progress, 0, 1);
@@ -549,7 +554,11 @@ function rebuildTurnProfile(
     state,
     startRotation + (Math.PI - startRotation) * safeProgress,
     bendAmplitudeForChord(clamp(startX, MIN_PRESSED_EDGE_X, 1)) *
-      turnBendRetention(safeProgress, state.tuningCurvatureRelaxation),
+      turnBendRetention(
+        safeProgress,
+        state.tuningCurvatureRelaxation,
+        unrollStart,
+      ),
     deltaTime,
   );
 }
@@ -588,6 +597,7 @@ function applyDraggedProfile(
       MIN_PRESSED_EDGE_X,
       MAX_PRESSED_ROLL_TILT,
       deltaTime,
+      gestureTurnUnrollStart(MAX_PRESSED_ROLL_TILT),
     );
     return;
   }
@@ -605,6 +615,7 @@ function beginTurnDrive(
   startProgress: number,
   speedScale: number,
   startRotation: number,
+  unrollStart = TURN_UNROLL_START,
 ): void {
   "worklet";
   state.phase = PAGE_TURN_WORKLET_TURN;
@@ -615,6 +626,7 @@ function beginTurnDrive(
   state.driveSpeedScale = speedScale;
   state.driveStartProgress = startProgress;
   state.driveStartRotation = startRotation;
+  state.driveUnrollStart = unrollStart;
 }
 
 function beginSettlingDrive(
@@ -672,6 +684,7 @@ function advancePageTurnWorkletStep(
       state.driveStartX = state.tuningReleaseX;
       state.driveStartProgress = 0;
       state.driveStartRotation = 0;
+      state.driveUnrollStart = TURN_UNROLL_START;
     }
     return;
   }
@@ -744,6 +757,7 @@ function advancePageTurnWorkletStep(
       state.driveStartX,
       state.driveStartRotation,
       deltaTime,
+      state.driveUnrollStart,
     );
     if (progress >= 1) {
       state.phase = PAGE_TURN_WORKLET_COMPLETED;
@@ -764,6 +778,7 @@ export function resetPageTurnWorklet(state: PageTurnWorkletState): void {
   state.dragTurnProgress = 0;
   state.settlingProgress = 0;
   state.driveElapsed = 0;
+  state.driveUnrollStart = TURN_UNROLL_START;
   state.meanSpeed = 0;
   setFlatProfile(state);
 }
@@ -930,13 +945,21 @@ export function playReleasedPageTurnWorklet(
   state.pressedEdgeX = startX;
   state.heldRollTilt = startRotation;
   state.dragTurnProgress = startProgress;
-  rebuildTurnProfile(state, startProgress, startX, startRotation, 0);
+  rebuildTurnProfile(
+    state,
+    startProgress,
+    startX,
+    startRotation,
+    0,
+    gestureTurnUnrollStart(startRotation),
+  );
   beginTurnDrive(
     state,
     startX,
     startProgress,
     Math.min(3, Math.max(0.5, release.speedScale)),
     startRotation,
+    gestureTurnUnrollStart(startRotation),
   );
 }
 
@@ -984,6 +1007,7 @@ export function endPageTurnWorkletDrag(
       state.dragTurnProgress,
       gestureTurnSpeedScale(state, throwVelocity),
       state.heldRollTilt,
+      gestureTurnUnrollStart(state.heldRollTilt),
     );
     return PAGE_TURN_WORKLET_COMMITTED;
   }

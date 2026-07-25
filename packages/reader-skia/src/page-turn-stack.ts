@@ -2,14 +2,26 @@ interface PaintablePageTurn {
   readonly completed: boolean;
 }
 
+export type PageTurnFace = "back" | "front";
+
+export interface PageTurnPaintPass<T extends PaintablePageTurn> {
+  readonly turn: T;
+  readonly face: PageTurnFace;
+}
+
 /**
- * Skia paints later siblings over earlier siblings. Scheduler order is also
- * physical sheet order, so preserving it makes the newest turn the top sheet.
- * This is independent of turn direction: reversing forward turns would put an
- * older left-page sheet over the page that was started after it.
+ * A later sheet is physically sandwiched between the two faces of every sheet
+ * that started before it. Skia paints later siblings on top, so backs are
+ * painted oldest-to-newest and fronts newest-to-oldest:
+ *
+ * old back < new back/front < old front
  */
-export function visiblePageTurnsInPaintOrder<T extends PaintablePageTurn>(
+export function spreadPageTurnPaintPasses<T extends PaintablePageTurn>(
   turns: readonly T[],
-): T[] {
-  return turns.filter((turn) => !turn.completed);
+): PageTurnPaintPass<T>[] {
+  const visible = turns.filter((turn) => !turn.completed);
+  return [
+    ...visible.map((turn) => ({ turn, face: "back" as const })),
+    ...[...visible].reverse().map((turn) => ({ turn, face: "front" as const })),
+  ];
 }

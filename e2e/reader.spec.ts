@@ -183,8 +183,10 @@ test("persists a two-page layout and hides floating controls while turning", asy
   ).toBeVisible();
 
   await page.getByRole("button", { name: "下一页" }).click();
+  await page.waitForTimeout(180);
+  await page.getByRole("button", { name: "下一页" }).click();
   await expect(page.getByRole("button", { name: "返回书架" })).toHaveCount(0);
-  await expect(page.getByLabel(/本章第 3–4 页/)).toBeVisible({
+  await expect(page.getByLabel(/本章第 5–6 页/)).toBeVisible({
     // Headless Chromium's software CanvasKit backend can need several slow
     // rAFs after the preceding WebGL-heavy test; the turn still follows wall
     // clock time and completes as soon as those frames are delivered.

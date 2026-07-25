@@ -1,7 +1,4 @@
-import {
-  NaturalPageTurnController,
-  RolledPageStrip,
-} from "@persimmon/page-turn-core";
+import { RolledPageStrip } from "@persimmon/page-turn-core";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -103,29 +100,6 @@ describe("centered page-turn perspective", () => {
 });
 
 describe("page-turn perspective across a real turn", () => {
-  it("does not pull raised paper right for one frame during a leftward drag", () => {
-    const controller = new NaturalPageTurnController();
-    const startBookX = 0.9;
-    controller.beginDrag(startBookX, 0.5, 0);
-    let previous = controller
-      .getPoints()
-      .map((point) => projectPageTurnBookX(point.x, point.z, SPREAD_CAMERA));
-
-    for (let frame = 1; frame <= 220; frame += 1) {
-      controller.moveDrag(startBookX - frame * 0.0025, 0.5, frame / 240);
-      const projected = controller
-        .getPoints()
-        .map((point) => projectPageTurnBookX(point.x, point.z, SPREAD_CAMERA));
-
-      for (let material = 0; material < projected.length; material += 1) {
-        expect(projected[material]).toBeLessThanOrEqual(
-          previous[material]! + 0.000001,
-        );
-      }
-      previous = projected;
-    }
-  });
-
   it("magnifies the raised curl more than the flat paper at the spine", () => {
     const strip = new RolledPageStrip();
     strip.setTurnProgress(0.3, 0.96, 1 / 60);

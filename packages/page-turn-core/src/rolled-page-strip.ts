@@ -34,6 +34,7 @@ const ROOT_INTEGRATION_STEPS = 256;
 const SUBSTEPS_PER_PROFILE_SEGMENT = 8;
 const FIRST_BESSEL_ZERO = 2.4048255577;
 export const TURN_UNROLL_START = 0.08;
+export const MAX_TURN_UNROLL_START = 0.5;
 export const DEFAULT_CURVATURE_RELAXATION = 7;
 const PRESSED_SURFACE_CLEARANCE = 0.015;
 export const MAX_PRESSED_ROLL_TILT = Math.max(
@@ -44,6 +45,21 @@ export const MAX_PRESSED_ROLL_TILT = Math.max(
 );
 const PRESSED_ROLL_APEX_MATERIAL = 0.5;
 let cachedPressedRollHingeGeometry: PressedRollHingeGeometry | null = null;
+
+/**
+ * A hand-held roll must pass the vertical point before its chord expands.
+ * Unrolling earlier makes the free edge move backward briefly even though the
+ * finger and turn progress are still moving toward the landing side.
+ */
+export function gestureTurnUnrollStart(startRotation: number): number {
+  "worklet";
+  const rotation = clamp(startRotation, 0, MAX_PRESSED_ROLL_TILT);
+  return clamp(
+    (Math.PI * 0.5 - rotation) / (Math.PI - rotation),
+    TURN_UNROLL_START,
+    MAX_TURN_UNROLL_START,
+  );
+}
 
 /**
  * Deterministic, inextensible page strip driven by a symmetric Euler-elastica
@@ -101,6 +117,7 @@ export class RolledPageStrip {
     deltaTime = 0,
     startRotation = 0,
     curvatureRelaxation = DEFAULT_CURVATURE_RELAXATION,
+    unrollStart = TURN_UNROLL_START,
   ): void {
     const safeStartX = clamp(startX, MIN_PRESSED_EDGE_X, 1);
     if (Math.abs(safeStartX - this.cachedTurnStartX) > 1e-7) {
@@ -113,6 +130,7 @@ export class RolledPageStrip {
         this.cachedTurnAmplitude,
         clamp(startRotation, 0, MAX_PRESSED_ROLL_TILT),
         clamp(curvatureRelaxation, 3.5, 14),
+        clamp(unrollStart, TURN_UNROLL_START, MAX_TURN_UNROLL_START),
       ),
       deltaTime,
     );
@@ -237,11 +255,13 @@ function turnParameters(
   startAmplitude: number,
   startRotation: number,
   curvatureRelaxation: number,
+  unrollStart: number,
 ): ProfileParameters {
   return {
     rotation: startRotation + (Math.PI - startRotation) * progress,
     bendAmplitude:
-      startAmplitude * turnBendRetention(progress, curvatureRelaxation),
+      startAmplitude *
+      turnBendRetention(progress, curvatureRelaxation, unrollStart),
   };
 }
 
@@ -253,12 +273,13 @@ function turnParameters(
 export function turnBendRetention(
   progress: number,
   curvatureRelaxation: number,
+  unrollStart = TURN_UNROLL_START,
 ): number {
   "worklet";
   const safeProgress = Math.min(1, Math.max(0, progress));
   const unrollProgress = Math.min(
     1,
-    Math.max(0, (safeProgress - TURN_UNROLL_START) / (1 - TURN_UNROLL_START)),
+    Math.max(0, (safeProgress - unrollStart) / (1 - unrollStart)),
   );
   const safeRelaxation = Math.min(14, Math.max(3.5, curvatureRelaxation));
   const timingPower = DEFAULT_CURVATURE_RELAXATION / safeRelaxation;

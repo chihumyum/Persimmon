@@ -164,6 +164,9 @@ describe("page-turn gesture kinematics", () => {
       8,
     );
     expect(
+      gestureLiftRotationForFingerX(MIN_PRESSED_EDGE_X - 0.001),
+    ).toBeCloseTo(MAX_PRESSED_ROLL_TILT, 8);
+    expect(
       shouldCommitTurn({
         fingerX: 0.78,
         throwVelocity: 2.2,
