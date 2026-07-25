@@ -1,7 +1,4 @@
-import {
-  BOOK_IR_VERSION,
-  type BookIR,
-} from "@persimmon/book-core";
+import { BOOK_IR_VERSION, type BookIR } from "@persimmon/book-core";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -21,9 +18,7 @@ function createFixedBackend(
   lineHeight: number,
 ): ParagraphLayoutBackend<FixedHandle> {
   return {
-    layout(
-      input: ParagraphLayoutInput,
-    ): MeasuredParagraph<FixedHandle> {
+    layout(input: ParagraphLayoutInput): MeasuredParagraph<FixedHandle> {
       const lines = [];
       let lineNumber = 0;
       for (
@@ -180,5 +175,58 @@ describe("paginateBook", () => {
     expect(result.pages).toHaveLength(3);
     expect(result.pages.every((page) => page.items.length > 0)).toBe(true);
     expect(result.pages.at(-1)?.end.offset).toBe(27);
+  });
+
+  it("honors normalized EPUB typography and block margins", () => {
+    const inputs: ParagraphLayoutInput[] = [];
+    const fixed = createFixedBackend(20, 20);
+    const backend: ParagraphLayoutBackend<FixedHandle> = {
+      layout(input) {
+        inputs.push(input);
+        return fixed.layout(input);
+      },
+    };
+    const book: BookIR = {
+      schemaVersion: BOOK_IR_VERSION,
+      id: "styled-pagination-test",
+      revisionId: "v1",
+      title: "样式分页测试",
+      assets: {},
+      sections: [
+        {
+          id: "chapter",
+          blocks: [
+            {
+              kind: "paragraph",
+              id: "first",
+              runs: [{ text: "First" }],
+              style: {
+                textAlign: "center",
+                fontWeight: 700,
+                fontStyle: "italic",
+                marginBeforeEm: 1,
+              },
+            },
+            {
+              kind: "paragraph",
+              id: "second",
+              runs: [{ text: "Second" }],
+              style: { marginBeforeEm: 2 },
+            },
+          ],
+        },
+      ],
+    };
+
+    const result = paginateBook(book, layoutSpec, backend);
+
+    expect(inputs[0]!.style).toMatchObject({
+      align: "center",
+      weight: 700,
+      style: "italic",
+    });
+    expect(result.pages).toHaveLength(2);
+    expect(result.pages[0]!.items[0]!.frame.y).toBe(0);
+    expect(result.pages[1]!.items[0]!.frame.y).toBe(0);
   });
 });

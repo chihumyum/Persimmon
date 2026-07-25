@@ -32,7 +32,7 @@ interface FlowBlock {
 interface MutablePage {
   items: PageSceneItem[];
   cursorY: number;
-  previousBlockKind: BlockIR["kind"] | undefined;
+  previousBlock: BlockIR | undefined;
 }
 
 function assertFinitePositive(value: number, name: string): void {
@@ -76,10 +76,8 @@ function validateLayoutSpec(spec: PageLayoutSpec): Rect {
     );
   }
 
-  const width =
-    spec.viewport.width - spec.padding.left - spec.padding.right;
-  const height =
-    spec.viewport.height - spec.padding.top - spec.padding.bottom;
+  const width = spec.viewport.width - spec.padding.left - spec.padding.right;
+  const height = spec.viewport.height - spec.padding.top - spec.padding.bottom;
   assertFinitePositive(width, "content width");
   assertFinitePositive(height, "content height");
 
@@ -95,7 +93,14 @@ function styleForBlock(
   block: TextBlockIR,
   spec: PageLayoutSpec,
 ): TypographyPreset {
-  return block.kind === "heading" ? spec.headings[block.level] : spec.body;
+  const base =
+    block.kind === "heading" ? spec.headings[block.level] : spec.body;
+  return {
+    ...base,
+    ...(block.style?.textAlign ? { align: block.style.textAlign } : {}),
+    ...(block.style?.fontWeight ? { weight: block.style.fontWeight } : {}),
+    ...(block.style?.fontStyle ? { style: block.style.fontStyle } : {}),
+  };
 }
 
 function resolveRuns(block: TextBlockIR): readonly ResolvedRun[] {
@@ -190,19 +195,35 @@ function validateMeasuredParagraph<THandle>(
 
 function gapBefore(
   block: BlockIR,
-  previousBlockKind: BlockIR["kind"] | undefined,
+  previousBlock: BlockIR | undefined,
   spec: PageLayoutSpec,
 ): number {
-  if (!previousBlockKind) {
+  const currentMargin = block.style?.marginBeforeEm;
+  const previousMargin = previousBlock?.style?.marginAfterEm;
+  if (currentMargin !== undefined || previousMargin !== undefined) {
+    const currentFontSize =
+      block.kind === "image"
+        ? spec.body.fontSize
+        : styleForBlock(block, spec).fontSize;
+    const previousFontSize =
+      !previousBlock || previousBlock.kind === "image"
+        ? spec.body.fontSize
+        : styleForBlock(previousBlock, spec).fontSize;
+    return Math.max(
+      (currentMargin ?? 0) * currentFontSize,
+      (previousMargin ?? 0) * previousFontSize,
+    );
+  }
+  if (!previousBlock) {
     return 0;
   }
-  if (previousBlockKind === "heading") {
+  if (previousBlock.kind === "heading") {
     return spec.headingAfter;
   }
   if (block.kind === "heading") {
     return spec.headingBefore;
   }
-  if (block.kind === "image" || previousBlockKind === "image") {
+  if (block.kind === "image" || previousBlock.kind === "image") {
     return spec.imageGap;
   }
   return spec.paragraphGap;
@@ -297,7 +318,7 @@ export function paginateBook<THandle>(
   let page: MutablePage = {
     items: [],
     cursorY: contentRect.y,
-    previousBlockKind: undefined,
+    previousBlock: undefined,
   };
 
   const flushPage = (): void => {
@@ -326,7 +347,7 @@ export function paginateBook<THandle>(
     page = {
       items: [],
       cursorY: contentRect.y,
-      previousBlockKind: undefined,
+      previousBlock: undefined,
     };
   };
 
@@ -335,13 +356,7 @@ export function paginateBook<THandle>(
     block: TextBlockIR,
   ): MeasuredParagraph<THandle> => {
     const style = styleForBlock(block, spec);
-    const key = paragraphKey(
-      book,
-      sectionId,
-      block,
-      contentRect.width,
-      style,
-    );
+    const key = paragraphKey(book, sectionId, block, contentRect.width, style);
     const cached = paragraphs.get(key);
     if (cached) {
       return cached;
@@ -375,20 +390,13 @@ export function paginateBook<THandle>(
           nextEntry.block.kind === "paragraph"
             ? measuredFor(nextEntry.sectionId, nextEntry.block)
             : undefined;
-        const before = gapBefore(
-          block,
-          page.previousBlockKind,
-          spec,
-        );
+        const before = gapBefore(block, page.previousBlock, spec);
         const keepHeight =
           before +
           paragraphHeight(measured) +
           (nextParagraph
             ? spec.headingAfter +
-              firstLinesHeight(
-                nextParagraph,
-                spec.minBodyLinesAfterHeading,
-              )
+              firstLinesHeight(nextParagraph, spec.minBodyLinesAfterHeading)
             : 0);
 
         if (
@@ -406,7 +414,7 @@ export function paginateBook<THandle>(
         const before =
           page.items.length === 0 || isContinuation
             ? 0
-            : gapBefore(block, page.previousBlockKind, spec);
+            : gapBefore(block, page.previousBlock, spec);
         const targetY = page.cursorY + before;
         const availableHeight = contentBottom - targetY;
         let endLine = lastFittingLine(
@@ -460,7 +468,7 @@ export function paginateBook<THandle>(
           flushPage();
           isContinuation = true;
         } else {
-          page.previousBlockKind = block.kind;
+          page.previousBlock = block;
         }
       }
       continue;
@@ -470,7 +478,7 @@ export function paginateBook<THandle>(
       const before =
         page.items.length === 0
           ? 0
-          : gapBefore(block, page.previousBlockKind, spec);
+          : gapBefore(block, page.previousBlock, spec);
       const frame = imageFrame(
         block,
         contentRect,
@@ -501,7 +509,7 @@ export function paginateBook<THandle>(
         frame,
       });
       page.cursorY = frame.y + frame.height;
-      page.previousBlockKind = block.kind;
+      page.previousBlock = block;
       break;
     }
   }

@@ -1,10 +1,6 @@
 import type { BookPosition } from "@persimmon/book-core";
 
-import type {
-  PageLocationIndex,
-  PageScene,
-  PageSceneItem,
-} from "./types";
+import type { PageLocationIndex, PageScene, PageSceneItem } from "./types";
 
 interface IndexedSpan {
   pageIndex: number;

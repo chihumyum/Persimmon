@@ -102,13 +102,8 @@ export class ReaderSession {
     this.emit();
   }
 
-  beginTransition(
-    options: BeginTransitionOptions = {},
-  ): TurnTransition | null {
-    if (
-      this.activeTransition ||
-      this.desiredPage === this.settledPage
-    ) {
+  beginTransition(options: BeginTransitionOptions = {}): TurnTransition | null {
+    if (this.activeTransition || this.desiredPage === this.settledPage) {
       return null;
     }
 
