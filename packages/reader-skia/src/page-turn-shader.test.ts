@@ -71,7 +71,9 @@ describe("natural Skia page shader input", () => {
 
   it("keeps depth-visible paper coverage opaque", () => {
     const strip = new RolledPageStrip();
-    strip.setTurnProgress(0.4, 0.52);
+    // before the sheet flips over the spine the reader sees its front, after it
+    // sees the back
+    strip.setTurnProgress(0.15, 0.52);
     const frontLookup = buildPageTurnLookup(
       packPageTurnProfile(strip.getPoints()),
       128,
@@ -113,7 +115,8 @@ describe("natural Skia page shader input", () => {
 
   it("samples both physical pages for a spread turn", () => {
     const strip = new RolledPageStrip();
-    strip.setTurnProgress(0.55, 0.52);
+    // the roll straddles the spine here, so paper sits on both physical pages
+    strip.setTurnProgress(0.35, 0.52);
     const lookup = buildPageTurnLookup(
       packPageTurnProfile(strip.getPoints()),
       256,
@@ -175,7 +178,7 @@ describe("natural Skia page shader input", () => {
 
   it("anchors the cast shadow on the projected silhouette", () => {
     const strip = new RolledPageStrip();
-    strip.setTurnProgress(0.25, 0.96, 1 / 60);
+    strip.setTurnProgress(0.15, 0.96, 1 / 60);
     const points = strip.getPoints();
     const metrics = strip.getMetrics();
     const spreadCamera = pageTurnCameraBookXForLayout(true);
@@ -216,7 +219,7 @@ describe("natural Skia page shader input", () => {
 
     const samples: {
       edgeX: number;
-      velocityX: number;
+      silhouette: number;
       strength: number;
       flatteningBoost: number;
     }[] = [];
@@ -230,7 +233,7 @@ describe("natural Skia page shader input", () => {
       );
       samples.push({
         edgeX: metrics.edgeX,
-        velocityX: metrics.edgeVelocityX,
+        silhouette: shadow.center,
         strength: shadow.strength,
         flatteningBoost: shadow.strength - withoutFlattening.strength,
       });
@@ -241,7 +244,19 @@ describe("natural Skia page shader input", () => {
     );
     const crossed = samples.find((sample) => sample.edgeX < -0.035);
 
-    expect(samples.every((sample) => sample.velocityX <= 0)).toBe(true);
+    // The shadow rides the silhouette, which sweeps toward the spine. An
+    // opening roll pushes its outer wall out by a hair on the way - the same
+    // outward push the shadow strength already models - but never enough to
+    // read as the page backing up. The free edge itself is inside the roll and
+    // is free to swing.
+    const silhouetteRebound = samples.reduce(
+      (worst, sample, index) =>
+        index === 0
+          ? worst
+          : Math.max(worst, sample.silhouette - samples[index - 1]!.silhouette),
+      0,
+    );
+    expect(silhouetteRebound).toBeLessThan(0.02);
     expect(flattening.flatteningBoost).toBeGreaterThan(0);
     expect(crossed).toBeDefined();
     expect(crossed!.strength).toBe(0);

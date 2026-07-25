@@ -48,7 +48,8 @@ export const DEFAULT_PAGE_TURN_TUNING: PageTurnTuning = {
   gestureIdleDecaySeconds: 0.09,
 };
 
-export const FULL_GESTURE_START_MIN_X = 2 / 3;
+/** Only the quarter of a page nearest the spine uses the weak-grip response. */
+export const FULL_GESTURE_START_MIN_X = 0.25;
 export const WEAK_GRIP_MAX_COMPRESSION = 0.04;
 export const MIN_PAGE_WEIGHT = 0.5;
 export const MAX_PAGE_WEIGHT = 1.8;

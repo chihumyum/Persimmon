@@ -101,8 +101,8 @@ describe("natural page turn controller", () => {
 
   it("always rebounds a weak inboard grip", () => {
     const controller = new NaturalPageTurnController();
-    expect(controller.beginDrag(0.5, 0.7, 0)).toBe(true);
-    controller.moveDrag(0.2, 0.7, 0.2);
+    expect(controller.beginDrag(0.2, 0.7, 0)).toBe(true);
+    controller.moveDrag(-0.1, 0.7, 0.2);
 
     expect(controller.endDrag(0.2)).toBe("revert");
     advanceUntilSettled(controller);
@@ -127,9 +127,10 @@ describe("natural page turn controller", () => {
     const controller = new NaturalPageTurnController();
     controller.playSettlingPage();
 
+    // It joins at the top of its arc, still curled and standing over the spine.
     expect(controller.getPhase()).toBe("settle");
     expect(Math.abs(controller.getMetrics().edgeX)).toBeLessThan(0.1);
-    expect(controller.getMetrics().maxLift).toBeGreaterThan(0.9);
+    expect(controller.getMetrics().maxLift).toBeGreaterThan(0.6);
 
     controller.advance(1 / 60);
     expect(controller.getPhase()).toBe("settle");

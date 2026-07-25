@@ -104,7 +104,7 @@ describe("page-turn gesture kinematics", () => {
     expect(shouldCommitTurn({ ...gesture, pageWeight: 1.5 })).toBe(false);
   });
 
-  it("anchors the complete gesture path to the outer third", () => {
+  it("reserves only the spine-side quarter for a weak grip", () => {
     const landingX = 0.8;
     const translatedCommitX = slowCommitBookXForStart(landingX);
 
@@ -113,6 +113,7 @@ describe("page-turn gesture kinematics", () => {
       "weak",
     );
     expect(pageGestureModeForStart(FULL_GESTURE_START_MIN_X)).toBe("full");
+    expect(FULL_GESTURE_START_MIN_X).toBe(0.25);
     expect(anchoredGestureFingerX(landingX, landingX)).toBe(1);
     expect(anchoredGestureFingerX(landingX, translatedCommitX)).toBeCloseTo(
       SLOW_COMMIT_EDGE_X,
@@ -128,9 +129,9 @@ describe("page-turn gesture kinematics", () => {
   });
 
   it("caps an inboard press at a shallow, non-committing bow", () => {
-    expect(weakGripPressedEdgeX(0.5, 0.5)).toBe(1);
-    expect(weakGripPressedEdgeX(0.5, 0.4)).toBeCloseTo(0.98, 8);
-    expect(weakGripPressedEdgeX(0.5, -1)).toBeCloseTo(
+    expect(weakGripPressedEdgeX(0.2, 0.2)).toBe(1);
+    expect(weakGripPressedEdgeX(0.2, 0.1)).toBeCloseTo(0.98, 8);
+    expect(weakGripPressedEdgeX(0.2, -1)).toBeCloseTo(
       1 - WEAK_GRIP_MAX_COMPRESSION,
       8,
     );

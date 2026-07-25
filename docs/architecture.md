@@ -36,8 +36,8 @@ book-core
 - `epub-import`：纯编译器。负责 ZIP 安全限制、OPF/spine、EPUB 2 NCX、EPUB 3
   nav、XHTML 容错、图片尺寸和安全 CSS cascade。
 - `layout`：只依赖抽象段落测量后端；页码是当前 layout generation 的派生值。
-- `page-turn-core`：从独立 demo 移植的 Euler-elastica 连续曲率模型，无 React /
-  Skia 依赖。
+- `page-turn-core`：从独立 demo 移植的连续曲率模型，无 React /
+  Skia 依赖。手指压住纸张时用 Euler-elastica 受压模式；越过书脊后纸卷贴着落纸的那一页往外滚，已经落下的纸平铺，剩下的卷曲率逐渐均匀化、半径不断变大，直到摊平。
 - `reader-skia`：章节懒分页、SkParagraph、实时页面、图片 LRU、临时页面纹理与网格动画。
 - `apps/persimmon`：UI、文件选择、Repository、平台生命周期。
 
@@ -141,7 +141,7 @@ SkImage。只有一次翻页开始时，移动页会抓取一张临时 Skia text
 `page-turn-core` 生成 65 点连续曲率 profile；`reader-skia`
 不铺三角网格，而是把 profile 作为 uniform 交给 runtime
 shader：Native 按屏幕列逐片元求逆，Web 先把可见深度烘成一张屏幕 x
-lookup 再采样。自动翻页包含“压入成弧 → 越过书脊 → 展平”；右侧拖拽可保持预压形态，松手按距离、速度和 page
+lookup 再采样。自动翻页包含“压入成弧 → 荡过书脊 → 贴着落纸页滚开”；纸卷落到目标页之后书脊端切线钉在该页上，所以纸不可能穿进页面里。右侧拖拽可保持预压形态，松手按距离、速度和 page
 weight 决定完成或回弹。49 帧几何测试约束连续性、弧长、穿透和最终位置。
 
 这个例外只服务于过渡形变；正文静态态仍是实时文字，因此不会牺牲清晰度、命中测试或未来选区能力。

@@ -8,9 +8,10 @@ import {
   DEFAULT_PAGE_PROFILE_POINTS,
   MAX_PRESSED_ROLL_TILT,
   MIN_PRESSED_EDGE_X,
-  TURN_UNROLL_START,
-  gestureTurnUnrollStart,
-  turnBendRetention,
+  PROFILE_QUADRATURE_OFFSET,
+  turnCurlRetention,
+  turnCurvatureUniformity,
+  turnLandingStart,
 } from "./rolled-page-strip";
 import {
   AUTOMATIC_PAGE_TURN_PRESS_DURATION_SECONDS,
@@ -35,15 +36,17 @@ const PROFILE_X = 0;
 const PROFILE_Z = 1;
 const PROFILE_NORMAL_X = 2;
 const PROFILE_NORMAL_Z = 3;
-const SUBSTEPS_PER_PROFILE_SEGMENT = 8;
-const PROFILE_BEND_AMPLITUDE_SLICES = 257;
+const PROFILE_SEGMENTS = DEFAULT_PAGE_PROFILE_POINTS - 1;
+const PROFILE_QUADRATURE_NODES = PROFILE_SEGMENTS * 2;
 const MAX_PROFILE_BEND_AMPLITUDE = 2.3382951135873746;
-const SETTLING_PAGE_START_PROGRESS = 0.5;
+const SETTLING_PAGE_START_PROGRESS = 0.3;
 const GESTURE_VELOCITY_TIME_CONSTANT = 0.045;
 const GESTURE_ACCELERATION_TIME_CONSTANT = 0.06;
 const MAX_TRACKED_GESTURE_VELOCITY = 6;
 const MAX_TRACKED_GESTURE_ACCELERATION = 20;
-const FULL_GESTURE_START_MIN_X = 2 / 3;
+// Keep aligned with page-turn-gesture without capturing an imported constant
+// inside the UI Worklet runtime.
+const FULL_GESTURE_START_MIN_X = 0.25;
 const WEAK_GRIP_MAX_COMPRESSION = 0.04;
 const WEAK_GRIP_COMPRESSION_PER_PAGE = 0.2;
 const MIN_PAGE_WEIGHT = 0.5;
@@ -73,54 +76,32 @@ const GESTURE_LIFT_START_X = 0.5;
 const SLOW_COMMIT_EDGE_X = MIN_PRESSED_EDGE_X - PRESSED_HINGE_TILT_DISTANCE;
 
 /**
- * The elastica's unrotated shape depends only on bend amplitude. Build that
- * two-dimensional table once when the module loads, then interpolate it in
- * the UI worklet. At 257 amplitude slices the maximum position error against
- * the original 8-substep integration is below 5.3e-6 page widths (about
- * 0.007 physical pixels on a 402-point, 3x display).
+ * Material coordinate of every quadrature node, fixed for the life of the app.
  *
- * This removes 512 sin/cos pairs from every pointer/display frame without
- * reducing the rendered 65-point spatial profile or quantizing touch input.
+ * The curl mode itself can no longer be tabulated against these: once paper
+ * starts landing, the mode is evaluated over the material that has not landed
+ * yet, so its argument moves every frame. A frame therefore costs one cosine
+ * for the mode plus one sin/cos pair for the tangent at each airborne node,
+ * and only the sin/cos pair at each landed node.
+ *
+ * This replaces the old bend-amplitude lookup table, which could not express
+ * either curvature distribution or a moving contact. Integrating two
+ * Gauss-Legendre nodes per segment reproduces that table's 8-substep midpoint
+ * shape to within 1.2e-6 page widths and drops a 131 KB buffer plus its
+ * module-load integration.
  */
-const PROFILE_BEND_LOOKUP = createProfileBendLookup();
+const QUADRATURE_MATERIAL = createQuadratureMaterial();
 
-function createProfileBendLookup(): Float32Array {
-  const valuesPerSlice = DEFAULT_PAGE_PROFILE_POINTS * 2;
-  const lookup = new Float32Array(
-    PROFILE_BEND_AMPLITUDE_SLICES * valuesPerSlice,
-  );
-  const segmentLength = 1 / (DEFAULT_PAGE_PROFILE_POINTS - 1);
-  const substepLength = segmentLength / SUBSTEPS_PER_PROFILE_SEGMENT;
-  for (let slice = 0; slice < PROFILE_BEND_AMPLITUDE_SLICES; slice += 1) {
-    const bendAmplitude =
-      (slice / (PROFILE_BEND_AMPLITUDE_SLICES - 1)) *
-      MAX_PROFILE_BEND_AMPLITUDE;
-    const sliceOffset = slice * valuesPerSlice;
-    let x = 0;
-    let z = 0;
-    for (
-      let segment = 0;
-      segment < DEFAULT_PAGE_PROFILE_POINTS - 1;
-      segment += 1
-    ) {
-      for (
-        let substep = 0;
-        substep < SUBSTEPS_PER_PROFILE_SEGMENT;
-        substep += 1
-      ) {
-        const material =
-          (segment + (substep + 0.5) / SUBSTEPS_PER_PROFILE_SEGMENT) /
-          (DEFAULT_PAGE_PROFILE_POINTS - 1);
-        const angle = bendAmplitude * Math.cos(Math.PI * material);
-        x += Math.cos(angle) * substepLength;
-        z += Math.sin(angle) * substepLength;
-      }
-      const pointOffset = sliceOffset + (segment + 1) * 2;
-      lookup[pointOffset] = x;
-      lookup[pointOffset + 1] = z;
+function createQuadratureMaterial(): Float64Array {
+  const samples = new Float64Array(PROFILE_QUADRATURE_NODES);
+  for (let segment = 0; segment < PROFILE_SEGMENTS; segment += 1) {
+    for (let node = 0; node < 2; node += 1) {
+      samples[segment * 2 + node] =
+        (segment + 0.5 + (node === 0 ? -1 : 1) * PROFILE_QUADRATURE_OFFSET) /
+        PROFILE_SEGMENTS;
     }
   }
-  return lookup;
+  return samples;
 }
 
 export interface PageTurnWorkletState {
@@ -160,8 +141,6 @@ export interface PageTurnWorkletState {
   driveSpeedScale: number;
   driveStartProgress: number;
   driveStartRotation: number;
-  defaultUnrollStart: number;
-  driveUnrollStart: number;
   revertPressedStartX: number;
   revertCompleteness: number;
   revertStartRotation: number;
@@ -236,8 +215,6 @@ export function createPageTurnWorkletState(
     driveSpeedScale: 1,
     driveStartProgress: 0,
     driveStartRotation: 0,
-    defaultUnrollStart: TURN_UNROLL_START,
-    driveUnrollStart: TURN_UNROLL_START,
     revertPressedStartX: tuning.releaseX,
     revertCompleteness: 0,
     revertStartRotation: 0,
@@ -437,10 +414,33 @@ function setFlatProfile(state: PageTurnWorkletState): void {
   state.flatteningRate = 0;
 }
 
+function curlTangentAngle(
+  material: number,
+  rotation: number,
+  bendAmplitude: number,
+  curvatureUniformity: number,
+  landedLength: number,
+): number {
+  "worklet";
+  const airborne = 1 - landedLength;
+  if (landedLength > 0 && (material <= landedLength || airborne <= 1e-9)) {
+    return Math.PI;
+  }
+  const curl =
+    landedLength > 0 ? (material - landedLength) / airborne : material;
+  const pinned = Math.cos(Math.PI * curl);
+  return (
+    rotation +
+    bendAmplitude * (pinned + curvatureUniformity * (1 - 2 * curl - pinned))
+  );
+}
+
 function rebuildProfile(
   state: PageTurnWorkletState,
   rotation: number,
   bendAmplitude: number,
+  curvatureUniformity: number,
+  landedLength: number,
   deltaTime: number,
 ): void {
   "worklet";
@@ -453,36 +453,33 @@ function rebuildProfile(
   }
 
   let maxLift = 0;
-  const amplitudePosition =
-    (clamp(bendAmplitude, 0, MAX_PROFILE_BEND_AMPLITUDE) /
-      MAX_PROFILE_BEND_AMPLITUDE) *
-    (PROFILE_BEND_AMPLITUDE_SLICES - 1);
-  const beforeSlice = Math.min(
-    PROFILE_BEND_AMPLITUDE_SLICES - 2,
-    Math.floor(amplitudePosition),
-  );
-  const afterSlice = beforeSlice + 1;
-  const amplitudeMix = amplitudePosition - beforeSlice;
-  const valuesPerSlice = DEFAULT_PAGE_PROFILE_POINTS * 2;
-  const beforeSliceOffset = beforeSlice * valuesPerSlice;
-  const afterSliceOffset = afterSlice * valuesPerSlice;
-  const rotationCosine = Math.cos(rotation);
-  const rotationSine = Math.sin(rotation);
-  for (let index = 0; index < DEFAULT_PAGE_PROFILE_POINTS; index += 1) {
-    const lookupOffset = index * 2;
-    const baseX =
-      PROFILE_BEND_LOOKUP[beforeSliceOffset + lookupOffset]! +
-      (PROFILE_BEND_LOOKUP[afterSliceOffset + lookupOffset]! -
-        PROFILE_BEND_LOOKUP[beforeSliceOffset + lookupOffset]!) *
-        amplitudeMix;
-    const baseZ =
-      PROFILE_BEND_LOOKUP[beforeSliceOffset + lookupOffset + 1]! +
-      (PROFILE_BEND_LOOKUP[afterSliceOffset + lookupOffset + 1]! -
-        PROFILE_BEND_LOOKUP[beforeSliceOffset + lookupOffset + 1]!) *
-        amplitudeMix;
-    const x = baseX * rotationCosine - baseZ * rotationSine;
-    const z = baseX * rotationSine + baseZ * rotationCosine;
-    const offset = index * PROFILE_FLOATS_PER_POINT;
+  const amplitude = clamp(bendAmplitude, 0, MAX_PROFILE_BEND_AMPLITUDE);
+  const uniformity = clamp(curvatureUniformity, 0, 1);
+  const landed = clamp(landedLength, 0, 1);
+  const quadratureWeight = 0.5 / PROFILE_SEGMENTS;
+  let x = 0;
+  let z = 0;
+  profile[PROFILE_X] = 0;
+  profile[PROFILE_Z] = 0;
+  for (let segment = 0; segment < PROFILE_SEGMENTS; segment += 1) {
+    const node = segment * 2;
+    const firstAngle = curlTangentAngle(
+      QUADRATURE_MATERIAL[node]!,
+      rotation,
+      amplitude,
+      uniformity,
+      landed,
+    );
+    const secondAngle = curlTangentAngle(
+      QUADRATURE_MATERIAL[node + 1]!,
+      rotation,
+      amplitude,
+      uniformity,
+      landed,
+    );
+    x += (Math.cos(firstAngle) + Math.cos(secondAngle)) * quadratureWeight;
+    z += (Math.sin(firstAngle) + Math.sin(secondAngle)) * quadratureWeight;
+    const offset = (segment + 1) * PROFILE_FLOATS_PER_POINT;
     profile[offset + PROFILE_X] = Math.abs(x) < 1e-10 ? 0 : x;
     profile[offset + PROFILE_Z] = Math.abs(z) < 1e-10 ? 0 : z;
     maxLift = Math.max(maxLift, z);
@@ -538,6 +535,8 @@ function rebuildPressedProfile(
     state,
     clamp(rotation, 0, MAX_PRESSED_ROLL_TILT),
     bendAmplitudeForChord(clamp(edgeX, MIN_PRESSED_EDGE_X, 1)),
+    0,
+    0,
     deltaTime,
   );
 }
@@ -548,19 +547,33 @@ function rebuildTurnProfile(
   startX: number,
   startRotation: number,
   deltaTime: number,
-  unrollStart: number,
 ): void {
   "worklet";
   const safeProgress = clamp(progress, 0, 1);
+  const startAmplitude = bendAmplitudeForChord(
+    clamp(startX, MIN_PRESSED_EDGE_X, 1),
+  );
+  const rootTangent = startRotation + startAmplitude;
+  const landingStart = turnLandingStart(rootTangent);
+  const landing = safeProgress > landingStart;
+  const landedLength = landing
+    ? (safeProgress - landingStart) / (1 - landingStart)
+    : 0;
+  const curlRetention = turnCurlRetention(
+    landedLength,
+    state.tuningCurvatureRelaxation,
+  );
+  const bendAmplitude = startAmplitude * curlRetention;
+  const swungRotation =
+    landingStart > 0
+      ? startRotation + (Math.PI - rootTangent) * (safeProgress / landingStart)
+      : Math.PI - bendAmplitude;
   rebuildProfile(
     state,
-    startRotation + (Math.PI - startRotation) * safeProgress,
-    bendAmplitudeForChord(clamp(startX, MIN_PRESSED_EDGE_X, 1)) *
-      turnBendRetention(
-        safeProgress,
-        state.tuningCurvatureRelaxation,
-        unrollStart,
-      ),
+    landing ? Math.PI - bendAmplitude : swungRotation,
+    bendAmplitude,
+    turnCurvatureUniformity(curlRetention),
+    landedLength,
     deltaTime,
   );
 }
@@ -599,7 +612,6 @@ function applyDraggedProfile(
       MIN_PRESSED_EDGE_X,
       MAX_PRESSED_ROLL_TILT,
       deltaTime,
-      gestureTurnUnrollStart(MAX_PRESSED_ROLL_TILT),
     );
     return;
   }
@@ -617,7 +629,6 @@ function beginTurnDrive(
   startProgress: number,
   speedScale: number,
   startRotation: number,
-  unrollStart: number,
 ): void {
   "worklet";
   state.phase = PAGE_TURN_WORKLET_TURN;
@@ -628,7 +639,6 @@ function beginTurnDrive(
   state.driveSpeedScale = speedScale;
   state.driveStartProgress = startProgress;
   state.driveStartRotation = startRotation;
-  state.driveUnrollStart = unrollStart;
 }
 
 function beginSettlingDrive(
@@ -648,7 +658,6 @@ function beginSettlingDrive(
     1,
   );
   state.driveStartRotation = 0;
-  state.driveUnrollStart = state.defaultUnrollStart;
 }
 
 function beginRevertDrive(
@@ -687,7 +696,6 @@ function advancePageTurnWorkletStep(
       state.driveStartX = state.tuningReleaseX;
       state.driveStartProgress = 0;
       state.driveStartRotation = 0;
-      state.driveUnrollStart = state.defaultUnrollStart;
     }
     return;
   }
@@ -723,23 +731,9 @@ function advancePageTurnWorkletStep(
     const easedProgress = 1 - (1 - segmentProgress) ** 2;
     const progress =
       state.driveStartProgress + (1 - state.driveStartProgress) * easedProgress;
-    rebuildTurnProfile(
-      state,
-      progress,
-      state.driveStartX,
-      0,
-      deltaTime,
-      state.defaultUnrollStart,
-    );
+    rebuildTurnProfile(state, progress, state.driveStartX, 0, deltaTime);
     if (state.driveElapsed >= duration) {
-      rebuildTurnProfile(
-        state,
-        1,
-        state.driveStartX,
-        0,
-        deltaTime,
-        state.defaultUnrollStart,
-      );
+      rebuildTurnProfile(state, 1, state.driveStartX, 0, deltaTime);
       state.phase = PAGE_TURN_WORKLET_COMPLETED;
       state.outcome = PAGE_TURN_WORKLET_COMMITTED;
       state.meanSpeed = 0;
@@ -774,7 +768,6 @@ function advancePageTurnWorkletStep(
       state.driveStartX,
       state.driveStartRotation,
       deltaTime,
-      state.driveUnrollStart,
     );
     if (progress >= 1) {
       state.phase = PAGE_TURN_WORKLET_COMPLETED;
@@ -795,7 +788,6 @@ export function resetPageTurnWorklet(state: PageTurnWorkletState): void {
   state.dragTurnProgress = 0;
   state.settlingProgress = 0;
   state.driveElapsed = 0;
-  state.driveUnrollStart = state.defaultUnrollStart;
   state.meanSpeed = 0;
   setFlatProfile(state);
 }
@@ -834,7 +826,6 @@ export function beginPageTurnWorkletDrag(
       state.tuningReleaseX,
       0,
       0,
-      state.defaultUnrollStart,
     );
   } else {
     applyDraggedProfile(state, startBookX, 0);
@@ -865,7 +856,6 @@ export function movePageTurnWorkletDrag(
       state.tuningReleaseX,
       0,
       deltaTime,
-      state.defaultUnrollStart,
     );
     return true;
   }
@@ -920,7 +910,6 @@ export function playPageTurnWorklet(
       state.tuningReleaseX,
       0,
       0,
-      state.defaultUnrollStart,
     );
     beginSettlingDrive(state, SETTLING_PAGE_START_PROGRESS);
     return;
@@ -947,14 +936,7 @@ export function playReleasedPageTurnWorklet(
     const startProgress = landingTurnProgress(
       Math.min(1, Math.max(0, release.settlingProgress)),
     );
-    rebuildTurnProfile(
-      state,
-      startProgress,
-      state.tuningReleaseX,
-      0,
-      0,
-      state.defaultUnrollStart,
-    );
+    rebuildTurnProfile(state, startProgress, state.tuningReleaseX, 0, 0);
     beginSettlingDrive(state, startProgress);
     return;
   }
@@ -972,21 +954,13 @@ export function playReleasedPageTurnWorklet(
   state.pressedEdgeX = startX;
   state.heldRollTilt = startRotation;
   state.dragTurnProgress = startProgress;
-  rebuildTurnProfile(
-    state,
-    startProgress,
-    startX,
-    startRotation,
-    0,
-    gestureTurnUnrollStart(startRotation),
-  );
+  rebuildTurnProfile(state, startProgress, startX, startRotation, 0);
   beginTurnDrive(
     state,
     startX,
     startProgress,
     Math.min(3, Math.max(0.5, release.speedScale)),
     startRotation,
-    gestureTurnUnrollStart(startRotation),
   );
 }
 
@@ -1034,7 +1008,6 @@ export function endPageTurnWorkletDrag(
       state.dragTurnProgress,
       gestureTurnSpeedScale(state, throwVelocity),
       state.heldRollTilt,
-      gestureTurnUnrollStart(state.heldRollTilt),
     );
     return PAGE_TURN_WORKLET_COMMITTED;
   }

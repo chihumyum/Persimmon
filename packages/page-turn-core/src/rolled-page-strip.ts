@@ -28,13 +28,14 @@ export interface PressedRollHingeGeometry {
 interface ProfileParameters {
   rotation: number;
   bendAmplitude: number;
+  curvatureUniformity: number;
+  landedLength: number;
 }
 
 const ROOT_INTEGRATION_STEPS = 256;
-const SUBSTEPS_PER_PROFILE_SEGMENT = 8;
+/** Two-point Gauss-Legendre node offset, in fractions of a segment. */
+export const PROFILE_QUADRATURE_OFFSET = 0.5 / Math.sqrt(3);
 const FIRST_BESSEL_ZERO = 2.4048255577;
-export const TURN_UNROLL_START = 0.08;
-export const MAX_TURN_UNROLL_START = 0.5;
 export const DEFAULT_CURVATURE_RELAXATION = 7;
 const PRESSED_SURFACE_CLEARANCE = 0.015;
 export const MAX_PRESSED_ROLL_TILT = Math.max(
@@ -47,22 +48,31 @@ const PRESSED_ROLL_APEX_MATERIAL = 0.5;
 let cachedPressedRollHingeGeometry: PressedRollHingeGeometry | null = null;
 
 /**
- * A hand-held roll must pass the vertical point before its chord expands.
- * Unrolling earlier makes the free edge move backward briefly even though the
- * finger and turn progress are still moving toward the landing side.
+ * Splits a turn into the swing that carries the roll onto the landing page and
+ * the roll-out that lays the paper down.
+ *
+ * A turn cannot deposit paper before the sheet leaves the spine along the
+ * landing page, so the swing has to finish first. Its share is the angle still
+ * to be swung, measured against the page length the roll-out has to cover. A
+ * roll that is already tangent to the landing page - what the two-page gesture
+ * hands over at the hinge - starts laying paper down immediately.
  */
-export function gestureTurnUnrollStart(startRotation: number): number {
+export function turnLandingStart(rootTangent: number): number {
   "worklet";
-  const rotation = Math.min(MAX_PRESSED_ROLL_TILT, Math.max(0, startRotation));
-  return Math.min(
-    0.5,
-    Math.max(0.08, (Math.PI * 0.5 - rotation) / (Math.PI - rotation)),
-  );
+  const swing = Math.min(1, Math.max(0, (Math.PI - rootTangent) / Math.PI));
+  return swing / (swing + 1);
 }
 
 /**
- * Deterministic, inextensible page strip driven by a symmetric Euler-elastica
- * mode: theta(s) = rotation + bendAmplitude * cos(pi * s).
+ * Deterministic, inextensible page strip.
+ *
+ * The paper that has already landed lies flat along the landing page. The rest
+ * carries the curl: theta = rotation + bendAmplitude * curlMode(t, uniformity),
+ * where t runs across the material that has not landed yet. At uniformity 0 the
+ * mode is the pinned Euler-elastica bow, cos(pi * t), which is the shape of a
+ * sheet pinched between the spine and a finger. At uniformity 1 it is the
+ * straight ramp 1 - 2 * t, whose curvature is constant: a cylinder of radius
+ * 1 / (2 * bendAmplitude).
  */
 export class RolledPageStrip {
   private readonly points: RolledPagePoint[];
@@ -105,6 +115,8 @@ export class RolledPageStrip {
       {
         rotation: clamp(rotation, 0, MAX_PRESSED_ROLL_TILT),
         bendAmplitude: bendAmplitudeForChord(safeEdgeX),
+        curvatureUniformity: 0,
+        landedLength: 0,
       },
       deltaTime,
     );
@@ -116,7 +128,6 @@ export class RolledPageStrip {
     deltaTime = 0,
     startRotation = 0,
     curvatureRelaxation = DEFAULT_CURVATURE_RELAXATION,
-    unrollStart = TURN_UNROLL_START,
   ): void {
     const safeStartX = clamp(startX, MIN_PRESSED_EDGE_X, 1);
     if (Math.abs(safeStartX - this.cachedTurnStartX) > 1e-7) {
@@ -129,7 +140,6 @@ export class RolledPageStrip {
         this.cachedTurnAmplitude,
         clamp(startRotation, 0, MAX_PRESSED_ROLL_TILT),
         clamp(curvatureRelaxation, 3.5, 14),
-        clamp(unrollStart, TURN_UNROLL_START, MAX_TURN_UNROLL_START),
       ),
       deltaTime,
     );
@@ -164,20 +174,14 @@ export class RolledPageStrip {
     this.points[0].z = 0;
 
     const segmentLength = 1 / (this.points.length - 1);
-    const substepLength = segmentLength / SUBSTEPS_PER_PROFILE_SEGMENT;
+    const quadratureOffset = segmentLength * PROFILE_QUADRATURE_OFFSET;
+    const quadratureWeight = segmentLength * 0.5;
     for (let segment = 0; segment < this.points.length - 1; segment += 1) {
-      for (
-        let substep = 0;
-        substep < SUBSTEPS_PER_PROFILE_SEGMENT;
-        substep += 1
-      ) {
-        const material =
-          (segment + (substep + 0.5) / SUBSTEPS_PER_PROFILE_SEGMENT) /
-          (this.points.length - 1);
-        const angle = tangentAngle(material, parameters);
-        x += Math.cos(angle) * substepLength;
-        z += Math.sin(angle) * substepLength;
-      }
+      const center = (segment + 0.5) * segmentLength;
+      const firstAngle = tangentAngle(center - quadratureOffset, parameters);
+      const secondAngle = tangentAngle(center + quadratureOffset, parameters);
+      x += (Math.cos(firstAngle) + Math.cos(secondAngle)) * quadratureWeight;
+      z += (Math.sin(firstAngle) + Math.sin(secondAngle)) * quadratureWeight;
       this.points[segment + 1].x = x;
       this.points[segment + 1].z = Math.abs(z) < 1e-10 ? 0 : z;
       maxLift = Math.max(maxLift, z);
@@ -234,7 +238,7 @@ export function pressedRollHingeGeometry(): PressedRollHingeGeometry {
   const bendAmplitude = bendAmplitudeForChord(MIN_PRESSED_EDGE_X);
   const apex = integrateProfilePoint(
     PRESSED_ROLL_APEX_MATERIAL,
-    { rotation: 0, bendAmplitude },
+    { rotation: 0, bendAmplitude, curvatureUniformity: 0, landedLength: 0 },
     ROOT_INTEGRATION_STEPS,
   );
   const tiltedApexX =
@@ -249,53 +253,110 @@ export function pressedRollHingeGeometry(): PressedRollHingeGeometry {
   return cachedPressedRollHingeGeometry;
 }
 
+/**
+ * A turn in two acts, both anchored to the paper below.
+ *
+ * The roll first swings about the spine until the sheet leaves the binding
+ * along the landing page. From then on that tangent is pinned, and the turn
+ * advances by laying paper down: the landed length grows toward the free edge
+ * while the roll rides on the contact point and gives up its curl. Pinning the
+ * tangent is what keeps the sheet out of the page it is landing on, and laying
+ * paper down is what makes the contact travel instead of the whole sheet
+ * dropping flat at once.
+ */
 function turnParameters(
   progress: number,
   startAmplitude: number,
   startRotation: number,
   curvatureRelaxation: number,
-  unrollStart: number,
 ): ProfileParameters {
+  const rootTangent = startRotation + startAmplitude;
+  const landingStart = turnLandingStart(rootTangent);
+  const landing = progress > landingStart;
+  const landedLength = landing
+    ? (progress - landingStart) / (1 - landingStart)
+    : 0;
+  const curlRetention = turnCurlRetention(landedLength, curvatureRelaxation);
+  const bendAmplitude = startAmplitude * curlRetention;
+  // Rotation is written as an offset from the start pose rather than
+  // "tangent - amplitude" so that progress 0 reproduces the held roll exactly.
+  const swungRotation =
+    landingStart > 0
+      ? startRotation + (Math.PI - rootTangent) * (progress / landingStart)
+      : Math.PI - bendAmplitude;
   return {
-    rotation: startRotation + (Math.PI - startRotation) * progress,
-    bendAmplitude:
-      startAmplitude *
-      turnBendRetention(progress, curvatureRelaxation, unrollStart),
+    rotation: landing ? Math.PI - bendAmplitude : swungRotation,
+    bendAmplitude,
+    curvatureUniformity: turnCurvatureUniformity(curlRetention),
+    landedLength,
   };
 }
 
 /**
- * Keeps a visible roll into the latter half of a turn, then unfolds it with
- * zero slope at both ends. The relaxation control changes when that transition
- * happens without reintroducing the old exponential snap-to-flat.
+ * How much of its turn the roll still holds after part of the sheet has landed.
+ *
+ * Paper leaving the roll shortens it, so a roll that kept its turn angle would
+ * wind tighter as it rolled - the opposite of paper relaxing. Giving up turn
+ * faster than material makes the radius grow the whole way out, to a straight
+ * sheet at the end. The relaxation control sets how much faster.
  */
-export function turnBendRetention(
-  progress: number,
+export function turnCurlRetention(
+  landedLength: number,
   curvatureRelaxation: number,
-  unrollStart: number,
 ): number {
   "worklet";
-  const safeProgress = Math.min(1, Math.max(0, progress));
-  const unrollProgress = Math.min(
-    1,
-    Math.max(0, (safeProgress - unrollStart) / (1 - unrollStart)),
-  );
-  const safeRelaxation = Math.min(14, Math.max(3.5, curvatureRelaxation));
-  const timingPower = DEFAULT_CURVATURE_RELAXATION / safeRelaxation;
-  const shapedProgress = unrollProgress ** timingPower;
-  const smoothProgress =
-    shapedProgress *
-    shapedProgress *
-    shapedProgress *
-    (shapedProgress * (shapedProgress * 6 - 15) + 10);
-  return 1 - smoothProgress;
+  const remaining = Math.min(1, Math.max(0, 1 - landedLength));
+  const relaxation = Math.min(14, Math.max(3.5, curvatureRelaxation));
+  return remaining ** (1 + relaxation / 14);
 }
 
+/**
+ * Spreads the retained curl evenly along the sheet as it unrolls.
+ *
+ * While the finger pinches the page, both ends are moment-free, so the bend
+ * concentrates mid-sheet: two nearly flat halves meeting in a crease. Once the
+ * roll is released that constraint is gone, and bending moment diffuses toward
+ * a constant along a free strip, which is a cylinder. Tying the uniformity to
+ * the curl the sheet still holds runs both parts of the relaxation off one
+ * clock: the crease spreads out while the roll is still visibly round, so the
+ * page opens as a cylinder of growing radius instead of a hinge widening from
+ * an acute angle to a flat sheet.
+ */
+export function turnCurvatureUniformity(bendRetention: number): number {
+  "worklet";
+  const retained = Math.min(1, Math.max(0, bendRetention));
+  return 1 - retained * retained * retained;
+}
+
+/**
+ * Paper that has landed lies along the landing page; the rest carries the curl
+ * over the material it has left.
+ */
 function tangentAngle(material: number, parameters: ProfileParameters): number {
+  const landed = parameters.landedLength;
+  const airborne = 1 - landed;
+  if (landed > 0 && (material <= landed || airborne <= 1e-9)) {
+    return Math.PI;
+  }
   return (
     parameters.rotation +
-    parameters.bendAmplitude * Math.cos(Math.PI * material)
+    parameters.bendAmplitude *
+      curlMode(
+        landed > 0 ? (material - landed) / airborne : material,
+        parameters.curvatureUniformity,
+      )
   );
+}
+
+/**
+ * Blends the pinned elastica mode into constant curvature. Both ends of the
+ * blend leave the sheet the same total turn and the same end tangents, so only
+ * the distribution of the bend along the paper changes.
+ */
+function curlMode(material: number, curvatureUniformity: number): number {
+  const pinned = Math.cos(Math.PI * material);
+  const uniform = 1 - 2 * material;
+  return pinned + curvatureUniformity * (uniform - pinned);
 }
 
 function integrateProfilePoint(
