@@ -53,11 +53,13 @@ let cachedPressedRollHingeGeometry: PressedRollHingeGeometry | null = null;
  */
 export function gestureTurnUnrollStart(startRotation: number): number {
   "worklet";
-  const rotation = clamp(startRotation, 0, MAX_PRESSED_ROLL_TILT);
-  return clamp(
-    (Math.PI * 0.5 - rotation) / (Math.PI - rotation),
-    TURN_UNROLL_START,
+  const rotation = Math.min(MAX_PRESSED_ROLL_TILT, Math.max(0, startRotation));
+  return Math.min(
     MAX_TURN_UNROLL_START,
+    Math.max(
+      TURN_UNROLL_START,
+      (Math.PI * 0.5 - rotation) / (Math.PI - rotation),
+    ),
   );
 }
 
@@ -345,7 +347,6 @@ function symmetricElasticaChord(amplitude: number): number {
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {
-  "worklet";
   return Math.min(maximum, Math.max(minimum, value));
 }
 

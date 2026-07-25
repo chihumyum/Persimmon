@@ -1,5 +1,6 @@
 import type { BookNavigationItem, BookPosition } from "@persimmon/book-core";
 import type { ReaderLayoutMode, ReaderProgress } from "@persimmon/reader-skia";
+import { READER_PAPER_COLOR } from "@persimmon/reader-skia/theme";
 import React, { Suspense, useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -293,12 +294,12 @@ export function ReaderScreen({
 const styles = StyleSheet.create({
   readerLoading: {
     alignItems: "center",
-    backgroundColor: "#fbf7f0",
+    backgroundColor: READER_PAPER_COLOR,
     flex: 1,
     justifyContent: "center",
   },
   readerPage: {
-    backgroundColor: "#fbf7f0",
+    backgroundColor: READER_PAPER_COLOR,
     ...(Platform.OS === "web"
       ? { boxShadow: "0 10px 24px rgba(61, 48, 38, 0.12)" }
       : {}),
@@ -392,7 +393,7 @@ const styles = StyleSheet.create({
     padding: 18,
   },
   tocPanel: {
-    backgroundColor: "#fbf7f0",
+    backgroundColor: READER_PAPER_COLOR,
     bottom: 0,
     left: 0,
     maxWidth: 390,

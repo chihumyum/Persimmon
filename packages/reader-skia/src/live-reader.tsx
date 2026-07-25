@@ -61,6 +61,7 @@ import {
   calculatePageTurnConcurrency,
 } from "./page-turn-concurrency";
 import { ReaderPageLayer } from "./reader-page-layer";
+import { READER_PAPER_COLOR } from "./reader-theme";
 import {
   bookForSection,
   createReaderLayoutSpec,
@@ -1455,7 +1456,7 @@ function LazyReaderEngine({
       style={styles.container}
     >
       <Canvas style={styles.canvas}>
-        <Fill color="#fbf7f0" />
+        <Fill color={READER_PAPER_COLOR} />
         {layout === "spread" ? (
           <Rect
             x={physicalPageWidth - 0.5}
@@ -1908,7 +1909,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   container: {
-    backgroundColor: "#fbf7f0",
+    backgroundColor: READER_PAPER_COLOR,
     flex: 1,
     overflow: "hidden",
   },

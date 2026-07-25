@@ -12,6 +12,7 @@ import {
   PAGE_CAPTURE_BYTE_BUDGET,
   pageCaptureScale,
 } from "./page-capture-budget";
+import { READER_PAPER_COLOR } from "./reader-theme";
 import { afterSkiaPaint } from "./skia-lifecycle";
 import { releaseSkiaResources } from "./skia-resource-release";
 
@@ -68,7 +69,7 @@ export function capturePage(
   let surfaceDisposed = false;
 
   try {
-    canvas.clear(Skia.Color("#fbf7f0"));
+    canvas.clear(Skia.Color(READER_PAPER_COLOR));
     canvas.scale(scale, scale);
 
     for (const item of page.items) {

@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./theme": "./src/reader-theme.ts"
+  },
   "scripts": {
     "test": "vitest run src",
     "typecheck": "tsc --noEmit"

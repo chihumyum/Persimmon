@@ -11,6 +11,7 @@ export {
   type GesturePageTurnTuning,
 } from "./gesture-page-turn-tuning";
 export { createSkiaParagraphBackend } from "./skia-paragraph-backend";
+export { READER_PAPER_COLOR } from "./reader-theme";
 export {
   LiveReader,
   type LiveReaderProps,

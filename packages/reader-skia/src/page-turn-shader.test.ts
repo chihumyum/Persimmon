@@ -95,6 +95,27 @@ describe("natural Skia page shader input", () => {
     );
   });
 
+  it("keeps a lifted flat front face at the exact captured paper color", () => {
+    const liftedFlatProfile = new Array<number>(
+      DEFAULT_PAGE_PROFILE_POINTS * 4,
+    );
+    for (let index = 0; index < DEFAULT_PAGE_PROFILE_POINTS; index += 1) {
+      const offset = index * 4;
+      liftedFlatProfile[offset] = index / (DEFAULT_PAGE_PROFILE_POINTS - 1);
+      liftedFlatProfile[offset + 1] = 0.4;
+      liftedFlatProfile[offset + 2] = 0;
+      liftedFlatProfile[offset + 3] = 1;
+    }
+
+    const lookup = buildPageTurnLookup(liftedFlatProfile, 128);
+    const coveredLight = lookup.filter(
+      (_, index) => index % 4 === 2 && lookup[index + 1] !== 0,
+    );
+
+    expect(coveredLight.length).toBeGreaterThan(0);
+    expect(coveredLight.every((light) => light === 1)).toBe(true);
+  });
+
   it("samples both physical pages for a spread turn", () => {
     const strip = new RolledPageStrip();
     strip.setTurnProgress(0.55, 0.52);

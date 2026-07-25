@@ -156,14 +156,6 @@ function pageTurnSurfaceLight(
   frontFacing: boolean,
 ): number {
   const offset = segmentIndex * PROFILE_FLOATS_PER_POINT;
-  const lift = Math.max(
-    0,
-    interpolate(
-      profile[offset + PROFILE_Z_OFFSET]!,
-      profile[offset + PROFILE_FLOATS_PER_POINT + PROFILE_Z_OFFSET]!,
-      segmentProgress,
-    ),
-  );
   const normalZ = Math.abs(
     interpolate(
       profile[offset + 3]!,
@@ -173,8 +165,7 @@ function pageTurnSurfaceLight(
   );
   const curvatureShadow = (1 - normalZ) * 0.16;
   const undersideShadow = frontFacing ? 0 : 0.055;
-  const liftShadow = Math.min(0.025, lift * 0.025);
-  const shadow = Math.min(0.2, curvatureShadow + undersideShadow + liftShadow);
+  const shadow = Math.min(0.2, curvatureShadow + undersideShadow);
   return 1 - shadow;
 }
 

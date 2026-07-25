@@ -7,6 +7,7 @@ import {
   type ReaderLayoutMode,
   type ReaderProgress,
 } from "@persimmon/reader-skia";
+import { READER_PAPER_COLOR } from "@persimmon/reader-skia/theme";
 import { useFonts, type DataModule } from "@shopify/react-native-skia";
 import {
   ActivityIndicator,
@@ -88,7 +89,7 @@ export default function ReaderSurface({
 const styles = StyleSheet.create({
   loading: {
     alignItems: "center",
-    backgroundColor: "#fbf7f0",
+    backgroundColor: READER_PAPER_COLOR,
     flex: 1,
     gap: 12,
     justifyContent: "center",
