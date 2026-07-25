@@ -5,42 +5,55 @@ import {
   type AutomaticPageTurnTuning,
 } from "./automatic-page-turn-tuning";
 
-export const PAGE_TURN_LANE_HARD_LIMIT = 25;
+export const PAGE_TURN_LANE_HARD_LIMIT = 8;
 export const PAGE_TURN_GESTURE_LANE_RESERVE = 1;
-export const PAGE_TURN_TAP_LANE_HEADROOM_MULTIPLIER = 2;
+export const PAGE_TURN_TAP_LANE_HEADROOM = 2;
 
 export interface PageTurnConcurrency {
   readonly estimatedTapDurationMs: number;
+  readonly minimumTurnIntervalMs: number;
   readonly maximumConcurrentTapTurns: number;
   readonly maximumConcurrentTurns: number;
 }
 
 /**
  * Sizes the active part of the fixed native lane pool from the amount of time
- * that successive click turns can overlap. Keep a second set of tap lanes as
- * timing headroom so delayed completion cannot turn a uniformly throttled
- * input stream into visible bursts. One additional lane stays outside the
- * click allowance so a released gesture or native handoff is not starved.
+ * that successive click turns can overlap. Two extra tap lanes absorb delayed
+ * completion without doubling the whole pool, and one lane stays outside the
+ * click allowance so a released gesture or native handoff is not starved. If
+ * slow tuning would overflow that fixed pool, spread starts uniformly over the
+ * animation duration instead of accepting a burst and then stalling.
  */
 export function calculatePageTurnConcurrency(
   tuning: AutomaticPageTurnTuning,
   startIntervalMs: number,
 ): PageTurnConcurrency {
   const estimatedTapDurationMs = estimateAutomaticPageTurnDurationMs(tuning);
-  const safeIntervalMs =
+  const requestedIntervalMs =
     Number.isFinite(startIntervalMs) && startIntervalMs > 0
       ? startIntervalMs
       : 1;
+  const tapLaneLimit =
+    PAGE_TURN_LANE_HARD_LIMIT - PAGE_TURN_GESTURE_LANE_RESERVE;
+  const steadyStateTapLanes = Math.max(
+    1,
+    tapLaneLimit - PAGE_TURN_TAP_LANE_HEADROOM,
+  );
+  const minimumTurnIntervalMs = Math.max(
+    requestedIntervalMs,
+    Math.ceil(estimatedTapDurationMs / steadyStateTapLanes),
+  );
   const maximumConcurrentTapTurns = Math.min(
-    PAGE_TURN_LANE_HARD_LIMIT - PAGE_TURN_GESTURE_LANE_RESERVE,
+    tapLaneLimit,
     Math.max(
       1,
-      Math.ceil(estimatedTapDurationMs / safeIntervalMs) *
-        PAGE_TURN_TAP_LANE_HEADROOM_MULTIPLIER,
+      Math.ceil(estimatedTapDurationMs / minimumTurnIntervalMs) +
+        PAGE_TURN_TAP_LANE_HEADROOM,
     ),
   );
   return {
     estimatedTapDurationMs,
+    minimumTurnIntervalMs,
     maximumConcurrentTapTurns,
     maximumConcurrentTurns: Math.min(
       PAGE_TURN_LANE_HARD_LIMIT,

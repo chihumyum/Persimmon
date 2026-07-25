@@ -30,7 +30,7 @@ export interface PageTurnSchedulerState {
   readonly settled: PageAddress;
   readonly desired: PageAddress;
   readonly turns: readonly ScheduledPageTurn[];
-  readonly nextTurnStartAtMs: number;
+  readonly nextTapStartAtMs: number;
 }
 
 export interface PageTurnScheduler {
@@ -48,14 +48,16 @@ export function createPageTurnSchedulerState(
     settled: initial,
     desired: initial,
     turns: [],
-    nextTurnStartAtMs: 0,
+    nextTapStartAtMs: 0,
   };
 }
 
 /**
  * Starts at most one turn for this input. There is deliberately no pending
- * queue: input inside the 150 ms throttle window, at full lane capacity, or
- * against the current stack direction is dropped instead of replayed later.
+ * queue: tap input inside the configured throttle window, input at full lane
+ * capacity, or input against the current stack direction is dropped instead
+ * of replayed later. Gestures have their own input cadence and bypass only the
+ * tap throttle.
  */
 export function requestScheduledPageTurn(
   state: PageTurnSchedulerState,
@@ -88,6 +90,7 @@ export function requestScheduledGesturePageTurn(
     false,
     "gesture",
     release,
+    false,
   );
 }
 
@@ -172,7 +175,7 @@ export function resolveScheduledPageTurn(
       settled: state.settled,
       desired: reverted.from,
       turns: state.turns.slice(0, resolvedIndex),
-      nextTurnStartAtMs: state.nextTurnStartAtMs,
+      nextTapStartAtMs: state.nextTapStartAtMs,
     });
   }
 
@@ -202,7 +205,7 @@ function tryStartScheduledTurn(
   gestureRelease?: ReleasedPageTurnGesture,
   respectThrottle = true,
 ): PageTurnSchedulerState {
-  if (respectThrottle && requestedAtMs < state.nextTurnStartAtMs) {
+  if (respectThrottle && requestedAtMs < state.nextTapStartAtMs) {
     return state;
   }
 
@@ -213,9 +216,7 @@ function tryStartScheduledTurn(
       Math.floor(scheduler.maximumConcurrentTurns ?? PAGE_TURN_LANE_HARD_LIMIT),
     ),
   );
-  const occupiedLanes = new Set(
-    state.turns.filter((turn) => !turn.completed).map((turn) => turn.lane),
-  );
+  const occupiedLanes = new Set(state.turns.map((turn) => turn.lane));
   if (occupiedLanes.size >= maximumConcurrentTurns) {
     return state;
   }
@@ -230,7 +231,7 @@ function tryStartScheduledTurn(
       ),
     );
     const activeTapTurns = state.turns.filter(
-      (turn) => !turn.completed && turn.motion === "tap",
+      (turn) => turn.motion === "tap",
     ).length;
     if (activeTapTurns >= maximumConcurrentTapTurns) {
       return state;
@@ -271,7 +272,10 @@ function tryStartScheduledTurn(
         gestureRelease,
       ),
     ],
-    nextTurnStartAtMs: requestedAtMs + minimumTurnIntervalMs,
+    nextTapStartAtMs:
+      motion === "tap"
+        ? requestedAtMs + minimumTurnIntervalMs
+        : state.nextTapStartAtMs,
   };
 }
 

@@ -8,10 +8,7 @@ import {
 import { Platform } from "react-native";
 
 import type { DecodedImageCache } from "./image-cache";
-import {
-  PAGE_CAPTURE_BYTE_BUDGET,
-  pageCaptureScale,
-} from "./page-capture-budget";
+import { pageCapturePixelSize } from "./page-capture-budget";
 import { READER_PAPER_COLOR } from "./reader-theme";
 import { afterSkiaPaint } from "./skia-lifecycle";
 import { releaseSkiaResources } from "./skia-resource-release";
@@ -19,6 +16,9 @@ import { releaseSkiaResources } from "./skia-resource-release";
 export interface CapturedPage {
   readonly image: SkImage;
   readonly scale: number;
+  readonly pixelWidth: number;
+  readonly pixelHeight: number;
+  readonly byteSize: number;
   dispose(): void;
 }
 
@@ -37,18 +37,19 @@ export function capturePage(
   imageCache: DecodedImageCache,
   width: number,
   height: number,
-  byteBudget = PAGE_CAPTURE_BYTE_BUDGET,
+  scale: number,
+  allowUnrequestedImages = false,
 ): CapturedPage | null {
-  if (!pageImagesSettledForCapture(page, imageCache)) {
+  if (!pageImagesSettledForCapture(page, imageCache, allowUnrequestedImages)) {
     return null;
   }
-  const scale = pageCaptureScale(width, height, byteBudget);
-  if (scale === null) {
+  const pixelSize = pageCapturePixelSize(width, height, scale);
+  if (!pixelSize) {
     return null;
   }
 
-  const pixelWidth = Math.max(1, Math.round(width * scale));
-  const pixelHeight = Math.max(1, Math.round(height * scale));
+  const pixelWidth = pixelSize.width;
+  const pixelHeight = pixelSize.height;
   // CanvasKit GPU surfaces may belong to a different WebGL context than the
   // visible Canvas, so Web captures start on a CPU surface. Native records on
   // the faster offscreen GPU surface and converts the final snapshot to a
@@ -139,6 +140,9 @@ export function capturePage(
         return retainedImage;
       },
       scale,
+      pixelWidth,
+      pixelHeight,
+      byteSize: pixelSize.byteSize,
       dispose: () => {
         if (disposed) {
           return;
@@ -154,7 +158,7 @@ export function capturePage(
     };
   } catch (error) {
     console.warn(
-      "[Persimmon] Page capture failed; using slide fallback.",
+      "[Persimmon] Page capture failed; skipping the textured page turn.",
       error,
     );
     return null;
@@ -170,18 +174,25 @@ export function capturePage(
 /**
  * A transition texture must not freeze a temporary loading placeholder into
  * the page. Unavailable assets are settled and may use the fallback rectangle;
- * unrequested or actively decoding assets must make capture wait and retry.
+ * actively decoding assets must make capture wait and retry. An unrequested
+ * asset is also allowed to settle as a placeholder when the reader has no
+ * resource loader that could ever resolve it.
  */
 export function pageImagesSettledForCapture(
   page: Pick<PageScene, "items">,
   imageCache: Pick<DecodedImageCache, "getStatus">,
+  allowUnrequestedImages = false,
 ): boolean {
   return page.items.every((item) => {
     if (item.kind !== "image") {
       return true;
     }
     const status = imageCache.getStatus(item.assetId);
-    return status === "ready" || status === "unavailable";
+    return (
+      status === "ready" ||
+      status === "unavailable" ||
+      (allowUnrequestedImages && status === "unrequested")
+    );
   });
 }
 

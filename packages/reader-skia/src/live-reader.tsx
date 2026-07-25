@@ -22,6 +22,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GestureDetector } from "react-native-gesture-handler";
 import {
   PanResponder,
+  PixelRatio,
   Platform,
   Pressable,
   StyleSheet,
@@ -41,9 +42,20 @@ import { DecodedImageCache, type ResourceLoader } from "./image-cache";
 import {
   capturePage,
   disposeCapturedPageAfterPaint,
+  pageImagesSettledForCapture,
   type CapturedPage,
 } from "./page-capture";
-import { pageCaptureEntryBudget } from "./page-capture-budget";
+import {
+  CapturedPageCache,
+  type PageCaptureIdentity,
+  type TurnCaptureLease,
+} from "./page-capture-cache";
+import {
+  PAGE_CAPTURE_CACHE_HARD_BYTE_BUDGET,
+  PAGE_CAPTURE_CACHE_TARGET_BYTE_BUDGET,
+} from "./page-capture-budget";
+import { selectPageCaptureQuality } from "./page-capture-quality";
+import { buildPageCapturePlan } from "./page-capture-plan";
 import {
   PageTurnMesh,
   buildWebPageTurnRenderFrame,
@@ -54,7 +66,10 @@ import {
   packPageTurnProfile,
   summarizePageTurnShadow,
 } from "./page-turn-shader";
-import { pageTurnCameraBookXForLayout } from "./page-turn-perspective";
+import {
+  PAGE_TURN_MAX_PERSPECTIVE_SCALE,
+  pageTurnCameraBookXForLayout,
+} from "./page-turn-perspective";
 import { bookXForGestureTravel } from "./page-turn-gesture-direction";
 import {
   PAGE_TURN_LANE_HARD_LIMIT,
@@ -203,9 +218,6 @@ function LazyReaderEngine({
   );
   const pagesPerView = layout === "spread" ? 2 : 1;
   const physicalPageWidth = layout === "spread" ? width * 0.5 : width;
-  const captureByteBudget = pageCaptureEntryBudget(
-    (1 + turnConcurrency.maximumConcurrentTurns * 2) * pagesPerView,
-  );
   const backend = useMemo(
     () => createSkiaParagraphBackend(fontProvider),
     [fontProvider],
@@ -225,7 +237,19 @@ function LazyReaderEngine({
       ),
     [],
   );
-  const pageCaptureCache = useRef(new Map<string, CapturedPage>());
+  const pageCaptureCache = useMemo(
+    () =>
+      new CapturedPageCache<CapturedPage, PageAddress>({
+        targetByteBudget: PAGE_CAPTURE_CACHE_TARGET_BYTE_BUDGET,
+        hardByteBudget: PAGE_CAPTURE_CACHE_HARD_BYTE_BUDGET,
+        disposeValue: disposeCapturedPageAfterPaint,
+      }),
+    [],
+  );
+  const turnCaptureLeasesRef = useRef(
+    new Map<string, TurnCaptureLease<CapturedPage>>(),
+  );
+  const captureStartTimesRef = useRef(new Map<string, number>());
   const [pageCaptureVersion, setPageCaptureVersion] = useState(0);
   const [imageVersion, setImageVersion] = useState(0);
   const ensurePagination = useCallback(
@@ -298,13 +322,14 @@ function LazyReaderEngine({
       createId: createTurnId,
       maximumConcurrentTurns: turnConcurrency.maximumConcurrentTurns,
       maximumConcurrentTapTurns: turnConcurrency.maximumConcurrentTapTurns,
-      minimumTurnIntervalMs: PAGE_TURN_START_INTERVAL_MS,
+      minimumTurnIntervalMs: turnConcurrency.minimumTurnIntervalMs,
     }),
     [
       adjacent,
       createTurnId,
       turnConcurrency.maximumConcurrentTapTurns,
       turnConcurrency.maximumConcurrentTurns,
+      turnConcurrency.minimumTurnIntervalMs,
     ],
   );
   const [readerState, setReaderState] = useState(() =>
@@ -338,17 +363,16 @@ function LazyReaderEngine({
 
   useEffect(
     () => () => {
-      for (const capture of pageCaptureCache.current.values()) {
-        capture.dispose();
-      }
-      pageCaptureCache.current.clear();
+      turnCaptureLeasesRef.current.clear();
+      captureStartTimesRef.current.clear();
+      pageCaptureCache.clear();
       for (const pagination of paginationCache.values()) {
         disposePaginationAfterPaint(pagination);
       }
       paginationCache.clear();
       imageCache.dispose();
     },
-    [imageCache, paginationCache],
+    [imageCache, pageCaptureCache, paginationCache],
   );
 
   useEffect(() => {
@@ -390,6 +414,14 @@ function LazyReaderEngine({
   driverTurnRef.current = driverTurn;
   const handedOffTurnIdsRef = useRef(new Set<string>());
   const nativeInteractiveTurnIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const retainedTurnIds = new Set(activeTurns.map((turn) => turn.id));
+    for (const turnId of handedOffTurnIdsRef.current) {
+      if (!retainedTurnIds.has(turnId)) {
+        handedOffTurnIdsRef.current.delete(turnId);
+      }
+    }
+  }, [activeTurns]);
   useEffect(() => {
     onTurningChange?.(hasRunningPageTurns(readerState));
   }, [onTurningChange, readerState]);
@@ -505,7 +537,6 @@ function LazyReaderEngine({
   );
   const markScheduledTurnLaneStarted = useCallback(
     (turnId: string) => {
-      handedOffTurnIdsRef.current.delete(turnId);
       mutateReaderState((current) =>
         markScheduledPageTurnLaneReady(current, turnId),
       );
@@ -714,7 +745,7 @@ function LazyReaderEngine({
         currentReaderState.turns.some(
           (turn) => turn.interactive || turn.handoffPending,
         ) ||
-        currentReaderState.turns.filter((turn) => !turn.completed).length >=
+        currentReaderState.turns.length >=
           turnConcurrency.maximumConcurrentTurns
       ) {
         return false;
@@ -1071,44 +1102,63 @@ function LazyReaderEngine({
     [addressesForView, readerState.settled],
   );
   const settledPagination = ensurePagination(readerState.settled.sectionIndex);
-  const pageCaptureKey = useCallback(
-    (address: PageAddress) =>
-      `${captureByteBudget}:${address.sectionIndex}:${address.pageIndex}`,
-    [captureByteBudget],
+  const devicePixelRatio = Math.max(1, PixelRatio.get());
+  const pageCaptureIdentity = useCallback(
+    (address: PageAddress): PageCaptureIdentity<PageAddress> => ({
+      key: JSON.stringify([
+        book.id,
+        book.revisionId,
+        fontSize,
+        layout,
+        address.sectionIndex,
+        address.pageIndex,
+      ]),
+      width: physicalPageWidth,
+      height,
+      metadata: address,
+    }),
+    [book.id, book.revisionId, fontSize, height, layout, physicalPageWidth],
   );
-  const ensurePageCapture = useCallback(
-    (address: PageAddress): CapturedPage | null => {
-      const key = pageCaptureKey(address);
-      const cached = pageCaptureCache.current.get(key);
-      if (cached) {
-        return cached;
+  const createPageCapture = useCallback(
+    (
+      identity: PageCaptureIdentity<PageAddress>,
+      scale: number,
+    ): CapturedPage | null => {
+      const address = identity.metadata;
+      if (!address) {
+        return null;
       }
       const pagination = ensurePagination(address.sectionIndex);
       const page = pagination.pages[address.pageIndex];
       if (!page) {
         return null;
       }
-      const capture = capturePage(
+      return capturePage(
         page,
         pagination,
         imageCache,
         physicalPageWidth,
         height,
-        captureByteBudget,
+        scale,
+        loadResource === undefined,
       );
-      if (capture) {
-        pageCaptureCache.current.set(key, capture);
-      }
-      return capture;
     },
-    [
-      captureByteBudget,
-      ensurePagination,
-      height,
-      imageCache,
-      pageCaptureKey,
-      physicalPageWidth,
-    ],
+    [ensurePagination, height, imageCache, loadResource, physicalPageWidth],
+  );
+  const pageReadyForCapture = useCallback(
+    (address: PageAddress): boolean => {
+      const pagination = ensurePagination(address.sectionIndex);
+      const page = pagination.pages[address.pageIndex];
+      return Boolean(
+        page &&
+          pageImagesSettledForCapture(
+            page,
+            imageCache,
+            loadResource === undefined,
+          ),
+      );
+    },
+    [ensurePagination, imageCache, loadResource],
   );
 
   const captureAddressesForTurn = useCallback(
@@ -1120,83 +1170,207 @@ function LazyReaderEngine({
     [addressesForView, layout],
   );
 
-  const captureAddresses = useMemo(() => {
-    const viewStarts: PageAddress[] = [readerState.settled];
-    let backward = readerState.settled;
-    let forward = readerState.settled;
-    for (
-      let depth = 0;
-      depth < turnConcurrency.maximumConcurrentTurns;
-      depth += 1
-    ) {
-      backward = adjacent(backward, -1);
-      forward = adjacent(forward, 1);
-      viewStarts.push(backward, forward);
+  useEffect(() => {
+    void pageCaptureVersion;
+    const retainedTurnIds = new Set(activeTurns.map((turn) => turn.id));
+    let leasesChanged = false;
+    for (const [turnId, lease] of turnCaptureLeasesRef.current) {
+      if (retainedTurnIds.has(turnId)) {
+        continue;
+      }
+      lease.release("prefetch");
+      turnCaptureLeasesRef.current.delete(turnId);
+      leasesChanged = true;
+    }
+
+    const now = performanceNow();
+    for (const [turnId, startedAt] of captureStartTimesRef.current) {
+      if (now - startedAt > 1000 && !retainedTurnIds.has(turnId)) {
+        captureStartTimesRef.current.delete(turnId);
+      }
     }
     for (const turn of activeTurns) {
-      viewStarts.push(turn.from, turn.to);
+      if (!captureStartTimesRef.current.has(turn.id)) {
+        captureStartTimesRef.current.set(turn.id, now);
+      }
     }
-    const unique = new Map<string, PageAddress>();
-    for (const address of viewStarts.flatMap(addressesForView)) {
-      unique.set(pageCaptureKey(address), address);
-    }
-    return [...unique.values()];
-  }, [
-    activeTurns,
-    adjacent,
-    addressesForView,
-    pageCaptureKey,
-    readerState.settled,
-    turnConcurrency.maximumConcurrentTurns,
-  ]);
 
-  // Keep enough already-rasterized paper for the currently permitted overlap.
-  // Captures are created outside the animation frame path and retained while a
-  // sheet references them, so rapid successive taps do no texture work on the
-  // React or UI runtime.
-  useEffect(() => {
-    const keepKeys = new Set(captureAddresses.map(pageCaptureKey));
-    let addedCapture = false;
-    for (const address of captureAddresses) {
-      const key = pageCaptureKey(address);
-      if (!pageCaptureCache.current.has(key) && ensurePageCapture(address)) {
-        addedCapture = true;
+    let failedTurnId: string | undefined;
+    for (const turn of activeTurns) {
+      if (turnCaptureLeasesRef.current.has(turn.id)) {
+        continue;
       }
-    }
-    for (const [key, capture] of pageCaptureCache.current) {
-      if (!keepKeys.has(key)) {
-        pageCaptureCache.current.delete(key);
-        disposeCapturedPageAfterPaint(capture);
+      const addresses = captureAddressesForTurn(turn);
+      if (
+        (addresses.front && !pageReadyForCapture(addresses.front)) ||
+        (addresses.back && !pageReadyForCapture(addresses.back))
+      ) {
+        break;
       }
+      const recentStartsPerSecond = [
+        ...captureStartTimesRef.current.values(),
+      ].filter((startedAt) => now - startedAt <= 1000).length;
+      const quality = selectPageCaptureQuality({
+        tier: "active",
+        devicePixelRatio,
+        inputKind: turn.motion,
+        recentStartsPerSecond,
+        activeTurnCount: turnCaptureLeasesRef.current.size,
+        maxPerspectiveScale: PAGE_TURN_MAX_PERSPECTIVE_SCALE,
+      });
+      const result = pageCaptureCache.acquireTurn(
+        {
+          turnId: turn.id,
+          front: addresses.front
+            ? {
+                identity: pageCaptureIdentity(addresses.front),
+                desiredScale: quality.desiredScale,
+                minimumScale: quality.minimumScale,
+              }
+            : undefined,
+          back: addresses.back
+            ? {
+                identity: pageCaptureIdentity(addresses.back),
+                desiredScale: quality.desiredScale,
+                minimumScale: quality.minimumScale,
+              }
+            : undefined,
+        },
+        createPageCapture,
+      );
+      if (result.ok) {
+        turnCaptureLeasesRef.current.set(turn.id, result.lease);
+        leasesChanged = true;
+      } else {
+        failedTurnId = turn.id;
+      }
+      // The renderer consumes a strict prefix. Admit at most its first missing
+      // lease per commit so a batched burst cannot rasterize many hidden pages
+      // synchronously on Android.
+      break;
     }
-    if (addedCapture) {
+    if (leasesChanged) {
       setPageCaptureVersion((version) => version + 1);
     }
-  }, [captureAddresses, ensurePageCapture, imageVersion, pageCaptureKey]);
+    if (failedTurnId) {
+      mutateReaderState((current) =>
+        resolveScheduledPageTurn(current, failedTurnId, false),
+      );
+    }
+  }, [
+    activeTurns,
+    captureAddressesForTurn,
+    createPageCapture,
+    devicePixelRatio,
+    imageVersion,
+    mutateReaderState,
+    pageCaptureCache,
+    pageCaptureIdentity,
+    pageCaptureVersion,
+    pageReadyForCapture,
+  ]);
+
+  const passiveCapturePlan = useMemo(
+    () =>
+      buildPageCapturePlan({
+        settled: readerState.settled,
+        adjacent,
+        addressesForView,
+      }),
+    [adjacent, addressesForView, readerState.settled],
+  );
+
+  // Passive capture work is shallow, lane-independent, and limited to one page
+  // per paint opportunity. A live turn cancels the remaining work immediately
+  // so Android never rasterizes a theoretical lane pool during an animation.
+  useEffect(() => {
+    const retentions = passiveCapturePlan.map(({ address, tier }) => ({
+      identity: pageCaptureIdentity(address),
+      tier,
+    }));
+    pageCaptureCache.reconcileUnpinnedTiers(retentions);
+    if (activeTurns.length > 0) {
+      return;
+    }
+    let cancelled = false;
+    let frame = 0;
+    let index = 0;
+    const captureNext = () => {
+      if (
+        cancelled ||
+        readerStateRef.current.turns.length > 0 ||
+        index >= passiveCapturePlan.length
+      ) {
+        return;
+      }
+      const candidate = passiveCapturePlan[index++]!;
+      if (!pageReadyForCapture(candidate.address)) {
+        frame = requestAnimationFrame(captureNext);
+        return;
+      }
+      // Current and adjacent pages are likely to enter the next turn, so build
+      // them once at low-frequency tap quality while they are still unpinned.
+      // The active path then leases this resident variant without recapturing.
+      const quality =
+        candidate.tier === "prefetch"
+          ? selectPageCaptureQuality({
+              tier: "active",
+              devicePixelRatio,
+              inputKind: "tap",
+              maxPerspectiveScale: PAGE_TURN_MAX_PERSPECTIVE_SCALE,
+            })
+          : selectPageCaptureQuality({
+              tier: candidate.tier,
+              devicePixelRatio,
+              maxPerspectiveScale: PAGE_TURN_MAX_PERSPECTIVE_SCALE,
+            });
+      const before = pageCaptureCache.getStats();
+      pageCaptureCache.prefetch(
+        {
+          identity: pageCaptureIdentity(candidate.address),
+          tier: candidate.tier,
+          desiredScale: quality.desiredScale,
+          minimumScale: quality.minimumScale,
+        },
+        createPageCapture,
+      );
+      const after = pageCaptureCache.getStats();
+      if (
+        after.residentBytes !== before.residentBytes ||
+        after.entryCount !== before.entryCount
+      ) {
+        setPageCaptureVersion((version) => version + 1);
+      }
+      frame = requestAnimationFrame(captureNext);
+    };
+    frame = requestAnimationFrame(captureNext);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+    };
+  }, [
+    activeTurns.length,
+    createPageCapture,
+    devicePixelRatio,
+    imageVersion,
+    pageCaptureCache,
+    pageCaptureIdentity,
+    pageReadyForCapture,
+    passiveCapturePlan,
+  ]);
 
   const turnTextures = useMemo(() => {
     void pageCaptureVersion;
     const textures = new Map<string, TurnTexture>();
     for (const turn of activeTurns) {
-      const addresses = captureAddressesForTurn(turn);
-      const frontCapture = addresses.front
-        ? pageCaptureCache.current.get(pageCaptureKey(addresses.front))
-        : null;
-      const backCapture = addresses.back
-        ? pageCaptureCache.current.get(pageCaptureKey(addresses.back))
-        : null;
+      const lease = turnCaptureLeasesRef.current.get(turn.id);
       textures.set(turn.id, {
-        frontImage: frontCapture?.image ?? null,
-        backImage: backCapture?.image ?? null,
+        frontImage: lease?.front?.image ?? null,
+        backImage: lease?.back?.image ?? null,
       });
     }
     return textures;
-  }, [
-    activeTurns,
-    captureAddressesForTurn,
-    pageCaptureKey,
-    pageCaptureVersion,
-  ]);
+  }, [activeTurns, pageCaptureVersion]);
 
   const textureReadyForTurn = useCallback(
     (turn: ScheduledPageTurn) => {
@@ -1256,8 +1430,7 @@ function LazyReaderEngine({
     canTurnForward: !nextDisabled,
     canStartInteractive:
       driverTurn === undefined &&
-      activeTurns.filter((turn) => !turn.completed).length <
-        turnConcurrency.maximumConcurrentTurns,
+      activeTurns.length < turnConcurrency.maximumConcurrentTurns,
     tuning: gesturePageTurnTuning,
     command: nativeCommand,
     onCenterTap: onCenterPress ?? noop,
@@ -1270,7 +1443,7 @@ function LazyReaderEngine({
     const commands: (NativeProgrammaticPageTurnCommand | undefined)[] =
       new Array(PAGE_TURN_LANE_HARD_LIMIT).fill(undefined);
     for (const turn of renderableTurns) {
-      if (turn.completed || turn.interactive || !textureReadyForTurn(turn)) {
+      if (turn.interactive || !textureReadyForTurn(turn)) {
         continue;
       }
       commands[turn.lane] = {
@@ -1407,19 +1580,19 @@ function LazyReaderEngine({
       addressesForView(newestRenderableTurn.to),
     );
   })();
-  const visiblePaperTurns = renderableTurns.filter((turn) => !turn.completed);
+  const retainedPaperTurns = renderableTurns;
   const paperPaintPasses: readonly {
     readonly turn: ScheduledPageTurn;
     readonly face: PageTurnFace | "both";
   }[] =
-    layout === "spread" && visiblePaperTurns.length > 1
+    layout === "spread" && retainedPaperTurns.length > 1
       ? spreadPageTurnPaintPasses(
-          visiblePaperTurns,
-          visiblePaperTurns[0]!.direction,
+          retainedPaperTurns,
+          retainedPaperTurns[0]!.direction,
         )
       : (oldestRenderableTurn?.direction === 1
-          ? [...visiblePaperTurns].reverse()
-          : visiblePaperTurns
+          ? [...retainedPaperTurns].reverse()
+          : retainedPaperTurns
         ).map((turn) => ({ turn, face: "both" }));
   const renderPageSlots = (
     addresses: readonly (PageAddress | undefined)[],
@@ -1469,8 +1642,8 @@ function LazyReaderEngine({
           <>
             {renderPageSlots(turnBackgroundSlots, "background")}
             {Platform.OS === "web"
-              ? visiblePaperTurns
-                  .filter((turn) => !turn.interactive)
+              ? retainedPaperTurns
+                  .filter((turn) => !turn.completed && !turn.interactive)
                   .map((turn) => (
                     <AutomaticWebPageTurnDriver
                       key={`driver:${turn.id}`}

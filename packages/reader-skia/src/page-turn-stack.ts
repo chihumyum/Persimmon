@@ -17,20 +17,22 @@ export interface PageTurnPaintPass<T extends PaintablePageTurn> {
 
 /**
  * This is one algorithm for both directions. The landing face is painted
- * oldest-to-newest, followed by the source face newest-to-oldest. Backward
- * turns only mirror which physical face represents those two roles.
+ * oldest-to-newest, including a later sheet that has already landed while an
+ * older prefix is still moving. The source face remains newest-to-oldest and
+ * excludes landed sheets. Backward turns only mirror which physical face
+ * represents those two roles.
  */
 export function spreadPageTurnPaintPasses<T extends PaintablePageTurn>(
   turns: readonly T[],
   direction: PageTurnDirection,
 ): PageTurnPaintPass<T>[] {
-  const visible = turns.filter((turn) => !turn.completed);
+  const moving = turns.filter((turn) => !turn.completed);
   const model = pageTurnDirectionModel(direction);
-  const landingPasses = visible.map((turn) => ({
+  const landingPasses = turns.map((turn) => ({
     turn,
     face: model.landingFace,
   }));
-  const sourcePasses = [...visible].reverse().map((turn) => ({
+  const sourcePasses = [...moving].reverse().map((turn) => ({
     turn,
     face: model.sourceFace,
   }));

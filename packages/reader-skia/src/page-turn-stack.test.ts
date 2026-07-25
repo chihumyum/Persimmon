@@ -14,6 +14,7 @@ describe("page-turn paint order", () => {
 
     expect(passes.map(({ turn, face }) => `${turn.id}:${face}`)).toEqual([
       "older-sheet:back",
+      "landed-prefix:back",
       "newer-sheet:back",
       "newer-sheet:front",
       "older-sheet:front",
@@ -25,6 +26,7 @@ describe("page-turn paint order", () => {
 
     expect(passes.map(({ turn, face }) => `${turn.id}:${face}`)).toEqual([
       "older-sheet:front",
+      "landed-prefix:front",
       "newer-sheet:front",
       "newer-sheet:back",
       "older-sheet:back",

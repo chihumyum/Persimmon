@@ -19,6 +19,7 @@ import {
   updatePageTurnNativeSharedFrame,
   usePageTurnNativeSharedFrame,
 } from "./page-turn-native-shared-frame";
+import { afterSkiaPaint } from "./skia-lifecycle";
 import {
   automaticTuningForCore,
   type AutomaticPageTurnTuning,
@@ -181,8 +182,25 @@ function useNativeProgrammaticPageTurnLane(
         current.outcomeNotified = false;
         return current;
       }, true);
-      hidePageTurnNativeSharedFrame(frame);
     });
+    let cancelled = false;
+    afterSkiaPaint(() => {
+      if (cancelled) {
+        return;
+      }
+      scheduleOnUI(() => {
+        "worklet";
+        state.modify((current) => {
+          if (current.phase === PAGE_TURN_WORKLET_IDLE) {
+            hidePageTurnNativeSharedFrame(frame);
+          }
+          return current;
+        }, true);
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [commandId, frame, state]);
 
   return frame;
@@ -284,203 +302,7 @@ export function useNativePageTurnPool({
     onStarted,
     onOutcome,
   );
-  const frame8 = useNativeProgrammaticPageTurnLane(
-    width,
-    height,
-    spread,
-    automaticTuning,
-    gestureTuning,
-    commands[8],
-    onStarted,
-    onOutcome,
-  );
-  const frame9 = useNativeProgrammaticPageTurnLane(
-    width,
-    height,
-    spread,
-    automaticTuning,
-    gestureTuning,
-    commands[9],
-    onStarted,
-    onOutcome,
-  );
-  const frame10 = useNativeProgrammaticPageTurnLane(
-    width,
-    height,
-    spread,
-    automaticTuning,
-    gestureTuning,
-    commands[10],
-    onStarted,
-    onOutcome,
-  );
-  const frame11 = useNativeProgrammaticPageTurnLane(
-    width,
-    height,
-    spread,
-    automaticTuning,
-    gestureTuning,
-    commands[11],
-    onStarted,
-    onOutcome,
-  );
-  const frame12 = useNativeProgrammaticPageTurnLane(
-    width,
-    height,
-    spread,
-    automaticTuning,
-    gestureTuning,
-    commands[12],
-    onStarted,
-    onOutcome,
-  );
-  const frame13 = useNativeProgrammaticPageTurnLane(
-    width,
-    height,
-    spread,
-    automaticTuning,
-    gestureTuning,
-    commands[13],
-    onStarted,
-    onOutcome,
-  );
-  const frame14 = useNativeProgrammaticPageTurnLane(
-    width,
-    height,
-    spread,
-    automaticTuning,
-    gestureTuning,
-    commands[14],
-    onStarted,
-    onOutcome,
-  );
-  const frame15 = useNativeProgrammaticPageTurnLane(
-    width,
-    height,
-    spread,
-    automaticTuning,
-    gestureTuning,
-    commands[15],
-    onStarted,
-    onOutcome,
-  );
-  const frame16 = useNativeProgrammaticPageTurnLane(
-    width,
-    height,
-    spread,
-    automaticTuning,
-    gestureTuning,
-    commands[16],
-    onStarted,
-    onOutcome,
-  );
-  const frame17 = useNativeProgrammaticPageTurnLane(
-    width,
-    height,
-    spread,
-    automaticTuning,
-    gestureTuning,
-    commands[17],
-    onStarted,
-    onOutcome,
-  );
-  const frame18 = useNativeProgrammaticPageTurnLane(
-    width,
-    height,
-    spread,
-    automaticTuning,
-    gestureTuning,
-    commands[18],
-    onStarted,
-    onOutcome,
-  );
-  const frame19 = useNativeProgrammaticPageTurnLane(
-    width,
-    height,
-    spread,
-    automaticTuning,
-    gestureTuning,
-    commands[19],
-    onStarted,
-    onOutcome,
-  );
-  const frame20 = useNativeProgrammaticPageTurnLane(
-    width,
-    height,
-    spread,
-    automaticTuning,
-    gestureTuning,
-    commands[20],
-    onStarted,
-    onOutcome,
-  );
-  const frame21 = useNativeProgrammaticPageTurnLane(
-    width,
-    height,
-    spread,
-    automaticTuning,
-    gestureTuning,
-    commands[21],
-    onStarted,
-    onOutcome,
-  );
-  const frame22 = useNativeProgrammaticPageTurnLane(
-    width,
-    height,
-    spread,
-    automaticTuning,
-    gestureTuning,
-    commands[22],
-    onStarted,
-    onOutcome,
-  );
-  const frame23 = useNativeProgrammaticPageTurnLane(
-    width,
-    height,
-    spread,
-    automaticTuning,
-    gestureTuning,
-    commands[23],
-    onStarted,
-    onOutcome,
-  );
-  const frame24 = useNativeProgrammaticPageTurnLane(
-    width,
-    height,
-    spread,
-    automaticTuning,
-    gestureTuning,
-    commands[24],
-    onStarted,
-    onOutcome,
-  );
   return {
-    frames: [
-      frame0,
-      frame1,
-      frame2,
-      frame3,
-      frame4,
-      frame5,
-      frame6,
-      frame7,
-      frame8,
-      frame9,
-      frame10,
-      frame11,
-      frame12,
-      frame13,
-      frame14,
-      frame15,
-      frame16,
-      frame17,
-      frame18,
-      frame19,
-      frame20,
-      frame21,
-      frame22,
-      frame23,
-      frame24,
-    ],
+    frames: [frame0, frame1, frame2, frame3, frame4, frame5, frame6, frame7],
   };
 }

@@ -53,7 +53,7 @@ describe("page-turn scheduler", () => {
     );
 
     expect(state.desired).toEqual(page(1));
-    expect(state.nextTurnStartAtMs).toBe(PAGE_TURN_START_INTERVAL_MS);
+    expect(state.nextTapStartAtMs).toBe(PAGE_TURN_START_INTERVAL_MS);
     expect(state.turns).toMatchObject([
       {
         id: "turn:1",
@@ -98,6 +98,26 @@ describe("page-turn scheduler", () => {
     expect(state.settled).toEqual(page(1));
   });
 
+  it("does not apply the tap launch interval to gesture flicks", () => {
+    const scheduler = {
+      ...createHarness(),
+      minimumTurnIntervalMs: 687,
+    };
+    let state = requestScheduledPageTurn(
+      createPageTurnSchedulerState(page(0)),
+      1,
+      scheduler,
+      0,
+    );
+    state = requestScheduledGesturePageTurn(state, 1, release, scheduler, 100);
+
+    expect(state.turns).toMatchObject([
+      { id: "turn:1", motion: "tap" },
+      { id: "turn:2", motion: "gesture" },
+    ]);
+    expect(state.nextTapStartAtMs).toBe(687);
+  });
+
   it("drops input at capacity and reuses a lane only for a later input", () => {
     const scheduler = createHarness(PAGE_TURN_LANE_HARD_LIMIT + 2);
     let state = createPageTurnSchedulerState(page(0));
@@ -136,7 +156,7 @@ describe("page-turn scheduler", () => {
 
   it("supports uniformly spaced backward turns", () => {
     const scheduler = createHarness();
-    let state = createPageTurnSchedulerState(page(10));
+    let state = createPageTurnSchedulerState(page(PAGE_TURN_LANE_HARD_LIMIT));
     for (let index = 0; index < PAGE_TURN_LANE_HARD_LIMIT; index += 1) {
       state = requestScheduledPageTurn(
         state,
@@ -146,9 +166,12 @@ describe("page-turn scheduler", () => {
       );
     }
 
-    expect(state.turns.map((turn) => turn.from.pageIndex)).toEqual([
-      10, 9, 8, 7, 6, 5, 4, 3, 2, 1,
-    ]);
+    expect(state.turns.map((turn) => turn.from.pageIndex)).toEqual(
+      Array.from(
+        { length: PAGE_TURN_LANE_HARD_LIMIT },
+        (_, index) => PAGE_TURN_LANE_HARD_LIMIT - index,
+      ),
+    );
     expect(scheduledPageAddress(state)).toEqual(page(0));
   });
 
@@ -194,13 +217,43 @@ describe("page-turn scheduler", () => {
     expect(state.settled).toEqual(page(0));
     expect(state.turns[2]?.completed).toBe(true);
 
+    state = requestScheduledPageTurn(state, 1, scheduler, 750);
+    expect(state.turns.at(-1)).toMatchObject({
+      id: "turn:4",
+      lane: 3,
+    });
+
     state = resolveScheduledPageTurn(state, "turn:1", true);
     expect(state.settled).toEqual(page(1));
     expect(state.turns[0]?.id).toBe("turn:2");
 
     state = resolveScheduledPageTurn(state, "turn:2", true);
     expect(state.settled).toEqual(page(3));
+    expect(state.turns).toMatchObject([{ id: "turn:4", completed: false }]);
+
+    state = resolveScheduledPageTurn(state, "turn:4", true);
+    expect(state.settled).toEqual(page(4));
     expect(state.turns).toEqual([]);
+  });
+
+  it("keeps a landed non-prefix tap inside the tap allowance", () => {
+    const scheduler = {
+      ...createHarness(),
+      maximumConcurrentTurns: 3,
+      maximumConcurrentTapTurns: 2,
+    };
+    let state = createPageTurnSchedulerState(page(0));
+    state = requestScheduledPageTurn(state, 1, scheduler, 0);
+    state = requestScheduledPageTurn(state, 1, scheduler, 200);
+    state = resolveScheduledPageTurn(state, "turn:2", true);
+
+    expect(requestScheduledPageTurn(state, 1, scheduler, 400)).toBe(state);
+    state = beginScheduledInteractivePageTurn(state, 1, scheduler, 400);
+    expect(state.turns.at(-1)).toMatchObject({
+      id: "turn:3",
+      lane: 2,
+      motion: "gesture",
+    });
   });
 
   it("keeps the backward landing background current during a burst", () => {
@@ -289,7 +342,7 @@ describe("page-turn scheduler", () => {
       { id: "turn:1", lane: 0, interactive: false },
       { id: "turn:2", lane: 1, interactive: true },
     ]);
-    expect(state.nextTurnStartAtMs).toBe(100 + PAGE_TURN_START_INTERVAL_MS);
+    expect(state.nextTapStartAtMs).toBe(0);
   });
 
   it("keeps rapid flicks in gesture lanes and drops excess releases", () => {

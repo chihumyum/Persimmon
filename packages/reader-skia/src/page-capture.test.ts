@@ -1,36 +1,31 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  PAGE_CAPTURE_BYTE_BUDGET,
-  PAGE_CAPTURE_CACHE_BYTE_BUDGET,
+  PAGE_CAPTURE_CACHE_HARD_BYTE_BUDGET,
+  PAGE_CAPTURE_CACHE_TARGET_BYTE_BUDGET,
   PAGE_CAPTURE_MAX_SCALE,
-  pageCaptureEntryBudget,
-  pageCaptureScale,
+  pageCapturePixelSize,
 } from "./page-capture-budget";
 
 describe("transition page capture budget", () => {
-  it("uses at most a 2x texture", () => {
-    expect(pageCaptureScale(390, 844)).toBe(PAGE_CAPTURE_MAX_SCALE);
+  it("fits a 3x active phone page inside the normal cache target", () => {
+    expect(
+      pageCapturePixelSize(390, 844, PAGE_CAPTURE_MAX_SCALE)!.byteSize,
+    ).toBeLessThan(PAGE_CAPTURE_CACHE_TARGET_BYTE_BUDGET);
   });
 
-  it("reduces scale to remain inside the byte budget", () => {
-    const scale = pageCaptureScale(2400, 1800);
-    expect(scale).not.toBeNull();
-    expect(2400 * 1800 * 4 * scale! ** 2).toBeLessThanOrEqual(
-      PAGE_CAPTURE_BYTE_BUDGET + 1,
+  it("leaves hard reserve for a large active 1x page", () => {
+    expect(pageCapturePixelSize(5000, 5000, 1)!.byteSize).toBeLessThan(
+      PAGE_CAPTURE_CACHE_HARD_BYTE_BUDGET,
     );
+    expect(pageCapturePixelSize(0, 800, 1)).toBeNull();
   });
 
-  it("declines a capture when even 1x exceeds the budget", () => {
-    expect(pageCaptureScale(5000, 5000)).toBeNull();
-    expect(pageCaptureScale(0, 800)).toBeNull();
-  });
-
-  it("bounds the complete concurrent prewarm cache", () => {
-    const maximumEntries = 18;
-    expect(pageCaptureEntryBudget(maximumEntries) * maximumEntries).toBe(
-      PAGE_CAPTURE_CACHE_BYTE_BUDGET,
-    );
-    expect(pageCaptureEntryBudget(1)).toBe(PAGE_CAPTURE_BYTE_BUDGET);
+  it("accounts from rounded physical pixels rather than theoretical entries", () => {
+    expect(pageCapturePixelSize(390.4, 843.6, 2.5)).toEqual({
+      width: 976,
+      height: 2109,
+      byteSize: 976 * 2109 * 4,
+    });
   });
 });

@@ -31,6 +31,27 @@ describe("page capture image readiness", () => {
     },
   );
 
+  it("allows a stable placeholder when no resource loader exists", () => {
+    expect(
+      pageImagesSettledForCapture(
+        page,
+        {
+          getStatus: () => "unrequested",
+        },
+        true,
+      ),
+    ).toBe(true);
+    expect(
+      pageImagesSettledForCapture(
+        page,
+        {
+          getStatus: () => "loading",
+        },
+        true,
+      ),
+    ).toBe(false);
+  });
+
   it.each<DecodedImageStatus>(["ready", "unavailable"])(
     "captures after an image is %s",
     (status) => {

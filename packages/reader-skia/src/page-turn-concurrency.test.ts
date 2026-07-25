@@ -3,17 +3,19 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_AUTOMATIC_PAGE_TURN_TUNING } from "./automatic-page-turn-tuning";
 import {
   PAGE_TURN_LANE_HARD_LIMIT,
+  PAGE_TURN_TAP_LANE_HEADROOM,
   calculatePageTurnConcurrency,
 } from "./page-turn-concurrency";
 
 describe("page turn concurrency", () => {
-  it("keeps two overlap windows for default animation and 150 ms starts", () => {
+  it("adds two completion-headroom lanes to the five default overlaps", () => {
     expect(
       calculatePageTurnConcurrency(DEFAULT_AUTOMATIC_PAGE_TURN_TUNING, 150),
     ).toEqual({
       estimatedTapDurationMs: 674,
-      maximumConcurrentTapTurns: 10,
-      maximumConcurrentTurns: 11,
+      minimumTurnIntervalMs: 150,
+      maximumConcurrentTapTurns: 7,
+      maximumConcurrentTurns: 8,
     });
   });
 
@@ -25,8 +27,9 @@ describe("page turn concurrency", () => {
       ),
     ).toMatchObject({
       estimatedTapDurationMs: 337,
-      maximumConcurrentTapTurns: 6,
-      maximumConcurrentTurns: 7,
+      minimumTurnIntervalMs: 150,
+      maximumConcurrentTapTurns: 5,
+      maximumConcurrentTurns: 6,
     });
     expect(
       calculatePageTurnConcurrency(
@@ -35,12 +38,13 @@ describe("page turn concurrency", () => {
       ),
     ).toMatchObject({
       estimatedTapDurationMs: 1348,
-      maximumConcurrentTapTurns: 18,
-      maximumConcurrentTurns: 19,
+      minimumTurnIntervalMs: 270,
+      maximumConcurrentTapTurns: 7,
+      maximumConcurrentTurns: 8,
     });
   });
 
-  it("covers the slowest legal click animation without a capacity gap", () => {
+  it("raises the start interval instead of producing a capacity gap", () => {
     const result = calculatePageTurnConcurrency(
       {
         ...DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
@@ -54,18 +58,21 @@ describe("page turn concurrency", () => {
 
     expect(result).toMatchObject({
       estimatedTapDurationMs: 3435,
+      minimumTurnIntervalMs: 687,
       maximumConcurrentTapTurns: PAGE_TURN_LANE_HARD_LIMIT - 1,
       maximumConcurrentTurns: PAGE_TURN_LANE_HARD_LIMIT,
     });
-    expect(result.maximumConcurrentTapTurns).toBeGreaterThanOrEqual(
-      Math.ceil(result.estimatedTapDurationMs / 150),
-    );
+    expect(
+      Math.ceil(result.estimatedTapDurationMs / result.minimumTurnIntervalMs) +
+        PAGE_TURN_TAP_LANE_HEADROOM,
+    ).toBeLessThanOrEqual(result.maximumConcurrentTapTurns);
   });
 
-  it("uses the hard limit for a non-positive interval", () => {
+  it("derives a capacity-safe interval from a non-positive request", () => {
     expect(
       calculatePageTurnConcurrency(DEFAULT_AUTOMATIC_PAGE_TURN_TUNING, 0),
     ).toMatchObject({
+      minimumTurnIntervalMs: 135,
       maximumConcurrentTapTurns: PAGE_TURN_LANE_HARD_LIMIT - 1,
       maximumConcurrentTurns: PAGE_TURN_LANE_HARD_LIMIT,
     });

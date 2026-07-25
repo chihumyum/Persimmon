@@ -25,6 +25,7 @@ import {
   usePageTurnNativeSharedFrame,
   type PageTurnNativeSharedFrame,
 } from "./page-turn-native-shared-frame";
+import { afterSkiaPaint } from "./skia-lifecycle";
 import {
   bookXForGestureTravel,
   pageTurnDirectionFromTranslation,
@@ -278,11 +279,28 @@ export function useNativePageTurnDriver({
           current.phase = PAGE_TURN_WORKLET_IDLE;
           current.outcome = PAGE_TURN_WORKLET_NO_OUTCOME;
           current.outcomeNotified = false;
-          hidePageTurnNativeSharedFrame(frame);
         }
         return current;
       }, true);
     });
+    let cancelled = false;
+    afterSkiaPaint(() => {
+      if (cancelled) {
+        return;
+      }
+      scheduleOnUI(() => {
+        "worklet";
+        state.modify((current) => {
+          if (current.phase === PAGE_TURN_WORKLET_IDLE) {
+            hidePageTurnNativeSharedFrame(frame);
+          }
+          return current;
+        }, true);
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [command, frame, state]);
 
   const gesture = useMemo(() => {
