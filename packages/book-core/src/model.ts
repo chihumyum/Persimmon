@@ -8,6 +8,8 @@ export interface BookIR {
   language?: string;
   sections: readonly SectionIR[];
   assets: Readonly<Record<string, ImageAssetIR>>;
+  coverAssetId?: string;
+  navigation?: readonly BookNavigationItem[];
 }
 
 export interface SectionIR {
@@ -24,6 +26,7 @@ export interface ParagraphBlockIR {
   kind: "paragraph";
   id: string;
   runs: readonly InlineRunIR[];
+  style?: BlockStyleIR;
   source?: ExternalSourceRef;
 }
 
@@ -32,6 +35,7 @@ export interface HeadingBlockIR {
   id: string;
   level: 1 | 2 | 3;
   runs: readonly InlineRunIR[];
+  style?: BlockStyleIR;
   source?: ExternalSourceRef;
 }
 
@@ -41,7 +45,22 @@ export interface ImageBlockIR {
   assetId: string;
   alt: string;
   intrinsicSize?: Size;
+  style?: BlockStyleIR;
   source?: ExternalSourceRef;
+}
+
+/**
+ * Safe, renderer-independent subset of EPUB author styles.
+ *
+ * Lengths are normalized to em so import never leaks CSS units or executable
+ * browser styling into the reader core.
+ */
+export interface BlockStyleIR {
+  textAlign?: "start" | "center" | "justify";
+  fontWeight?: 400 | 700;
+  fontStyle?: "normal" | "italic";
+  marginBeforeEm?: number;
+  marginAfterEm?: number;
 }
 
 export type InlineMark = "strong" | "emphasis";
@@ -86,6 +105,13 @@ export interface BookLocator {
   revisionId: string;
   position: BookPosition;
   affinity?: "forward" | "backward";
+}
+
+export interface BookNavigationItem {
+  id: string;
+  label: string;
+  target: BookPosition;
+  children?: readonly BookNavigationItem[];
 }
 
 /**

@@ -18,10 +18,14 @@ export type BookValidationIssueCode =
   | "empty-text-block"
   | "empty-text-run"
   | "invalid-heading-level"
+  | "invalid-block-style"
   | "missing-image-asset"
+  | "missing-cover-asset"
   | "invalid-image-size"
   | "invalid-asset"
-  | "invalid-source";
+  | "invalid-source"
+  | "invalid-navigation-item"
+  | "invalid-navigation-target";
 
 export interface BookValidationIssue {
   code: BookValidationIssueCode;
@@ -52,10 +56,7 @@ function validateSource(
   path: string,
   issues: BookValidationIssue[],
 ): void {
-  if (
-    source &&
-    (!hasText(source.documentId) || !hasText(source.elementId))
-  ) {
+  if (source && (!hasText(source.documentId) || !hasText(source.elementId))) {
     issues.push({
       code: "invalid-source",
       path,
@@ -88,6 +89,31 @@ function validateBlock(
   }
 
   validateSource(block.source, `${path}.source`, issues);
+  if (
+    block.style &&
+    ((block.style.textAlign !== undefined &&
+      !["start", "center", "justify"].includes(block.style.textAlign)) ||
+      (block.style.fontWeight !== undefined &&
+        block.style.fontWeight !== 400 &&
+        block.style.fontWeight !== 700) ||
+      (block.style.fontStyle !== undefined &&
+        block.style.fontStyle !== "normal" &&
+        block.style.fontStyle !== "italic") ||
+      (block.style.marginBeforeEm !== undefined &&
+        (!Number.isFinite(block.style.marginBeforeEm) ||
+          block.style.marginBeforeEm < 0 ||
+          block.style.marginBeforeEm > 6)) ||
+      (block.style.marginAfterEm !== undefined &&
+        (!Number.isFinite(block.style.marginAfterEm) ||
+          block.style.marginAfterEm < 0 ||
+          block.style.marginAfterEm > 6)))
+  ) {
+    issues.push({
+      code: "invalid-block-style",
+      path: `${path}.style`,
+      message: "block style contains a value outside the safe whitelist",
+    });
+  }
 
   if (isTextBlock(block)) {
     if (logicalLength(block) === 0) {
@@ -229,6 +255,65 @@ export function validateBookIR(book: BookIR): readonly BookValidationIssue[] {
           "asset key must match a non-empty id, mediaType must be non-empty, and byteLength must be a non-negative integer",
       });
     }
+  }
+
+  if (book.coverAssetId && !book.assets[book.coverAssetId]) {
+    issues.push({
+      code: "missing-cover-asset",
+      path: "coverAssetId",
+      message: `cover asset "${book.coverAssetId}" does not exist`,
+    });
+  }
+
+  const blocksBySection = new Map(
+    book.sections.map((section) => [
+      section.id,
+      new Map(section.blocks.map((block) => [block.id, block])),
+    ]),
+  );
+  const navigationIds = new Set<string>();
+  const validateNavigation = (
+    items: NonNullable<BookIR["navigation"]>,
+    path: string,
+  ): void => {
+    items.forEach((item, index) => {
+      const itemPath = `${path}[${index}]`;
+      if (
+        !hasText(item.id) ||
+        !hasText(item.label) ||
+        navigationIds.has(item.id)
+      ) {
+        issues.push({
+          code: "invalid-navigation-item",
+          path: itemPath,
+          message:
+            "navigation id and label must be non-empty, and ids must be unique",
+        });
+      }
+      navigationIds.add(item.id);
+
+      const block = blocksBySection
+        .get(item.target.sectionId)
+        ?.get(item.target.blockId);
+      if (
+        !block ||
+        !Number.isInteger(item.target.offset) ||
+        item.target.offset < 0 ||
+        item.target.offset > (block ? logicalLength(block) : 0)
+      ) {
+        issues.push({
+          code: "invalid-navigation-target",
+          path: `${itemPath}.target`,
+          message: "navigation target must point inside an existing block",
+        });
+      }
+      if (item.children) {
+        validateNavigation(item.children, `${itemPath}.children`);
+      }
+    });
+  };
+  if (book.navigation) {
+    validateNavigation(book.navigation, "navigation");
   }
 
   return issues;

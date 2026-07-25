@@ -31,4 +31,3 @@ export class EpubImportError extends Error {
     this.context = context;
   }
 }
-

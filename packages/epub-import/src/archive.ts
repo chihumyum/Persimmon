@@ -134,10 +134,7 @@ export function resolveArchiveReference(
     return baseDocumentPath;
   }
 
-  if (
-    /^[A-Za-z][A-Za-z0-9+.-]*:/.test(path) ||
-    path.startsWith("//")
-  ) {
+  if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(path) || path.startsWith("//")) {
     throw new EpubImportError(
       "unsupported-external-resource",
       `External resources are not supported: ${reference}`,
@@ -325,4 +322,3 @@ export class EpubArchive {
     return this.entries.get(path);
   }
 }
-

@@ -33,8 +33,7 @@ export function parseXmlDocument(
 
 export function localName(node: Node): string {
   return (
-    node.localName ??
-    node.nodeName.slice(node.nodeName.lastIndexOf(":") + 1)
+    node.localName ?? node.nodeName.slice(node.nodeName.lastIndexOf(":") + 1)
   ).toLowerCase();
 }
 
@@ -57,10 +56,7 @@ export function firstChildElement(
   );
 }
 
-export function descendants(
-  node: Node,
-  expectedLocalName: string,
-): Element[] {
+export function descendants(node: Node, expectedLocalName: string): Element[] {
   const matches: Element[] = [];
   const visit = (parent: Node): void => {
     for (const child of childElements(parent)) {
@@ -97,4 +93,3 @@ export function normalizedText(node: Node | undefined): string | undefined {
   const value = (node.textContent ?? "").replace(/\s+/g, " ").trim();
   return value.length > 0 ? value : undefined;
 }
-

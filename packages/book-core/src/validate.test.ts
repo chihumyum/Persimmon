@@ -33,4 +33,32 @@ describe("BookIR validation", () => {
       ]),
     );
   });
+
+  it("rejects block styles outside the renderer-safe whitelist", () => {
+    const invalid = {
+      ...SAMPLE_BOOK,
+      sections: [
+        {
+          id: "styled-section",
+          blocks: [
+            {
+              kind: "paragraph",
+              id: "styled",
+              runs: [{ text: "柿" }],
+              style: {
+                textAlign: "absolute",
+                marginBeforeEm: 99,
+              },
+            },
+          ],
+        },
+      ],
+    } as unknown as BookIR;
+
+    expect(validateBookIR(invalid)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "invalid-block-style" }),
+      ]),
+    );
+  });
 });

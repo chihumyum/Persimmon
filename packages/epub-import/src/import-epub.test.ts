@@ -178,6 +178,216 @@ describe("importEpub", () => {
     });
   });
 
+  it("applies the safe EPUB author-style whitelist and skips hidden content", () => {
+    const bytes = fixtureBytes({
+      packageXml: minimalPackage(
+        "chapter.xhtml",
+        '<item id="style" href="book.css" media-type="text/css"/>',
+      ),
+      resources: {
+        "EPUB/book.css": `
+          p.lead {
+            text-align: justify;
+            margin: 1em 0 2em;
+          }
+          .bold { font-weight: bold; }
+          .hidden { display: none; }
+        `,
+        "EPUB/chapter.xhtml": `<?xml version="1.0"?>
+          <html xmlns="http://www.w3.org/1999/xhtml">
+            <head><link rel="stylesheet" href="book.css"/></head>
+            <body>
+              <p class="lead">Styled <span class="bold">text</span></p>
+              <p class="hidden">Must not be imported</p>
+              <p style="text-align: center; font-style: italic">Centered</p>
+            </body>
+          </html>`,
+      },
+    });
+
+    const result = importEpub(bytes);
+    const blocks = result.book.sections[0].blocks;
+
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]).toMatchObject({
+      kind: "paragraph",
+      style: {
+        textAlign: "justify",
+        marginBeforeEm: 1,
+        marginAfterEm: 2,
+      },
+      runs: [{ text: "Styled " }, { text: "text", marks: ["strong"] }],
+    });
+    expect(blocks[1]).toMatchObject({
+      kind: "paragraph",
+      style: {
+        textAlign: "center",
+        fontStyle: "italic",
+      },
+    });
+  });
+
+  it("keeps repeated spine entries with deterministic occurrence ids", () => {
+    const packageXml = minimalPackage().replace(
+      '<itemref idref="chapter"/>',
+      '<itemref idref="chapter"/><itemref idref="chapter"/>',
+    );
+    const bytes = fixtureBytes({
+      packageXml,
+      resources: {
+        "EPUB/chapter.xhtml": `<?xml version="1.0"?>
+          <html xmlns="http://www.w3.org/1999/xhtml">
+            <body><p>Repeated chapter</p></body>
+          </html>`,
+      },
+    });
+
+    const result = importEpub(bytes);
+
+    expect(result.book.sections.map((section) => section.id)).toEqual([
+      "epub-section:chapter",
+      "epub-section:chapter:occurrence:2",
+    ]);
+    expect(result.warnings).toContainEqual(
+      expect.objectContaining({
+        code: "duplicate-spine-item-recovered",
+        context: "chapter.xhtml",
+      }),
+    );
+  });
+
+  it("recovers malformed content XHTML without weakening package parsing", () => {
+    const bytes = fixtureBytes({
+      packageXml: minimalPackage(),
+      resources: {
+        "EPUB/chapter.xhtml": `<?xml version="1.0"?>
+          <html xmlns="http://www.w3.org/1999/xhtml">
+            <body>
+              <p id="before">Before</p
+              <p id="after">After</p>
+            </body>
+          </html>`,
+      },
+    });
+
+    const result = importEpub(bytes);
+    const text = result.book.sections[0].blocks
+      .flatMap((block) =>
+        block.kind === "image" ? [] : block.runs.map((run) => run.text),
+      )
+      .join(" ");
+
+    expect(text).toContain("Before");
+    expect(text).toContain("After");
+    expect(result.warnings).toContainEqual(
+      expect.objectContaining({
+        code: "malformed-xhtml-recovered",
+        context: "EPUB/chapter.xhtml",
+      }),
+    );
+  });
+
+  it("imports an EPUB 3 nav document and cover image", () => {
+    const bytes = fixtureBytes({
+      packageXml: minimalPackage(
+        "chapter.xhtml",
+        `
+          <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+          <item id="cover" href="cover.png" media-type="image/png" properties="cover-image"/>
+        `,
+      ),
+      resources: {
+        "EPUB/chapter.xhtml": `<?xml version="1.0"?>
+          <html xmlns="http://www.w3.org/1999/xhtml">
+            <body><h1 id="opening">Opening</h1><p>Body</p></body>
+          </html>`,
+        "EPUB/nav.xhtml": `<?xml version="1.0"?>
+          <html xmlns="http://www.w3.org/1999/xhtml"
+                xmlns:epub="http://www.idpf.org/2007/ops">
+            <body>
+              <nav epub:type="toc">
+                <ol><li><a href="chapter.xhtml#opening">Opening</a></li></ol>
+              </nav>
+            </body>
+          </html>`,
+        "EPUB/cover.png": PNG_BYTES,
+      },
+    });
+
+    const result = importEpub(bytes);
+
+    expect(result.book.coverAssetId).toBe("epub-asset:cover");
+    expect(result.resources["epub-asset:cover"]).toEqual(PNG_BYTES);
+    expect(result.book.navigation).toEqual([
+      {
+        id: "epub-nav:1",
+        label: "Opening",
+        target: {
+          sectionId: "epub-section:chapter",
+          blockId: "epub-section:chapter:block:1",
+          offset: 0,
+        },
+      },
+    ]);
+  });
+
+  it("imports a nested EPUB 2 NCX table of contents", () => {
+    const bytes = fixtureBytes({
+      packageXml: `<?xml version="1.0" encoding="utf-8"?>
+        <package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+          <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <dc:title>EPUB 2 book</dc:title>
+          </metadata>
+          <manifest>
+            <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+            <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+          </manifest>
+          <spine toc="ncx"><itemref idref="chapter"/></spine>
+        </package>`,
+      resources: {
+        "EPUB/chapter.xhtml": `<?xml version="1.0"?>
+          <html xmlns="http://www.w3.org/1999/xhtml">
+            <body>
+              <h1 id="chapter">Chapter</h1>
+              <h2 id="part">Part</h2>
+            </body>
+          </html>`,
+        "EPUB/toc.ncx": `<?xml version="1.0"?>
+          <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/">
+            <navMap>
+              <navPoint id="chapter">
+                <navLabel><text>Chapter</text></navLabel>
+                <content src="chapter.xhtml#chapter"/>
+                <navPoint id="part">
+                  <navLabel><text>Part</text></navLabel>
+                  <content src="chapter.xhtml#part"/>
+                </navPoint>
+              </navPoint>
+            </navMap>
+          </ncx>`,
+      },
+    });
+
+    const result = importEpub(bytes);
+
+    expect(result.book.navigation?.[0]).toMatchObject({
+      label: "Chapter",
+      target: {
+        sectionId: "epub-section:chapter",
+        blockId: "epub-section:chapter:block:1",
+      },
+      children: [
+        {
+          label: "Part",
+          target: {
+            sectionId: "epub-section:chapter",
+            blockId: "epub-section:chapter:block:2",
+          },
+        },
+      ],
+    });
+  });
+
   it("rejects malformed package XML", () => {
     const bytes = fixtureBytes({
       packageXml:
@@ -202,10 +412,7 @@ describe("importEpub", () => {
       },
     });
 
-    expectImportError(
-      () => importEpub(bytes),
-      "unsupported-fixed-layout",
-    );
+    expectImportError(() => importEpub(bytes), "unsupported-fixed-layout");
   });
 
   it("rejects path traversal entries before extracting content", () => {

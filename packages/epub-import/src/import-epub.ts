@@ -2,22 +2,41 @@ import {
   BOOK_IR_VERSION,
   assertValidBookIR,
   type BlockIR,
+  type BlockStyleIR,
   type BookIR,
+  type BookNavigationItem,
+  type BookPosition,
   type ExternalSourceRef,
   type ImageAssetIR,
   type InlineMark,
   type InlineRunIR,
   type SectionIR,
 } from "@persimmon/book-core";
+import type { Element } from "@xmldom/xmldom";
 import { strFromU8 } from "fflate";
-import type { Document, Element, Node } from "@xmldom/xmldom";
 
 import {
   EpubArchive,
   resolveArchiveReference,
   type OpenEpubArchiveOptions,
 } from "./archive";
+import {
+  contentAttribute,
+  contentDescendants,
+  firstContentDescendant,
+  normalizedContentText,
+  parseContentDocument,
+  type ContentElement,
+} from "./content-tree";
 import { EpubImportError } from "./errors";
+import {
+  marksWithElementStyle,
+  parseEpubStyleSheet,
+  styleForContentElement,
+  type EpubElementStyle,
+  type EpubStyleSheet,
+} from "./epub-styles";
+import { detectImageSize } from "./image-dimensions";
 import {
   childElements,
   descendants,
@@ -32,6 +51,8 @@ const EPUB_MIMETYPE = "application/epub+zip";
 const XHTML_MEDIA_TYPE = "application/xhtml+xml";
 const IMAGE_MEDIA_TYPE_PREFIX = "image/";
 
+export const EPUB_COMPILER_VERSION = 3 as const;
+
 export interface EpubImportWarning {
   code:
     | "external-resource-ignored"
@@ -39,7 +60,12 @@ export interface EpubImportWarning {
     | "unsupported-spine-item-skipped"
     | "empty-section-skipped"
     | "missing-image-skipped"
-    | "unmanifested-image-skipped";
+    | "unmanifested-image-skipped"
+    | "malformed-xhtml-recovered"
+    | "duplicate-spine-item-recovered"
+    | "navigation-item-skipped"
+    | "navigation-target-fallback"
+    | "stylesheet-skipped";
   message: string;
   context?: string;
 }
@@ -57,7 +83,14 @@ export interface EpubImportResult {
   warnings: readonly EpubImportWarning[];
 }
 
-export interface ImportEpubOptions extends OpenEpubArchiveOptions {}
+export type ImportEpubOptions = OpenEpubArchiveOptions & {
+  /**
+   * Optional lowercase SHA-256 digest supplied by the storage boundary.
+   * The synchronous parser keeps a deterministic non-cryptographic fallback
+   * for pure-core callers and tests.
+   */
+  contentDigest?: string;
+};
 
 interface ManifestItem {
   id: string;
@@ -76,7 +109,14 @@ interface PackageModel {
   pageProgressionDirection?: "ltr" | "rtl" | "default";
   manifestById: ReadonlyMap<string, ManifestItem>;
   manifestByPath: ReadonlyMap<string, ManifestItem>;
-  spine: readonly ManifestItem[];
+  spine: readonly SpineItem[];
+  navigationItem?: ManifestItem;
+  coverItem?: ManifestItem;
+}
+
+interface SpineItem {
+  manifestItem: ManifestItem;
+  occurrence: number;
 }
 
 interface TextToken {
@@ -86,10 +126,17 @@ interface TextToken {
 
 interface ImageToken {
   kind: "image";
-  element: Element;
+  element: ContentElement;
 }
 
 type InlineToken = TextToken | ImageToken;
+type StyleResolver = (element: ContentElement) => EpubElementStyle | undefined;
+
+interface RawNavigationItem {
+  readonly label: string;
+  readonly href?: string;
+  readonly children: readonly RawNavigationItem[];
+}
 
 const INLINE_ELEMENTS = new Set([
   "a",
@@ -127,7 +174,7 @@ const IGNORED_ELEMENTS = new Set([
 
 const MARK_ORDER: readonly InlineMark[] = ["strong", "emphasis"];
 
-function splitTokens(value: string | null): Set<string> {
+function splitTokens(value: string | null | undefined): Set<string> {
   return new Set((value ?? "").split(/\s+/).filter(Boolean));
 }
 
@@ -148,7 +195,10 @@ function stableHash(bytes: Uint8Array): string {
 function readText(
   archive: EpubArchive,
   path: string,
-  missingCode: "missing-container" | "missing-package" | "missing-spine-resource",
+  missingCode:
+    | "missing-container"
+    | "missing-package"
+    | "missing-spine-resource",
 ): string {
   const bytes = archive.read(path);
   if (!bytes) {
@@ -315,7 +365,27 @@ function parsePackage(
     }
   }
 
-  const spineItems: ManifestItem[] = [];
+  const epub3NavigationItem = [...manifestById.values()].find((item) =>
+    item.properties.has("nav"),
+  );
+  const ncxId = spine.getAttribute("toc")?.trim();
+  const navigationItem =
+    epub3NavigationItem ?? (ncxId ? manifestById.get(ncxId) : undefined);
+
+  const epub2CoverId = descendants(metadata ?? packageElement, "meta")
+    .find(
+      (element) =>
+        element.getAttribute("name")?.trim().toLowerCase() === "cover",
+    )
+    ?.getAttribute("content")
+    ?.trim();
+  const coverItem =
+    [...manifestById.values()].find((item) =>
+      item.properties.has("cover-image"),
+    ) ?? (epub2CoverId ? manifestById.get(epub2CoverId) : undefined);
+
+  const spineItems: SpineItem[] = [];
+  const spineOccurrences = new Map<string, number>();
   for (const itemref of childElements(spine).filter(
     (element) => localName(element) === "itemref",
   )) {
@@ -368,7 +438,16 @@ function parsePackage(
       continue;
     }
 
-    spineItems.push(item);
+    const occurrence = (spineOccurrences.get(item.id) ?? 0) + 1;
+    spineOccurrences.set(item.id, occurrence);
+    if (occurrence > 1) {
+      warnings.push({
+        code: "duplicate-spine-item-recovered",
+        message: `Repeated spine item is kept with a stable occurrence id: ${item.href}`,
+        context: item.href,
+      });
+    }
+    spineItems.push({ manifestItem: item, occurrence });
   }
 
   const direction = spine.getAttribute("page-progression-direction")?.trim();
@@ -387,6 +466,8 @@ function parsePackage(
     manifestById,
     manifestByPath,
     spine: spineItems,
+    ...(navigationItem ? { navigationItem } : {}),
+    ...(coverItem ? { coverItem } : {}),
   };
 }
 
@@ -438,7 +519,10 @@ function appendTextToken(
   }
 }
 
-function appendBreakToken(tokens: InlineToken[], marks: ReadonlySet<InlineMark>) {
+function appendBreakToken(
+  tokens: InlineToken[],
+  marks: ReadonlySet<InlineMark>,
+) {
   const previous = tokens.at(-1);
   if (previous?.kind === "text" && previous.run.text.endsWith(" ")) {
     previous.run = {
@@ -464,31 +548,29 @@ function appendBreakToken(tokens: InlineToken[], marks: ReadonlySet<InlineMark>)
 }
 
 function collectInlineTokens(
-  node: Node,
+  node: ContentElement,
   inheritedMarks: ReadonlySet<InlineMark>,
   tokens: InlineToken[],
+  resolveStyle: StyleResolver,
 ): void {
-  for (let child = node.firstChild; child; child = child.nextSibling) {
-    if (child.nodeType === 3 || child.nodeType === 4) {
-      appendTextToken(tokens, child.nodeValue ?? "", inheritedMarks);
+  for (const child of node.children) {
+    if (child.kind === "text") {
+      appendTextToken(tokens, child.value, inheritedMarks);
       continue;
     }
-    if (child.nodeType !== 1) {
-      continue;
-    }
-
-    const element = child as Element;
-    collectInlineElement(element, inheritedMarks, tokens);
+    collectInlineElement(child, inheritedMarks, tokens, resolveStyle);
   }
 }
 
 function collectInlineElement(
-  element: Element,
+  element: ContentElement,
   inheritedMarks: ReadonlySet<InlineMark>,
   tokens: InlineToken[],
+  resolveStyle: StyleResolver,
 ): void {
-  const name = localName(element);
-  if (IGNORED_ELEMENTS.has(name)) {
+  const name = element.name;
+  const elementStyle = resolveStyle(element);
+  if (IGNORED_ELEMENTS.has(name) || elementStyle?.hidden) {
     return;
   }
   if (name === "img") {
@@ -500,14 +582,14 @@ function collectInlineElement(
     return;
   }
 
-  const marks = new Set(inheritedMarks);
+  const marks = new Set(marksWithElementStyle(inheritedMarks, elementStyle));
   if (name === "strong" || name === "b") {
     marks.add("strong");
   }
   if (name === "em" || name === "i") {
     marks.add("emphasis");
   }
-  collectInlineTokens(element, marks, tokens);
+  collectInlineTokens(element, marks, tokens, resolveStyle);
 }
 
 function trimRuns(runs: readonly InlineRunIR[]): InlineRunIR[] {
@@ -543,6 +625,7 @@ class SectionCompiler {
   private readonly blocks: BlockIR[] = [];
   private readonly assets: Record<string, ImageAssetIR>;
   private readonly resources: Record<string, Uint8Array>;
+  private readonly fragmentBlockIds = new Map<string, string>();
   private blockCounter = 0;
 
   constructor(
@@ -550,6 +633,7 @@ class SectionCompiler {
     private readonly packageModel: PackageModel,
     private readonly manifestItem: ManifestItem,
     private readonly sectionId: string,
+    private readonly styleSheet: EpubStyleSheet,
     private readonly warnings: EpubImportWarning[],
     assets: Record<string, ImageAssetIR>,
     resources: Record<string, Uint8Array>,
@@ -558,17 +642,26 @@ class SectionCompiler {
     this.resources = resources;
   }
 
-  compile(document: Document): readonly BlockIR[] {
-    const body = firstDescendant(document, "body") ?? document.documentElement;
-    if (!body) {
-      throw new EpubImportError(
-        "malformed-xml",
-        `XHTML document has no root element: ${this.manifestItem.path}`,
-        this.manifestItem.path,
-      );
+  compile(root: ContentElement): readonly BlockIR[] {
+    const body = firstContentDescendant(root, "body") ?? root;
+    if (this.styleFor(body)?.hidden) {
+      return [];
     }
     this.processContainer(body);
     return this.blocks;
+  }
+
+  fragmentTargets(): ReadonlyMap<string, BookPosition> {
+    return new Map(
+      [...this.fragmentBlockIds].map(([fragment, blockId]) => [
+        fragment,
+        {
+          sectionId: this.sectionId,
+          blockId,
+          offset: 0,
+        },
+      ]),
+    );
   }
 
   private nextBlockId(): string {
@@ -576,15 +669,60 @@ class SectionCompiler {
     return `${this.sectionId}:block:${this.blockCounter}`;
   }
 
-  private sourceFor(element: Element, blockId: string): ExternalSourceRef {
+  private sourceFor(
+    element: ContentElement,
+    blockId: string,
+  ): ExternalSourceRef {
     return {
       scheme: "epub",
       documentId: this.manifestItem.path ?? this.manifestItem.href,
-      elementId: element.getAttribute("id")?.trim() || blockId,
+      elementId: contentAttribute(element, "id")?.trim() || blockId,
     };
   }
 
-  private processContainer(container: Element): void {
+  private styleFor(element: ContentElement): EpubElementStyle | undefined {
+    return styleForContentElement(element, this.styleSheet);
+  }
+
+  private blockStyleFor(element: ContentElement): BlockStyleIR | undefined {
+    const computed = this.styleFor(element);
+    if (!computed) {
+      return undefined;
+    }
+    const style: BlockStyleIR = {
+      ...(computed.textAlign ? { textAlign: computed.textAlign } : {}),
+      ...(computed.fontWeight ? { fontWeight: computed.fontWeight } : {}),
+      ...(computed.fontStyle ? { fontStyle: computed.fontStyle } : {}),
+      ...(computed.marginBeforeEm !== undefined
+        ? { marginBeforeEm: computed.marginBeforeEm }
+        : {}),
+      ...(computed.marginAfterEm !== undefined
+        ? { marginAfterEm: computed.marginAfterEm }
+        : {}),
+    };
+    return Object.keys(style).length > 0 ? style : undefined;
+  }
+
+  private recordElementAnchors(element: ContentElement, blockId: string): void {
+    const anchorNames = [
+      contentAttribute(element, "id")?.trim(),
+      element.name === "a"
+        ? contentAttribute(element, "name")?.trim()
+        : undefined,
+    ].filter((value): value is string => Boolean(value));
+    for (const anchorName of anchorNames) {
+      if (!this.fragmentBlockIds.has(anchorName)) {
+        this.fragmentBlockIds.set(anchorName, blockId);
+      }
+    }
+    for (const child of element.children) {
+      if (child.kind === "element") {
+        this.recordElementAnchors(child, blockId);
+      }
+    }
+  }
+
+  private processContainer(container: ContentElement): void {
     let pendingInline: InlineToken[] = [];
 
     const flushInline = (): void => {
@@ -594,22 +732,21 @@ class SectionCompiler {
       }
     };
 
-    for (let child = container.firstChild; child; child = child.nextSibling) {
-      if (child.nodeType === 3 || child.nodeType === 4) {
-        appendTextToken(pendingInline, child.nodeValue ?? "", new Set());
-        continue;
-      }
-      if (child.nodeType !== 1) {
+    for (const child of container.children) {
+      if (child.kind === "text") {
+        appendTextToken(pendingInline, child.value, new Set());
         continue;
       }
 
-      const element = child as Element;
-      const name = localName(element);
-      if (IGNORED_ELEMENTS.has(name)) {
+      const element = child;
+      const name = element.name;
+      if (IGNORED_ELEMENTS.has(name) || this.styleFor(element)?.hidden) {
         continue;
       }
       if (INLINE_ELEMENTS.has(name)) {
-        collectInlineElement(element, new Set(), pendingInline);
+        collectInlineElement(element, new Set(), pendingInline, (candidate) =>
+          this.styleFor(candidate),
+        );
         continue;
       }
 
@@ -620,19 +757,26 @@ class SectionCompiler {
     flushInline();
   }
 
-  private processBlockElement(element: Element): void {
-    const name = localName(element);
+  private processBlockElement(element: ContentElement): void {
+    const name = element.name;
+    if (this.styleFor(element)?.hidden) {
+      return;
+    }
 
     if (name === "p") {
       const tokens: InlineToken[] = [];
-      collectInlineTokens(element, new Set(), tokens);
+      collectInlineTokens(element, new Set(), tokens, (candidate) =>
+        this.styleFor(candidate),
+      );
       this.emitTokens(element, tokens, "paragraph");
       return;
     }
 
     if (/^h[1-6]$/.test(name)) {
       const tokens: InlineToken[] = [];
-      collectInlineTokens(element, new Set(), tokens);
+      collectInlineTokens(element, new Set(), tokens, (candidate) =>
+        this.styleFor(candidate),
+      );
       const rawLevel = Number(name.slice(1));
       const level = Math.min(rawLevel, 3) as 1 | 2 | 3;
       this.emitTokens(element, tokens, "heading", level);
@@ -644,11 +788,16 @@ class SectionCompiler {
       return;
     }
 
+    const firstBlockIndex = this.blocks.length;
     this.processContainer(element);
+    const firstBlock = this.blocks[firstBlockIndex];
+    if (firstBlock) {
+      this.recordElementAnchors(element, firstBlock.id);
+    }
   }
 
   private emitTokens(
-    sourceElement: Element,
+    sourceElement: ContentElement,
     tokens: readonly InlineToken[],
     kind: "paragraph" | "heading",
     level: 1 | 2 | 3 = 1,
@@ -669,6 +818,9 @@ class SectionCompiler {
           id,
           level,
           runs: normalizedRuns,
+          ...(this.blockStyleFor(sourceElement)
+            ? { style: this.blockStyleFor(sourceElement) }
+            : {}),
           source: this.sourceFor(sourceElement, id),
         });
       } else {
@@ -676,9 +828,13 @@ class SectionCompiler {
           kind: "paragraph",
           id,
           runs: normalizedRuns,
+          ...(this.blockStyleFor(sourceElement)
+            ? { style: this.blockStyleFor(sourceElement) }
+            : {}),
           source: this.sourceFor(sourceElement, id),
         });
       }
+      this.recordElementAnchors(sourceElement, id);
     };
 
     for (const token of tokens) {
@@ -692,8 +848,11 @@ class SectionCompiler {
     flushRuns();
   }
 
-  private emitImage(element: Element): void {
-    const source = element.getAttribute("src")?.trim();
+  private emitImage(element: ContentElement): void {
+    if (this.styleFor(element)?.hidden) {
+      return;
+    }
+    const source = contentAttribute(element, "src")?.trim();
     if (!source) {
       this.warnings.push({
         code: "missing-image-skipped",
@@ -756,29 +915,108 @@ class SectionCompiler {
     this.resources[assetId] ??= bytes;
 
     const id = this.nextBlockId();
+    const intrinsicSize = detectImageSize(bytes, manifestAsset.mediaType);
     this.blocks.push({
       kind: "image",
       id,
       assetId,
-      alt: element.getAttribute("alt") ?? "",
+      alt: contentAttribute(element, "alt") ?? "",
+      ...(intrinsicSize ? { intrinsicSize } : {}),
+      ...(this.blockStyleFor(element)
+        ? { style: this.blockStyleFor(element) }
+        : {}),
       source: this.sourceFor(element, id),
     });
+    this.recordElementAnchors(element, id);
   }
 }
 
+function contentRawText(element: ContentElement): string {
+  return element.children
+    .map((child) =>
+      child.kind === "text" ? child.value : contentRawText(child),
+    )
+    .join("");
+}
+
+function loadSectionStyleSheet(
+  archive: EpubArchive,
+  packageModel: PackageModel,
+  manifestItem: ManifestItem,
+  root: ContentElement,
+  warnings: EpubImportWarning[],
+): EpubStyleSheet {
+  const sources = contentDescendants(root, "style").map(contentRawText);
+  for (const link of contentDescendants(root, "link")) {
+    if (
+      !splitTokens(contentAttribute(link, "rel")?.toLowerCase()).has(
+        "stylesheet",
+      )
+    ) {
+      continue;
+    }
+    const href = contentAttribute(link, "href")?.trim();
+    if (!href) {
+      continue;
+    }
+    try {
+      const path = resolveArchiveReference(
+        manifestItem.path ?? manifestItem.href,
+        href,
+      );
+      const declared = packageModel.manifestByPath.get(path);
+      if (declared && declared.mediaType !== "text/css") {
+        warnings.push({
+          code: "stylesheet-skipped",
+          message: `Linked stylesheet has a non-CSS media type: ${href}`,
+          context: path,
+        });
+        continue;
+      }
+      const bytes = archive.read(path);
+      if (!bytes) {
+        warnings.push({
+          code: "stylesheet-skipped",
+          message: `Linked stylesheet is missing: ${href}`,
+          context: path,
+        });
+        continue;
+      }
+      sources.push(strFromU8(bytes));
+    } catch (error) {
+      if (
+        error instanceof EpubImportError &&
+        error.code === "unsupported-external-resource"
+      ) {
+        warnings.push({
+          code: "stylesheet-skipped",
+          message: `External stylesheet is ignored: ${href}`,
+          context: href,
+        });
+        continue;
+      }
+      throw error;
+    }
+  }
+  return parseEpubStyleSheet(sources);
+}
+
 function sectionTitle(
-  document: Document,
+  root: ContentElement,
   blocks: readonly BlockIR[],
 ): string | undefined {
   const heading = blocks.find((block) => block.kind === "heading");
   if (heading?.kind === "heading") {
-    const value = heading.runs.map((run) => run.text).join("").trim();
+    const value = heading.runs
+      .map((run) => run.text)
+      .join("")
+      .trim();
     if (value.length > 0) {
       return value;
     }
   }
 
-  return normalizedText(firstDescendant(document, "title"));
+  return normalizedContentText(firstContentDescendant(root, "title"));
 }
 
 function compileSections(
@@ -789,33 +1027,55 @@ function compileSections(
   sections: SectionIR[];
   assets: Record<string, ImageAssetIR>;
   resources: Record<string, Uint8Array>;
+  firstSectionByPath: Map<string, SectionIR>;
+  fragmentTargetsByPath: Map<string, ReadonlyMap<string, BookPosition>>;
 } {
   const sections: SectionIR[] = [];
   const assets: Record<string, ImageAssetIR> = {};
   const resources: Record<string, Uint8Array> = {};
+  const firstSectionByPath = new Map<string, SectionIR>();
+  const fragmentTargetsByPath = new Map<
+    string,
+    ReadonlyMap<string, BookPosition>
+  >();
 
-  for (const item of packageModel.spine) {
+  for (const spineItem of packageModel.spine) {
+    const { manifestItem: item, occurrence } = spineItem;
     if (!item.path) {
       continue;
     }
 
     const source = readText(archive, item.path, "missing-spine-resource");
-    const document = parseXmlDocument(
-      source,
-      item.path,
-      "application/xhtml+xml",
+    const document = parseContentDocument(source, item.path);
+    if (document.recovered) {
+      warnings.push({
+        code: "malformed-xhtml-recovered",
+        message: `Malformed XHTML was recovered with the HTML5 parser: ${item.href}`,
+        context: item.path,
+      });
+    }
+    const sectionId =
+      occurrence === 1
+        ? `epub-section:${item.id}`
+        : `epub-section:${item.id}:occurrence:${occurrence}`;
+    const styleSheet = loadSectionStyleSheet(
+      archive,
+      packageModel,
+      item,
+      document.root,
+      warnings,
     );
-    const sectionId = `epub-section:${item.id}`;
     const compiler = new SectionCompiler(
       archive,
       packageModel,
       item,
       sectionId,
+      styleSheet,
       warnings,
       assets,
       resources,
     );
-    const blocks = compiler.compile(document);
+    const blocks = compiler.compile(document.root);
 
     if (blocks.length === 0) {
       warnings.push({
@@ -826,15 +1086,277 @@ function compileSections(
       continue;
     }
 
-    const title = sectionTitle(document, blocks);
-    sections.push({
+    const title = sectionTitle(document.root, blocks);
+    const section: SectionIR = {
       id: sectionId,
       ...(title ? { title } : {}),
       blocks,
+    };
+    sections.push(section);
+    if (!firstSectionByPath.has(item.path)) {
+      firstSectionByPath.set(item.path, section);
+      fragmentTargetsByPath.set(item.path, compiler.fragmentTargets());
+    }
+  }
+
+  return {
+    sections,
+    assets,
+    resources,
+    firstSectionByPath,
+    fragmentTargetsByPath,
+  };
+}
+
+function contentElementChildren(
+  element: ContentElement,
+  expectedName?: string,
+): ContentElement[] {
+  return element.children.filter(
+    (child): child is ContentElement =>
+      child.kind === "element" &&
+      (expectedName === undefined || child.name === expectedName),
+  );
+}
+
+function parseNavigationList(list: ContentElement): RawNavigationItem[] {
+  const items: RawNavigationItem[] = [];
+  for (const listItem of contentElementChildren(list, "li")) {
+    const directElements = contentElementChildren(listItem);
+    const labelElement =
+      directElements.find(
+        (element) => element.name === "a" || element.name === "span",
+      ) ?? firstContentDescendant(listItem, "a");
+    const label = normalizedContentText(labelElement);
+    const href =
+      labelElement?.name === "a"
+        ? contentAttribute(labelElement, "href")?.trim()
+        : undefined;
+    const nestedList =
+      directElements.find(
+        (element) => element.name === "ol" || element.name === "ul",
+      ) ?? firstContentDescendant(listItem, "ol");
+    const children = nestedList ? parseNavigationList(nestedList) : [];
+
+    if (label) {
+      items.push({
+        label,
+        ...(href ? { href } : {}),
+        children,
+      });
+    } else {
+      items.push(...children);
+    }
+  }
+  return items;
+}
+
+function parseEpub3Navigation(
+  source: string,
+  path: string,
+  warnings: EpubImportWarning[],
+): RawNavigationItem[] {
+  const document = parseContentDocument(source, path);
+  if (document.recovered) {
+    warnings.push({
+      code: "malformed-xhtml-recovered",
+      message: `Malformed navigation XHTML was recovered with the HTML5 parser: ${path}`,
+      context: path,
     });
   }
 
-  return { sections, assets, resources };
+  const navigationElements = [
+    ...(document.root.name === "nav" ? [document.root] : []),
+    ...contentDescendants(document.root, "nav"),
+  ];
+  const toc =
+    navigationElements.find((element) => {
+      const semanticType =
+        contentAttribute(element, "epub:type") ??
+        contentAttribute(element, "type");
+      return (
+        splitTokens(semanticType).has("toc") ||
+        contentAttribute(element, "role") === "doc-toc"
+      );
+    }) ?? navigationElements[0];
+  const list = toc
+    ? (firstContentDescendant(toc, "ol") ?? firstContentDescendant(toc, "ul"))
+    : undefined;
+  return list ? parseNavigationList(list) : [];
+}
+
+function parseNcxNavigation(source: string, path: string): RawNavigationItem[] {
+  const document = parseXmlDocument(source, path);
+  const navMap = firstDescendant(document, "navmap");
+  if (!navMap) {
+    return [];
+  }
+
+  const parsePoints = (parent: Element): RawNavigationItem[] => {
+    const items: RawNavigationItem[] = [];
+    for (const point of childElements(parent).filter(
+      (element) => localName(element) === "navpoint",
+    )) {
+      const label = normalizedText(firstDescendant(point, "text"));
+      const href = firstChildElement(point, "content")
+        ?.getAttribute("src")
+        ?.trim();
+      const children = parsePoints(point);
+      if (label) {
+        items.push({
+          label,
+          ...(href ? { href } : {}),
+          children,
+        });
+      } else {
+        items.push(...children);
+      }
+    }
+    return items;
+  };
+
+  return parsePoints(navMap);
+}
+
+function fragmentFromReference(reference: string): string | undefined {
+  const hashIndex = reference.indexOf("#");
+  if (hashIndex === -1) {
+    return undefined;
+  }
+  const rawFragment = reference.slice(hashIndex + 1).split("?")[0];
+  if (!rawFragment) {
+    return undefined;
+  }
+  try {
+    return decodeURIComponent(rawFragment);
+  } catch {
+    return rawFragment;
+  }
+}
+
+function compileNavigation(
+  archive: EpubArchive,
+  packageModel: PackageModel,
+  firstSectionByPath: ReadonlyMap<string, SectionIR>,
+  fragmentTargetsByPath: ReadonlyMap<string, ReadonlyMap<string, BookPosition>>,
+  warnings: EpubImportWarning[],
+): readonly BookNavigationItem[] | undefined {
+  const navigationItem = packageModel.navigationItem;
+  if (!navigationItem?.path) {
+    return undefined;
+  }
+
+  const source = readText(
+    archive,
+    navigationItem.path,
+    "missing-spine-resource",
+  );
+  const rawItems = navigationItem.properties.has("nav")
+    ? parseEpub3Navigation(source, navigationItem.path, warnings)
+    : parseNcxNavigation(source, navigationItem.path);
+  let itemCounter = 0;
+
+  const resolveItems = (
+    items: readonly RawNavigationItem[],
+  ): BookNavigationItem[] => {
+    const resolved: BookNavigationItem[] = [];
+    for (const item of items) {
+      const children = resolveItems(item.children);
+      if (!item.href) {
+        resolved.push(...children);
+        continue;
+      }
+
+      let targetPath: string;
+      try {
+        targetPath = resolveArchiveReference(
+          navigationItem.path ?? packageModel.path,
+          item.href,
+        );
+      } catch {
+        warnings.push({
+          code: "navigation-item-skipped",
+          message: `Navigation target is unsupported and was skipped: ${item.href}`,
+          context: item.href,
+        });
+        resolved.push(...children);
+        continue;
+      }
+
+      const section = firstSectionByPath.get(targetPath);
+      if (!section) {
+        warnings.push({
+          code: "navigation-item-skipped",
+          message: `Navigation target does not resolve to a readable spine section: ${item.href}`,
+          context: item.href,
+        });
+        resolved.push(...children);
+        continue;
+      }
+
+      const fragment = fragmentFromReference(item.href);
+      const fragmentTarget = fragment
+        ? fragmentTargetsByPath.get(targetPath)?.get(fragment)
+        : undefined;
+      if (fragment && !fragmentTarget) {
+        warnings.push({
+          code: "navigation-target-fallback",
+          message: `Navigation fragment was not found; using the section start: ${item.href}`,
+          context: item.href,
+        });
+      }
+      const target: BookPosition = fragmentTarget ?? {
+        sectionId: section.id,
+        blockId: section.blocks[0].id,
+        offset: 0,
+      };
+      itemCounter += 1;
+      resolved.push({
+        id: `epub-nav:${itemCounter}`,
+        label: item.label,
+        target,
+        ...(children.length > 0 ? { children } : {}),
+      });
+    }
+    return resolved;
+  };
+
+  const navigation = resolveItems(rawItems);
+  return navigation.length > 0 ? navigation : undefined;
+}
+
+function includeCoverResource(
+  archive: EpubArchive,
+  packageModel: PackageModel,
+  assets: Record<string, ImageAssetIR>,
+  resources: Record<string, Uint8Array>,
+  warnings: EpubImportWarning[],
+): string | undefined {
+  const coverItem = packageModel.coverItem;
+  if (
+    !coverItem?.path ||
+    !coverItem.mediaType.startsWith(IMAGE_MEDIA_TYPE_PREFIX)
+  ) {
+    return undefined;
+  }
+  const bytes = archive.read(coverItem.path);
+  if (!bytes) {
+    warnings.push({
+      code: "missing-image-skipped",
+      message: `Cover image is missing from the archive: ${coverItem.path}`,
+      context: coverItem.path,
+    });
+    return undefined;
+  }
+
+  const assetId = `epub-asset:${coverItem.id}`;
+  assets[assetId] ??= {
+    id: assetId,
+    mediaType: coverItem.mediaType,
+    byteLength: bytes.byteLength,
+  };
+  resources[assetId] ??= bytes;
+  return assetId;
 }
 
 export function importEpub(
@@ -854,11 +1376,13 @@ export function importEpub(
   const warnings: EpubImportWarning[] = [];
   const packagePath = parseContainer(archive);
   const packageModel = parsePackage(archive, packagePath, warnings);
-  const { sections, assets, resources } = compileSections(
-    archive,
-    packageModel,
-    warnings,
-  );
+  const {
+    sections,
+    assets,
+    resources,
+    firstSectionByPath,
+    fragmentTargetsByPath,
+  } = compileSections(archive, packageModel, warnings);
 
   if (sections.length === 0) {
     throw new EpubImportError(
@@ -868,7 +1392,27 @@ export function importEpub(
     );
   }
 
-  const contentHash = stableHash(bytes);
+  const navigation = compileNavigation(
+    archive,
+    packageModel,
+    firstSectionByPath,
+    fragmentTargetsByPath,
+    warnings,
+  );
+  const coverAssetId = includeCoverResource(
+    archive,
+    packageModel,
+    assets,
+    resources,
+    warnings,
+  );
+  const contentHash = options.contentDigest?.toLowerCase() ?? stableHash(bytes);
+  if (options.contentDigest && !/^[a-f0-9]{64}$/.test(contentHash)) {
+    throw new EpubImportError(
+      "invalid-input",
+      "contentDigest must be a hexadecimal SHA-256 digest",
+    );
+  }
   const book: BookIR = {
     schemaVersion: BOOK_IR_VERSION,
     id: `epub:${contentHash}`,
@@ -877,6 +1421,8 @@ export function importEpub(
     ...(packageModel.language ? { language: packageModel.language } : {}),
     sections,
     assets,
+    ...(coverAssetId ? { coverAssetId } : {}),
+    ...(navigation ? { navigation } : {}),
   };
   assertValidBookIR(book);
 
@@ -889,8 +1435,7 @@ export function importEpub(
       ...(packageModel.author ? { author: packageModel.author } : {}),
       ...(packageModel.pageProgressionDirection
         ? {
-            pageProgressionDirection:
-              packageModel.pageProgressionDirection,
+            pageProgressionDirection: packageModel.pageProgressionDirection,
           }
         : {}),
     },
