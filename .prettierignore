@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.expo/
+coverage/
+epubs-for-test/
+apps/persimmon/android/
+apps/persimmon/ios/
+apps/persimmon/public/canvaskit.wasm
+pnpm-lock.yaml

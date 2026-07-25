@@ -2,6 +2,9 @@ node_modules/
 .DS_Store
 .expo/
 dist/
+epubs-for-test/
 coverage/
+playwright-report/
+test-results/
 *.tsbuildinfo
 apps/persimmon/public/canvaskit.wasm
