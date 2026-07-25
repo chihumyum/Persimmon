@@ -163,8 +163,9 @@ function pageTurnSurfaceLight(
       segmentProgress,
     ),
   );
-  const curvatureShadow = (1 - normalZ) * 0.16;
-  const undersideShadow = frontFacing ? 0 : 0.055;
+  const deformation = 1 - normalZ;
+  const curvatureShadow = deformation * 0.16;
+  const undersideShadow = frontFacing ? 0 : deformation * 0.055;
   const shadow = Math.min(0.2, curvatureShadow + undersideShadow);
   return 1 - shadow;
 }

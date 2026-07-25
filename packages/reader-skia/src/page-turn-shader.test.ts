@@ -95,25 +95,20 @@ describe("natural Skia page shader input", () => {
     );
   });
 
-  it("keeps a lifted flat front face at the exact captured paper color", () => {
-    const liftedFlatProfile = new Array<number>(
-      DEFAULT_PAGE_PROFILE_POINTS * 4,
+  it("keeps lifted flat front and back faces at the captured paper color", () => {
+    expect(liftedFlatFaceLight(true, 1)).toBe(1);
+    expect(liftedFlatFaceLight(false, 1)).toBe(1);
+  });
+
+  it("smoothly restores the back-face paper color as it flattens", () => {
+    const lights = [0, 0.25, 0.5, 0.75, 1].map((normalZ) =>
+      liftedFlatFaceLight(false, normalZ),
     );
-    for (let index = 0; index < DEFAULT_PAGE_PROFILE_POINTS; index += 1) {
-      const offset = index * 4;
-      liftedFlatProfile[offset] = index / (DEFAULT_PAGE_PROFILE_POINTS - 1);
-      liftedFlatProfile[offset + 1] = 0.4;
-      liftedFlatProfile[offset + 2] = 0;
-      liftedFlatProfile[offset + 3] = 1;
+
+    for (let index = 1; index < lights.length; index += 1) {
+      expect(lights[index]).toBeGreaterThan(lights[index - 1]!);
     }
-
-    const lookup = buildPageTurnLookup(liftedFlatProfile, 128);
-    const coveredLight = lookup.filter(
-      (_, index) => index % 4 === 2 && lookup[index + 1] !== 0,
-    );
-
-    expect(coveredLight.length).toBeGreaterThan(0);
-    expect(coveredLight.every((light) => light === 1)).toBe(true);
+    expect(lights.at(-1)).toBe(1);
   });
 
   it("samples both physical pages for a spread turn", () => {
@@ -252,3 +247,22 @@ describe("natural Skia page shader input", () => {
     expect(crossed!.strength).toBe(0);
   });
 });
+
+function liftedFlatFaceLight(frontFacing: boolean, normalZ: number): number {
+  const profile = new Array<number>(DEFAULT_PAGE_PROFILE_POINTS * 4);
+  for (let index = 0; index < DEFAULT_PAGE_PROFILE_POINTS; index += 1) {
+    const material = index / (DEFAULT_PAGE_PROFILE_POINTS - 1);
+    const offset = index * 4;
+    profile[offset] = frontFacing ? material : 1 - material;
+    profile[offset + 1] = 0.4;
+    profile[offset + 2] = 0;
+    profile[offset + 3] = normalZ;
+  }
+
+  const lookup = buildPageTurnLookup(profile, 128);
+  const coveredLight = lookup.filter(
+    (_, index) => index % 4 === 2 && lookup[index + 1] !== 0,
+  );
+  expect(coveredLight.length).toBeGreaterThan(0);
+  return Math.max(...coveredLight);
+}

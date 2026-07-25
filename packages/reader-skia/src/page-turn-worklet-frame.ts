@@ -75,8 +75,9 @@ function surfaceLight(
       progress,
     ),
   );
-  const curvatureShadow = (1 - normalZ) * 0.16;
-  const undersideShadow = frontFacing ? 0 : 0.055;
+  const deformation = 1 - normalZ;
+  const curvatureShadow = deformation * 0.16;
+  const undersideShadow = frontFacing ? 0 : deformation * 0.055;
   return 1 - Math.min(0.2, curvatureShadow + undersideShadow);
 }
 

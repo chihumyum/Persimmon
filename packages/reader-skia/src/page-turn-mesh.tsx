@@ -377,9 +377,10 @@ float4 sampleRun(float bookX, float4 run) {
   float depth = mix(before.y, after.y, progress);
   float normalZ = abs(mix(before.w, after.w, progress));
   bool frontFacing = deltaX > 0.0;
+  float deformation = 1.0 - normalZ;
   float shade =
-    (1.0 - normalZ) * 0.16 +
-    (frontFacing ? 0.0 : 0.055);
+    deformation * 0.16 +
+    (frontFacing ? 0.0 : deformation * 0.055);
   return float4(material, 1.0 - min(0.2, shade), depth, frontFacing ? 1.0 : -1.0);
 }
 
