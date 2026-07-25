@@ -7,13 +7,13 @@ import {
 } from "./page-turn-concurrency";
 
 describe("page turn concurrency", () => {
-  it("derives six active lanes from the default animation and 150 ms starts", () => {
+  it("keeps two overlap windows for default animation and 150 ms starts", () => {
     expect(
       calculatePageTurnConcurrency(DEFAULT_AUTOMATIC_PAGE_TURN_TUNING, 150),
     ).toEqual({
       estimatedTapDurationMs: 674,
-      maximumConcurrentTapTurns: 5,
-      maximumConcurrentTurns: 6,
+      maximumConcurrentTapTurns: 10,
+      maximumConcurrentTurns: 11,
     });
   });
 
@@ -25,8 +25,8 @@ describe("page turn concurrency", () => {
       ),
     ).toMatchObject({
       estimatedTapDurationMs: 337,
-      maximumConcurrentTapTurns: 3,
-      maximumConcurrentTurns: 4,
+      maximumConcurrentTapTurns: 6,
+      maximumConcurrentTurns: 7,
     });
     expect(
       calculatePageTurnConcurrency(
@@ -35,7 +35,19 @@ describe("page turn concurrency", () => {
       ),
     ).toMatchObject({
       estimatedTapDurationMs: 1348,
-      maximumConcurrentTapTurns: 9,
+      maximumConcurrentTapTurns: 18,
+      maximumConcurrentTurns: 19,
+    });
+  });
+
+  it("caps doubled timing headroom at the hard pool limit", () => {
+    expect(
+      calculatePageTurnConcurrency(
+        { ...DEFAULT_AUTOMATIC_PAGE_TURN_TUNING, playbackSpeed: 0.25 },
+        150,
+      ),
+    ).toMatchObject({
+      maximumConcurrentTapTurns: PAGE_TURN_LANE_HARD_LIMIT - 1,
       maximumConcurrentTurns: PAGE_TURN_LANE_HARD_LIMIT,
     });
   });

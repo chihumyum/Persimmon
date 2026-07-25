@@ -283,6 +283,106 @@ export function useNativePageTurnPool({
     onStarted,
     onOutcome,
   );
+  const frame10 = useNativeProgrammaticPageTurnLane(
+    width,
+    height,
+    spread,
+    automaticTuning,
+    gestureTuning,
+    commands[10],
+    onStarted,
+    onOutcome,
+  );
+  const frame11 = useNativeProgrammaticPageTurnLane(
+    width,
+    height,
+    spread,
+    automaticTuning,
+    gestureTuning,
+    commands[11],
+    onStarted,
+    onOutcome,
+  );
+  const frame12 = useNativeProgrammaticPageTurnLane(
+    width,
+    height,
+    spread,
+    automaticTuning,
+    gestureTuning,
+    commands[12],
+    onStarted,
+    onOutcome,
+  );
+  const frame13 = useNativeProgrammaticPageTurnLane(
+    width,
+    height,
+    spread,
+    automaticTuning,
+    gestureTuning,
+    commands[13],
+    onStarted,
+    onOutcome,
+  );
+  const frame14 = useNativeProgrammaticPageTurnLane(
+    width,
+    height,
+    spread,
+    automaticTuning,
+    gestureTuning,
+    commands[14],
+    onStarted,
+    onOutcome,
+  );
+  const frame15 = useNativeProgrammaticPageTurnLane(
+    width,
+    height,
+    spread,
+    automaticTuning,
+    gestureTuning,
+    commands[15],
+    onStarted,
+    onOutcome,
+  );
+  const frame16 = useNativeProgrammaticPageTurnLane(
+    width,
+    height,
+    spread,
+    automaticTuning,
+    gestureTuning,
+    commands[16],
+    onStarted,
+    onOutcome,
+  );
+  const frame17 = useNativeProgrammaticPageTurnLane(
+    width,
+    height,
+    spread,
+    automaticTuning,
+    gestureTuning,
+    commands[17],
+    onStarted,
+    onOutcome,
+  );
+  const frame18 = useNativeProgrammaticPageTurnLane(
+    width,
+    height,
+    spread,
+    automaticTuning,
+    gestureTuning,
+    commands[18],
+    onStarted,
+    onOutcome,
+  );
+  const frame19 = useNativeProgrammaticPageTurnLane(
+    width,
+    height,
+    spread,
+    automaticTuning,
+    gestureTuning,
+    commands[19],
+    onStarted,
+    onOutcome,
+  );
   return {
     frames: [
       frame0,
@@ -295,6 +395,16 @@ export function useNativePageTurnPool({
       frame7,
       frame8,
       frame9,
+      frame10,
+      frame11,
+      frame12,
+      frame13,
+      frame14,
+      frame15,
+      frame16,
+      frame17,
+      frame18,
+      frame19,
     ],
   };
 }

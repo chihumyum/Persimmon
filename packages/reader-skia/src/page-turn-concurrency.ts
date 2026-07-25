@@ -5,8 +5,9 @@ import {
   type AutomaticPageTurnTuning,
 } from "./automatic-page-turn-tuning";
 
-export const PAGE_TURN_LANE_HARD_LIMIT = 10;
+export const PAGE_TURN_LANE_HARD_LIMIT = 20;
 export const PAGE_TURN_GESTURE_LANE_RESERVE = 1;
+export const PAGE_TURN_TAP_LANE_HEADROOM_MULTIPLIER = 2;
 
 export interface PageTurnConcurrency {
   readonly estimatedTapDurationMs: number;
@@ -16,8 +17,10 @@ export interface PageTurnConcurrency {
 
 /**
  * Sizes the active part of the fixed native lane pool from the amount of time
- * that successive click turns can overlap. One additional lane stays outside
- * the click allowance so a released gesture or native handoff is not starved.
+ * that successive click turns can overlap. Keep a second set of tap lanes as
+ * timing headroom so delayed completion cannot turn a uniformly throttled
+ * input stream into visible bursts. One additional lane stays outside the
+ * click allowance so a released gesture or native handoff is not starved.
  */
 export function calculatePageTurnConcurrency(
   tuning: AutomaticPageTurnTuning,
@@ -30,7 +33,11 @@ export function calculatePageTurnConcurrency(
       : 1;
   const maximumConcurrentTapTurns = Math.min(
     PAGE_TURN_LANE_HARD_LIMIT - PAGE_TURN_GESTURE_LANE_RESERVE,
-    Math.max(1, Math.ceil(estimatedTapDurationMs / safeIntervalMs)),
+    Math.max(
+      1,
+      Math.ceil(estimatedTapDurationMs / safeIntervalMs) *
+        PAGE_TURN_TAP_LANE_HEADROOM_MULTIPLIER,
+    ),
   );
   return {
     estimatedTapDurationMs,

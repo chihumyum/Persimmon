@@ -99,7 +99,7 @@ describe("page-turn scheduler", () => {
   });
 
   it("drops input at capacity and reuses a lane only for a later input", () => {
-    const scheduler = createHarness();
+    const scheduler = createHarness(PAGE_TURN_LANE_HARD_LIMIT + 2);
     let state = createPageTurnSchedulerState(page(0));
     for (let index = 0; index < PAGE_TURN_LANE_HARD_LIMIT; index += 1) {
       state = requestScheduledPageTurn(
@@ -127,9 +127,9 @@ describe("page-turn scheduler", () => {
       (PAGE_TURN_LANE_HARD_LIMIT + 1) * PAGE_TURN_START_INTERVAL_MS,
     );
     expect(state.turns.at(-1)).toMatchObject({
-      id: "turn:11",
-      from: page(10),
-      to: page(11),
+      id: `turn:${PAGE_TURN_LANE_HARD_LIMIT + 1}`,
+      from: page(PAGE_TURN_LANE_HARD_LIMIT),
+      to: page(PAGE_TURN_LANE_HARD_LIMIT + 1),
       lane: 0,
     });
   });
@@ -268,7 +268,7 @@ describe("page-turn scheduler", () => {
   });
 
   it("keeps rapid flicks in gesture lanes and drops excess releases", () => {
-    const scheduler = createHarness();
+    const scheduler = createHarness(PAGE_TURN_LANE_HARD_LIMIT + 2);
     let state = createPageTurnSchedulerState(page(0));
     for (let index = 0; index < PAGE_TURN_LANE_HARD_LIMIT + 2; index += 1) {
       state = requestScheduledGesturePageTurn(
@@ -281,9 +281,9 @@ describe("page-turn scheduler", () => {
     }
 
     expect(state.turns).toHaveLength(PAGE_TURN_LANE_HARD_LIMIT);
-    expect(state.turns.map((turn) => turn.lane)).toEqual([
-      0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
-    ]);
+    expect(state.turns.map((turn) => turn.lane)).toEqual(
+      Array.from({ length: PAGE_TURN_LANE_HARD_LIMIT }, (_, lane) => lane),
+    );
     expect(state.turns.every((turn) => turn.motion === "gesture")).toBe(true);
     expect(state.turns.every((turn) => turn.gestureRelease === release)).toBe(
       true,
