@@ -1,0 +1,215 @@
+import {
+  MAX_PRESSED_ROLL_TILT,
+  MIN_PRESSED_EDGE_X,
+  pressedRollHingeGeometry,
+} from "./rolled-page-strip";
+
+export interface PageTurnTuning {
+  releaseX: number;
+  liftVelocity: number;
+  liftToLeft: number;
+  curvatureRelaxation: number;
+  pageWeight: number;
+  gestureCommitThreshold: number;
+  gestureMinimumSpeedScale: number;
+  gestureMaximumSpeedScale: number;
+  gestureVelocityGain: number;
+  gestureIdleDecaySeconds: number;
+}
+
+export interface TurnCommitInput {
+  fingerX: number;
+  throwVelocity: number;
+  throwAcceleration: number;
+  pageWeight: number;
+}
+
+export interface ReleasedPageTurnGesture {
+  readonly pressedEdgeX: number;
+  readonly heldRollTilt: number;
+  readonly speedScale: number;
+  readonly settlingProgress: number;
+}
+
+export type PageGestureMode = "full" | "weak";
+
+export const DEFAULT_PAGE_TURN_TUNING: PageTurnTuning = {
+  releaseX: 0.72,
+  liftVelocity: 1.35,
+  liftToLeft: 2,
+  curvatureRelaxation: 7,
+  pageWeight: 1,
+  gestureCommitThreshold: 0.78,
+  gestureMinimumSpeedScale: 0.95,
+  gestureMaximumSpeedScale: 2,
+  gestureVelocityGain: 0.6,
+  gestureIdleDecaySeconds: 0.09,
+};
+
+export const FULL_GESTURE_START_MIN_X = 2 / 3;
+export const WEAK_GRIP_MAX_COMPRESSION = 0.04;
+export const MIN_PAGE_WEIGHT = 0.5;
+export const MAX_PAGE_WEIGHT = 1.8;
+const WEAK_GRIP_COMPRESSION_PER_PAGE = 0.2;
+export const SLOW_COMMIT_EDGE_X =
+  MIN_PRESSED_EDGE_X - pressedRollHingeGeometry().tiltDistance;
+export const GESTURE_LIFT_START_X = 0.5;
+const COMMIT_VELOCITY_LIMIT = 3.2;
+const COMMIT_ACCELERATION_LIMIT = 10;
+const COMMIT_VELOCITY_GAIN = 0.18;
+const COMMIT_ACCELERATION_GAIN = 0.035;
+
+export function clampPageTurnTuning(tuning: PageTurnTuning): PageTurnTuning {
+  const gestureMinimumSpeedScale = clamp(
+    tuning.gestureMinimumSpeedScale,
+    0.5,
+    1.5,
+  );
+  return {
+    releaseX: clamp(tuning.releaseX, 0.58, 0.8),
+    liftVelocity: clamp(tuning.liftVelocity, 0.7, 1.8),
+    liftToLeft: clamp(tuning.liftToLeft, 1.4, 2.6),
+    curvatureRelaxation: clamp(tuning.curvatureRelaxation, 3.5, 14),
+    pageWeight: clampPageWeight(tuning.pageWeight),
+    gestureCommitThreshold: clamp(tuning.gestureCommitThreshold, 0.4, 1.2),
+    gestureMinimumSpeedScale,
+    gestureMaximumSpeedScale: clamp(
+      tuning.gestureMaximumSpeedScale,
+      gestureMinimumSpeedScale,
+      3,
+    ),
+    gestureVelocityGain: clamp(tuning.gestureVelocityGain, 0.1, 1.2),
+    gestureIdleDecaySeconds: clamp(tuning.gestureIdleDecaySeconds, 0.03, 0.2),
+  };
+}
+
+export function clampPageWeight(pageWeight: number): number {
+  const safeWeight = Number.isFinite(pageWeight)
+    ? pageWeight
+    : DEFAULT_PAGE_TURN_TUNING.pageWeight;
+  return clamp(safeWeight, MIN_PAGE_WEIGHT, MAX_PAGE_WEIGHT);
+}
+
+export function turnPropagationSpeed(tuning: PageTurnTuning): number {
+  const safe = clampPageTurnTuning(tuning);
+  return safe.liftVelocity * safe.liftToLeft;
+}
+
+export function gestureTurnSpeedScale(
+  throwVelocity: number,
+  tuning: PageTurnTuning = DEFAULT_PAGE_TURN_TUNING,
+): number {
+  const safeVelocity = Number.isFinite(throwVelocity)
+    ? Math.max(0, throwVelocity)
+    : 0;
+  const safe = clampPageTurnTuning(tuning);
+  return clamp(
+    safe.gestureMinimumSpeedScale + safeVelocity * safe.gestureVelocityGain,
+    safe.gestureMinimumSpeedScale,
+    safe.gestureMaximumSpeedScale,
+  );
+}
+
+export function turnCommitScore(input: TurnCommitInput): number {
+  const distance = clamp(
+    (1 - input.fingerX) / (1 - SLOW_COMMIT_EDGE_X),
+    0,
+    1.2,
+  );
+  const velocity =
+    clamp(input.throwVelocity, 0, COMMIT_VELOCITY_LIMIT) * COMMIT_VELOCITY_GAIN;
+  const acceleration =
+    clamp(input.throwAcceleration, 0, COMMIT_ACCELERATION_LIMIT) *
+    COMMIT_ACCELERATION_GAIN;
+  return (
+    (distance + velocity + acceleration) / clampPageWeight(input.pageWeight)
+  );
+}
+
+export function shouldCommitTurn(
+  input: TurnCommitInput,
+  tuning: PageTurnTuning = DEFAULT_PAGE_TURN_TUNING,
+): boolean {
+  return (
+    turnCommitScore(input) >=
+    clampPageTurnTuning(tuning).gestureCommitThreshold - 1e-6
+  );
+}
+
+export function pageGestureModeForStart(
+  startBookX: number,
+): PageGestureMode | null {
+  if (!Number.isFinite(startBookX) || startBookX < 0 || startBookX > 1) {
+    return null;
+  }
+  return startBookX >= FULL_GESTURE_START_MIN_X ? "full" : "weak";
+}
+
+export function anchoredGestureFingerX(
+  startBookX: number,
+  currentBookX: number,
+): number {
+  const safeStart = Number.isFinite(startBookX) ? startBookX : 1;
+  const safeCurrent = Number.isFinite(currentBookX) ? currentBookX : safeStart;
+  return clamp(1 + safeCurrent - safeStart, -1, 1);
+}
+
+export function slowCommitBookXForStart(
+  startBookX: number,
+  pageWeight = DEFAULT_PAGE_TURN_TUNING.pageWeight,
+): number {
+  const safeStart = Number.isFinite(startBookX) ? startBookX : 1;
+  return safeStart - clampPageWeight(pageWeight) * (1 - SLOW_COMMIT_EDGE_X);
+}
+
+export function weakGripPressedEdgeX(
+  startBookX: number,
+  currentBookX: number,
+): number {
+  const safeStart = Number.isFinite(startBookX) ? startBookX : 0;
+  const safeCurrent = Number.isFinite(currentBookX) ? currentBookX : safeStart;
+  const leftwardTravel = Math.max(0, safeStart - safeCurrent);
+  const compression = Math.min(
+    WEAK_GRIP_MAX_COMPRESSION,
+    leftwardTravel * WEAK_GRIP_COMPRESSION_PER_PAGE,
+  );
+  return 1 - compression;
+}
+
+export function heldRollTiltForFingerX(fingerX: number): number {
+  const hinge = pressedRollHingeGeometry();
+  const safeFingerX = Number.isFinite(fingerX) ? fingerX : MIN_PRESSED_EDGE_X;
+  const displacement = clamp(
+    MIN_PRESSED_EDGE_X - safeFingerX,
+    0,
+    hinge.tiltDistance,
+  );
+  const radius = Math.hypot(hinge.apexX, hinge.apexZ);
+  const initialAngle = Math.atan2(hinge.apexZ, hinge.apexX);
+  const rotatedAngle = Math.acos(
+    clamp((hinge.apexX - displacement) / radius, -1, 1),
+  );
+  return clamp(rotatedAngle - initialAngle, 0, MAX_PRESSED_ROLL_TILT);
+}
+
+/**
+ * Starts lifting after roughly one quarter of a single-page swipe instead of
+ * waiting until the sheet is compressed by almost half a viewport. The
+ * quadratic ease-out makes a short flick visibly raise the paper while the
+ * stable hinge still supplies the exact terminal rotation.
+ */
+export function gestureLiftRotationForFingerX(fingerX: number): number {
+  const safeFingerX = Number.isFinite(fingerX) ? fingerX : 1;
+  const progress = clamp(
+    (GESTURE_LIFT_START_X - safeFingerX) /
+      (GESTURE_LIFT_START_X - SLOW_COMMIT_EDGE_X),
+    0,
+    1,
+  );
+  const easedProgress = 1 - (1 - progress) ** 2;
+  return MAX_PRESSED_ROLL_TILT * easedProgress;
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value));
+}

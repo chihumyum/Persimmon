@@ -1,0 +1,125 @@
+import { Skia, type SkImage } from "@shopify/react-native-skia";
+import { Platform } from "react-native";
+
+import { releaseSkiaResources } from "./skia-resource-release";
+
+interface CacheEntry {
+  readonly image: SkImage;
+  readonly decodedBytes: number;
+  lastUsed: number;
+  pinned: boolean;
+}
+
+export type ResourceLoader = (
+  assetId: string,
+) => Promise<Uint8Array | undefined>;
+
+export class DecodedImageCache {
+  private readonly entries = new Map<string, CacheEntry>();
+  private readonly pending = new Map<string, Promise<SkImage | null>>();
+  private usageCounter = 0;
+  private decodedBytes = 0;
+
+  constructor(readonly byteBudget: number) {
+    if (!Number.isSafeInteger(byteBudget) || byteBudget <= 0) {
+      throw new RangeError("image cache byteBudget must be positive");
+    }
+  }
+
+  get sizeInBytes(): number {
+    return this.decodedBytes;
+  }
+
+  get count(): number {
+    return this.entries.size;
+  }
+
+  get(assetId: string): SkImage | undefined {
+    const entry = this.entries.get(assetId);
+    if (entry) {
+      entry.lastUsed = ++this.usageCounter;
+    }
+    return entry?.image;
+  }
+
+  async load(
+    assetId: string,
+    loadResource: ResourceLoader,
+  ): Promise<SkImage | null> {
+    const cached = this.get(assetId);
+    if (cached) {
+      return cached;
+    }
+    const inFlight = this.pending.get(assetId);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    const request = loadResource(assetId)
+      .then((bytes) => {
+        if (!bytes) {
+          return null;
+        }
+        const data = Skia.Data.fromBytes(bytes);
+        try {
+          const image = Skia.Image.MakeImageFromEncoded(data);
+          if (!image) {
+            return null;
+          }
+          const decodedBytes = image.width() * image.height() * 4;
+          this.entries.set(assetId, {
+            image,
+            decodedBytes,
+            lastUsed: ++this.usageCounter,
+            pinned: false,
+          });
+          this.decodedBytes += decodedBytes;
+          this.evict();
+          return image;
+        } finally {
+          data.dispose();
+        }
+      })
+      .finally(() => {
+        this.pending.delete(assetId);
+      });
+    this.pending.set(assetId, request);
+    return request;
+  }
+
+  pinOnly(assetIds: ReadonlySet<string>): void {
+    for (const [assetId, entry] of this.entries) {
+      entry.pinned = assetIds.has(assetId);
+      if (entry.pinned) {
+        entry.lastUsed = ++this.usageCounter;
+      }
+    }
+    this.evict();
+  }
+
+  dispose(): void {
+    for (const entry of this.entries.values()) {
+      releaseSkiaResources(Platform.OS, entry.image, null);
+    }
+    this.entries.clear();
+    this.pending.clear();
+    this.decodedBytes = 0;
+  }
+
+  private evict(): void {
+    if (this.decodedBytes <= this.byteBudget) {
+      return;
+    }
+    const candidates = [...this.entries]
+      .filter(([, entry]) => !entry.pinned)
+      .sort((left, right) => left[1].lastUsed - right[1].lastUsed);
+    for (const [assetId, entry] of candidates) {
+      if (this.decodedBytes <= this.byteBudget) {
+        break;
+      }
+      releaseSkiaResources(Platform.OS, entry.image, null);
+      this.entries.delete(assetId);
+      this.decodedBytes -= entry.decodedBytes;
+    }
+  }
+}

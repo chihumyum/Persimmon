@@ -20,9 +20,7 @@ import { normalizeUtf16Boundary } from "./utf16";
 
 const TEXT_COLOR = Skia.Color("#2f2b26");
 
-function textAlignOf(
-  align: TypographyPreset["align"],
-): TextAlign {
+function textAlignOf(align: TypographyPreset["align"]): TextAlign {
   switch (align) {
     case "center":
       return TextAlign.Center;
@@ -55,9 +53,7 @@ function textStyleOf(
   };
 }
 
-function paragraphStyleOf(
-  input: ParagraphLayoutInput,
-): SkParagraphStyle {
+function paragraphStyleOf(input: ParagraphLayoutInput): SkParagraphStyle {
   return {
     textAlign: textAlignOf(input.style.align),
     textStyle: textStyleOf(input, []),
@@ -125,11 +121,7 @@ export function createSkiaParagraphBackend(
             startOffset,
             "backward",
           );
-          const end = normalizeUtf16Boundary(
-            input.text,
-            endOffset,
-            "forward",
-          );
+          const end = normalizeUtf16Boundary(input.text, endOffset, "forward");
           return paragraph
             .getRectsForRange(start, end)
             .map(({ x, y, width, height }) => ({
