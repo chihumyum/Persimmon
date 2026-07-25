@@ -1,0 +1,36 @@
+import { describe, expect, it, vi } from "vitest";
+
+import { DecodedImageCache } from "./image-cache";
+
+vi.mock("react-native", () => ({ Platform: { OS: "web" } }));
+vi.mock("@shopify/react-native-skia", () => ({
+  Skia: {},
+}));
+
+describe("decoded image cache state", () => {
+  it("distinguishes loading from a settled unavailable resource", async () => {
+    const cache = new DecodedImageCache(1024);
+    let finishLoad: ((bytes: Uint8Array | undefined) => void) | undefined;
+    const loader = vi.fn(
+      () =>
+        new Promise<Uint8Array | undefined>((resolve) => {
+          finishLoad = resolve;
+        }),
+    );
+
+    expect(cache.getStatus("cover")).toBe("unrequested");
+    const pending = cache.load("cover", loader);
+    expect(cache.getStatus("cover")).toBe("loading");
+
+    await Promise.resolve();
+    finishLoad?.(undefined);
+    await expect(pending).resolves.toBeNull();
+    expect(cache.getStatus("cover")).toBe("unavailable");
+
+    await expect(cache.load("cover", loader)).resolves.toBeNull();
+    expect(loader).toHaveBeenCalledTimes(1);
+
+    cache.dispose();
+    expect(cache.getStatus("cover")).toBe("unrequested");
+  });
+});

@@ -217,7 +217,7 @@ function LazyReaderEngine({
   );
   const pageCaptureCache = useRef(new Map<string, CapturedPage>());
   const [pageCaptureVersion, setPageCaptureVersion] = useState(0);
-  const [, setImageVersion] = useState(0);
+  const [imageVersion, setImageVersion] = useState(0);
   const ensurePagination = useCallback(
     (sectionIndex: number): PaginationResult<SkParagraph> => {
       const cached = paginationCache.get(sectionIndex);
@@ -1111,7 +1111,7 @@ function LazyReaderEngine({
     if (addedCapture) {
       setPageCaptureVersion((version) => version + 1);
     }
-  }, [captureAddresses, ensurePageCapture, pageCaptureKey]);
+  }, [captureAddresses, ensurePageCapture, imageVersion, pageCaptureKey]);
 
   const turnTextures = useMemo(() => {
     void pageCaptureVersion;

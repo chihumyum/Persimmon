@@ -14,9 +14,16 @@ export type ResourceLoader = (
   assetId: string,
 ) => Promise<Uint8Array | undefined>;
 
+export type DecodedImageStatus =
+  | "unrequested"
+  | "loading"
+  | "ready"
+  | "unavailable";
+
 export class DecodedImageCache {
   private readonly entries = new Map<string, CacheEntry>();
   private readonly pending = new Map<string, Promise<SkImage | null>>();
+  private readonly unavailable = new Set<string>();
   private usageCounter = 0;
   private decodedBytes = 0;
 
@@ -42,6 +49,16 @@ export class DecodedImageCache {
     return entry?.image;
   }
 
+  getStatus(assetId: string): DecodedImageStatus {
+    if (this.entries.has(assetId)) {
+      return "ready";
+    }
+    if (this.pending.has(assetId)) {
+      return "loading";
+    }
+    return this.unavailable.has(assetId) ? "unavailable" : "unrequested";
+  }
+
   async load(
     assetId: string,
     loadResource: ResourceLoader,
@@ -54,19 +71,26 @@ export class DecodedImageCache {
     if (inFlight) {
       return inFlight;
     }
+    if (this.unavailable.has(assetId)) {
+      return null;
+    }
 
-    const request = loadResource(assetId)
+    const request = Promise.resolve()
+      .then(() => loadResource(assetId))
       .then((bytes) => {
         if (!bytes) {
+          this.unavailable.add(assetId);
           return null;
         }
         const data = Skia.Data.fromBytes(bytes);
         try {
           const image = Skia.Image.MakeImageFromEncoded(data);
           if (!image) {
+            this.unavailable.add(assetId);
             return null;
           }
           const decodedBytes = image.width() * image.height() * 4;
+          this.unavailable.delete(assetId);
           this.entries.set(assetId, {
             image,
             decodedBytes,
@@ -79,6 +103,14 @@ export class DecodedImageCache {
         } finally {
           data.dispose();
         }
+      })
+      .catch((error: unknown) => {
+        this.unavailable.add(assetId);
+        console.warn(
+          `[Persimmon] Failed to load image asset ${assetId}; using placeholder.`,
+          error,
+        );
+        return null;
       })
       .finally(() => {
         this.pending.delete(assetId);
@@ -103,6 +135,7 @@ export class DecodedImageCache {
     }
     this.entries.clear();
     this.pending.clear();
+    this.unavailable.clear();
     this.decodedBytes = 0;
   }
 

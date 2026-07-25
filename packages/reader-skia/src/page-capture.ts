@@ -38,6 +38,9 @@ export function capturePage(
   height: number,
   byteBudget = PAGE_CAPTURE_BYTE_BUDGET,
 ): CapturedPage | null {
+  if (!pageImagesSettledForCapture(page, imageCache)) {
+    return null;
+  }
   const scale = pageCaptureScale(width, height, byteBudget);
   if (scale === null) {
     return null;
@@ -161,6 +164,24 @@ export function capturePage(
       surface.dispose();
     }
   }
+}
+
+/**
+ * A transition texture must not freeze a temporary loading placeholder into
+ * the page. Unavailable assets are settled and may use the fallback rectangle;
+ * unrequested or actively decoding assets must make capture wait and retry.
+ */
+export function pageImagesSettledForCapture(
+  page: Pick<PageScene, "items">,
+  imageCache: Pick<DecodedImageCache, "getStatus">,
+): boolean {
+  return page.items.every((item) => {
+    if (item.kind !== "image") {
+      return true;
+    }
+    const status = imageCache.getStatus(item.assetId);
+    return status === "ready" || status === "unavailable";
+  });
 }
 
 function containRect(
