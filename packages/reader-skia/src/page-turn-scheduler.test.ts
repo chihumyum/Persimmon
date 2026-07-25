@@ -67,11 +67,11 @@ describe("page-turn scheduler", () => {
     ]);
   });
 
-  it("uniformly throttles ten inputs across one second to four starts", () => {
+  it("uniformly throttles tap starts to one every 150 ms", () => {
     const scheduler = createHarness();
     let state = createPageTurnSchedulerState(page(0));
-    for (let index = 0; index < 10; index += 1) {
-      state = requestScheduledPageTurn(state, 1, scheduler, index * 100);
+    for (const requestedAtMs of [0, 149, 150, 299, 300, 449, 450]) {
+      state = requestScheduledPageTurn(state, 1, scheduler, requestedAtMs);
     }
 
     expect(state.turns).toHaveLength(4);

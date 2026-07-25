@@ -3,7 +3,7 @@ import type { ReleasedPageTurnGesture } from "@persimmon/page-turn-core";
 import { samePageAddress, type PageAddress } from "./section-navigation";
 
 export const MAX_CONCURRENT_PAGE_TURNS = 4;
-export const PAGE_TURN_START_INTERVAL_MS = 250;
+export const PAGE_TURN_START_INTERVAL_MS = 150;
 
 export interface ScheduledPageTurn {
   readonly id: string;
@@ -53,7 +53,7 @@ export function createPageTurnSchedulerState(
 
 /**
  * Starts at most one turn for this input. There is deliberately no pending
- * queue: input inside the 250 ms throttle window, at full lane capacity, or
+ * queue: input inside the 150 ms throttle window, at full lane capacity, or
  * against the current stack direction is dropped instead of replayed later.
  */
 export function requestScheduledPageTurn(
