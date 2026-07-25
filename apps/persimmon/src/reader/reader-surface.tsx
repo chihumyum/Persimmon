@@ -1,16 +1,13 @@
 import { NotoSerifSC_400Regular } from "@expo-google-fonts/noto-serif-sc/400Regular";
-import type {
-  BookIR,
-  BookPosition,
-} from "@persimmon/book-core";
+import type { BookIR, BookPosition } from "@persimmon/book-core";
 import {
   LiveReader,
+  type AutomaticPageTurnTuning,
+  type GesturePageTurnTuning,
+  type ReaderLayoutMode,
   type ReaderProgress,
 } from "@persimmon/reader-skia";
-import {
-  useFonts,
-  type DataModule,
-} from "@shopify/react-native-skia";
+import { useFonts, type DataModule } from "@shopify/react-native-skia";
 import {
   ActivityIndicator,
   Platform,
@@ -32,8 +29,14 @@ export interface ReaderSurfaceProps {
   width: number;
   height: number;
   fontSize: number;
+  layout: ReaderLayoutMode;
+  automaticPageTurnTuning: AutomaticPageTurnTuning;
+  gesturePageTurnTuning: GesturePageTurnTuning;
   initialPosition?: BookPosition;
+  loadResource: (assetId: string) => Promise<Uint8Array | undefined>;
+  onCenterPress: () => void;
   onProgress: (progress: ReaderProgress) => void;
+  onTurningChange: (turning: boolean) => void;
 }
 
 export default function ReaderSurface({
@@ -41,8 +44,14 @@ export default function ReaderSurface({
   width,
   height,
   fontSize,
+  layout,
+  automaticPageTurnTuning,
+  gesturePageTurnTuning,
   initialPosition,
+  loadResource,
+  onCenterPress,
   onProgress,
+  onTurningChange,
 }: ReaderSurfaceProps) {
   const fontProvider = useFonts({
     "Noto Serif SC": [READER_FONT],
@@ -64,8 +73,14 @@ export default function ReaderSurface({
       width={width}
       height={height}
       fontSize={fontSize}
+      layout={layout}
+      automaticPageTurnTuning={automaticPageTurnTuning}
+      gesturePageTurnTuning={gesturePageTurnTuning}
       initialPosition={initialPosition}
+      loadResource={loadResource}
+      onCenterPress={onCenterPress}
       onProgress={onProgress}
+      onTurningChange={onTurningChange}
     />
   );
 }

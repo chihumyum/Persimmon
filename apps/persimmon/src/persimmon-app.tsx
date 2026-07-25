@@ -1,47 +1,34 @@
 import type { ReaderProgress } from "@persimmon/reader-skia";
 import { EpubImportError } from "@persimmon/epub-import";
-import React, {
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  LayoutChangeEvent,
+  Alert,
   Platform,
-  Pressable,
-  ScrollView,
-  StatusBar,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 
-import { AsyncSkia } from "../components/async-skia";
+import { demoSummary } from "./library/demo";
 import {
-  createDemoEntry,
-  loadLibrary,
-  saveLibrary,
-  type LibraryEntry,
-} from "./library-store";
+  libraryRepository,
+  type LibraryBookSummary,
+  type OpenedLibraryBook,
+} from "./library/repository";
+import {
+  DEFAULT_READER_SETTINGS,
+  LibraryError,
+  type ReaderPageTurnTuning,
+  type ReaderSettings,
+} from "./library/types";
 import { pickAndImportEpub } from "./pick-epub";
+import { LibraryScreen } from "./screens/library-screen";
+import { ReaderScreen } from "./screens/reader-screen";
 
-const ReaderSurface = React.lazy(
-  () => import("./reader/reader-surface"),
-);
+type Screen = { kind: "library" } | { kind: "reader"; bookId: string };
 
-type Screen =
-  | { kind: "library" }
-  | { kind: "reader"; bookId: string };
-
-interface Viewport {
-  width: number;
-  height: number;
-}
-
-function importErrorMessage(error: unknown): string {
+function userFacingError(error: unknown): string {
   if (error instanceof EpubImportError) {
     switch (error.code) {
       case "unsupported-fixed-layout":
@@ -54,9 +41,10 @@ function importErrorMessage(error: unknown): string {
         return `无法读取这本 EPUB：${error.message}`;
     }
   }
-  return error instanceof Error
-    ? error.message
-    : "导入 EPUB 时发生未知错误。";
+  if (error instanceof LibraryError) {
+    return error.message;
+  }
+  return error instanceof Error ? error.message : "发生未知错误。";
 }
 
 function LoadingScreen() {
@@ -70,68 +58,48 @@ function LoadingScreen() {
   );
 }
 
-interface BookCardProps {
-  entry: LibraryEntry;
-  onOpen: () => void;
-}
-
-function BookCard({ entry, onOpen }: BookCardProps) {
-  const progress = entry.locator ? "继续阅读" : "开始阅读";
-  return (
-    <Pressable
-      accessibilityLabel={`打开 ${entry.book.title}`}
-      accessibilityRole="button"
-      onPress={onOpen}
-      style={({ pressed }) => [
-        styles.bookCard,
-        pressed && styles.bookCardPressed,
-      ]}
-    >
-      <View style={styles.cover}>
-        <View style={styles.coverFruit}>
-          <Text style={styles.coverFruitText}>柿</Text>
-        </View>
-        <Text numberOfLines={3} style={styles.coverTitle}>
-          {entry.book.title}
-        </Text>
-      </View>
-      <Text numberOfLines={1} style={styles.bookTitle}>
-        {entry.book.title}
-      </Text>
-      <Text numberOfLines={1} style={styles.bookMeta}>
-        {entry.author ?? entry.sourceName}
-      </Text>
-      <Text style={styles.bookProgress}>{progress}</Text>
-    </Pressable>
-  );
-}
-
 export function PersimmonApp() {
-  const [entries, setEntries] = useState<LibraryEntry[]>([
-    createDemoEntry(),
+  const [entries, setEntries] = useState<readonly LibraryBookSummary[]>([
+    demoSummary(),
   ]);
+  const [activeBook, setActiveBook] = useState<OpenedLibraryBook | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [screen, setScreen] = useState<Screen>({ kind: "library" });
-  const [viewport, setViewport] = useState<Viewport | null>(null);
-  const [fontSize, setFontSize] = useState(20);
+  const [readerSettings, setReaderSettings] = useState<ReaderSettings>(
+    DEFAULT_READER_SETTINGS,
+  );
   const [importing, setImporting] = useState(false);
+  const [openingBookId, setOpeningBookId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const progressTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  const pendingProgress = useRef<ReaderProgress | undefined>(undefined);
+  const settingsTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+
+  const refreshLibrary = useCallback(async () => {
+    setEntries(await libraryRepository.listBooks());
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-    loadLibrary()
-      .then((loaded) => {
+    libraryRepository
+      .initialize()
+      .then(async () => {
+        const [books, settings] = await Promise.all([
+          libraryRepository.listBooks(),
+          libraryRepository.getSettings(),
+        ]);
         if (!cancelled) {
-          setEntries(loaded);
+          setEntries(books);
+          setReaderSettings(settings);
         }
       })
       .catch((loadError: unknown) => {
         if (!cancelled) {
-          setError(
-            loadError instanceof Error
-              ? `无法读取本地书架：${loadError.message}`
-              : "无法读取本地书架。",
-          );
+          setError(`无法读取本地书架：${userFacingError(loadError)}`);
         }
       })
       .finally(() => {
@@ -144,19 +112,17 @@ export function PersimmonApp() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!hydrated) {
-      return;
-    }
-    const timer = setTimeout(() => {
-      saveLibrary(entries).catch(() => {
-        setError("本地阅读进度保存失败。");
-      });
-    }, 250);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [entries, hydrated]);
+  useEffect(
+    () => () => {
+      if (progressTimer.current) {
+        clearTimeout(progressTimer.current);
+      }
+      if (settingsTimer.current) {
+        clearTimeout(settingsTimer.current);
+      }
+    },
+    [],
+  );
 
   const activeEntry = useMemo(
     () =>
@@ -166,281 +132,157 @@ export function PersimmonApp() {
     [entries, screen],
   );
 
-  const openBook = useCallback((bookId: string) => {
-    setViewport(null);
-    setScreen({ kind: "reader", bookId });
+  const openBook = useCallback(async (bookId: string) => {
+    setError(null);
+    setOpeningBookId(bookId);
+    try {
+      const opened = await libraryRepository.openBook(bookId);
+      setActiveBook(opened);
+      setScreen({ kind: "reader", bookId });
+    } catch (openError: unknown) {
+      setError(userFacingError(openError));
+    } finally {
+      setOpeningBookId(null);
+    }
   }, []);
 
   const importBook = useCallback(async () => {
     setError(null);
     setImporting(true);
     try {
-      const imported = await pickAndImportEpub();
-      if (!imported) {
+      const picked = await pickAndImportEpub();
+      if (!picked) {
         return;
       }
-      const entry: LibraryEntry = {
-        id: imported.result.book.id,
-        book: imported.result.book,
-        author: imported.result.metadata.author,
-        sourceName: imported.fileName,
-        addedAt: new Date().toISOString(),
-      };
-      setEntries((current) => [
-        ...current.filter((item) => item.id !== entry.id),
-        entry,
-      ]);
-      openBook(entry.id);
+      const entry = await libraryRepository.importBook({
+        bytes: picked.bytes,
+        fileName: picked.fileName,
+      });
+      await refreshLibrary();
+      await openBook(entry.id);
     } catch (importError: unknown) {
-      setError(importErrorMessage(importError));
+      setError(userFacingError(importError));
     } finally {
       setImporting(false);
     }
-  }, [openBook]);
+  }, [openBook, refreshLibrary]);
 
-  const updateProgress = useCallback(
-    (progress: ReaderProgress) => {
-      if (screen.kind !== "reader") {
-        return;
+  const updateProgress = useCallback((progress: ReaderProgress) => {
+    setEntries((current) =>
+      current.map((entry) =>
+        entry.id === progress.locator.bookId
+          ? { ...entry, locator: progress.locator }
+          : entry,
+      ),
+    );
+    pendingProgress.current = progress;
+    if (progressTimer.current) {
+      clearTimeout(progressTimer.current);
+    }
+    progressTimer.current = setTimeout(() => {
+      const pending = pendingProgress.current;
+      if (pending) {
+        libraryRepository
+          .saveProgress(pending.locator)
+          .catch(() => setError("本地阅读进度保存失败。"));
       }
-      setEntries((current) =>
-        current.map((entry) => {
-          if (entry.id !== screen.bookId) {
-            return entry;
-          }
-          const previous = entry.locator?.position;
-          const next = progress.locator.position;
-          if (
-            entry.locator?.revisionId ===
-              progress.locator.revisionId &&
-            previous?.sectionId === next.sectionId &&
-            previous.blockId === next.blockId &&
-            previous.offset === next.offset
-          ) {
-            return entry;
-          }
-          return { ...entry, locator: progress.locator };
-        }),
-      );
+    }, 250);
+  }, []);
+
+  const updateReaderSettings = useCallback((next: ReaderSettings) => {
+    setReaderSettings(next);
+    if (settingsTimer.current) {
+      clearTimeout(settingsTimer.current);
+    }
+    settingsTimer.current = setTimeout(() => {
+      libraryRepository
+        .saveSettings(next)
+        .catch(() => setError("阅读设置保存失败。"));
+    }, 250);
+  }, []);
+  const updateFontSize = useCallback(
+    (nextFontSize: number) => {
+      updateReaderSettings({ ...readerSettings, fontSize: nextFontSize });
     },
-    [screen],
+    [readerSettings, updateReaderSettings],
+  );
+  const updateLayout = useCallback(
+    (layout: ReaderSettings["layout"]) => {
+      updateReaderSettings({ ...readerSettings, layout });
+    },
+    [readerSettings, updateReaderSettings],
+  );
+  const updatePageTurnTuning = useCallback(
+    (pageTurnTuning: ReaderPageTurnTuning) => {
+      updateReaderSettings({ ...readerSettings, pageTurnTuning });
+    },
+    [readerSettings, updateReaderSettings],
   );
 
-  const measureReader = useCallback((event: LayoutChangeEvent) => {
-    const { width, height } = event.nativeEvent.layout;
-    if (width > 0 && height > 0) {
-      setViewport((current) =>
-        current?.width === width && current.height === height
-          ? current
-          : { width, height },
-      );
-    }
-  }, []);
+  const deleteEntry = useCallback(
+    (entry: LibraryBookSummary) => {
+      const remove = async () => {
+        try {
+          await libraryRepository.removeBook(entry.id);
+          await refreshLibrary();
+        } catch (deleteError: unknown) {
+          setError(userFacingError(deleteError));
+        }
+      };
+
+      if (Platform.OS === "web" && typeof globalThis.confirm === "function") {
+        if (globalThis.confirm(`确定删除《${entry.title}》及其本地资源吗？`)) {
+          void remove();
+        }
+        return;
+      }
+      Alert.alert("删除书籍", `确定删除《${entry.title}》及其本地资源吗？`, [
+        { text: "取消", style: "cancel" },
+        { text: "删除", style: "destructive", onPress: () => void remove() },
+      ]);
+    },
+    [refreshLibrary],
+  );
 
   if (!hydrated) {
     return <LoadingScreen />;
   }
 
-  if (screen.kind === "reader" && activeEntry) {
+  if (screen.kind === "reader" && activeEntry && activeBook) {
     return (
-      <View style={styles.readerScreen}>
-        <StatusBar barStyle="dark-content" />
-        <View style={styles.readerToolbar}>
-          <Pressable
-            accessibilityLabel="返回书架"
-            accessibilityRole="button"
-            onPress={() => setScreen({ kind: "library" })}
-            style={styles.toolbarButton}
-          >
-            <Text style={styles.toolbarButtonText}>‹ 书架</Text>
-          </Pressable>
-          <Text numberOfLines={1} style={styles.readerTitle}>
-            {activeEntry.book.title}
-          </Text>
-          <View style={styles.typeControls}>
-            <Pressable
-              accessibilityLabel="减小字号"
-              accessibilityRole="button"
-              disabled={fontSize <= 16}
-              onPress={() =>
-                setFontSize((current) => Math.max(16, current - 2))
-              }
-              style={styles.typeButton}
-            >
-              <Text style={styles.typeButtonText}>A−</Text>
-            </Pressable>
-            <Pressable
-              accessibilityLabel="增大字号"
-              accessibilityRole="button"
-              disabled={fontSize >= 30}
-              onPress={() =>
-                setFontSize((current) => Math.min(30, current + 2))
-              }
-              style={styles.typeButton}
-            >
-              <Text style={styles.typeButtonText}>A+</Text>
-            </Pressable>
-          </View>
-        </View>
-        <View style={styles.readerStage}>
-          <View
-            onLayout={measureReader}
-            style={styles.readerPage}
-          >
-            {viewport ? (
-              <Suspense
-                fallback={
-                  <View style={styles.readerLoading}>
-                    <ActivityIndicator color="#d95f2b" />
-                  </View>
-                }
-              >
-                <AsyncSkia />
-                <ReaderSurface
-                  book={activeEntry.book}
-                  width={viewport.width}
-                  height={viewport.height}
-                  fontSize={fontSize}
-                  initialPosition={activeEntry.locator?.position}
-                  onProgress={updateProgress}
-                />
-              </Suspense>
-            ) : null}
-          </View>
-        </View>
-      </View>
+      <ReaderScreen
+        entry={activeEntry}
+        fontSize={readerSettings.fontSize}
+        layout={readerSettings.layout}
+        pageTurnTuning={readerSettings.pageTurnTuning}
+        opened={activeBook}
+        onBack={() => {
+          setActiveBook(null);
+          setScreen({ kind: "library" });
+        }}
+        onFontSizeChange={updateFontSize}
+        onLayoutChange={updateLayout}
+        onPageTurnTuningChange={updatePageTurnTuning}
+        onProgress={updateProgress}
+      />
     );
   }
 
   return (
-    <View style={styles.libraryScreen}>
-      <StatusBar barStyle="dark-content" />
-      <ScrollView
-        contentContainerStyle={styles.libraryContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.libraryHeader}>
-          <View style={styles.brandRow}>
-            <View style={styles.smallBrandMark}>
-              <Text style={styles.smallBrandText}>柿</Text>
-            </View>
-            <View>
-              <Text style={styles.appName}>Persimmon</Text>
-              <Text style={styles.appTagline}>
-                一本轻快、安静的 EPUB 阅读器
-              </Text>
-            </View>
-          </View>
-          <Pressable
-            accessibilityLabel="导入 EPUB"
-            accessibilityRole="button"
-            disabled={importing}
-            onPress={importBook}
-            style={({ pressed }) => [
-              styles.importButton,
-              pressed && styles.importButtonPressed,
-            ]}
-          >
-            {importing ? (
-              <ActivityIndicator color="#fffaf3" size="small" />
-            ) : (
-              <Text style={styles.importButtonText}>＋ 导入 EPUB</Text>
-            )}
-          </Pressable>
-        </View>
-
-        {error ? (
-          <View accessibilityRole="alert" style={styles.errorCard}>
-            <Text style={styles.errorText}>{error}</Text>
-            <Pressable onPress={() => setError(null)}>
-              <Text style={styles.dismissText}>知道了</Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        <Text style={styles.sectionTitle}>我的书架</Text>
-        <View style={styles.bookGrid}>
-          {entries.map((entry) => (
-            <BookCard
-              key={entry.id}
-              entry={entry}
-              onOpen={() => openBook(entry.id)}
-            />
-          ))}
-        </View>
-
-        <View style={styles.architectureNote}>
-          <Text style={styles.architectureTitle}>
-            Live text, native rhythm.
-          </Text>
-          <Text style={styles.architectureBody}>
-            BookIR → SkParagraph → Skia。没有 WebView，也没有截图翻页。
-          </Text>
-        </View>
-      </ScrollView>
-    </View>
+    <LibraryScreen
+      entries={entries}
+      error={error}
+      importing={importing}
+      openingBookId={openingBookId}
+      onDelete={deleteEntry}
+      onDismissError={() => setError(null)}
+      onImport={importBook}
+      onOpen={(bookId) => void openBook(bookId)}
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  appName: {
-    color: "#2d2924",
-    fontSize: 30,
-    fontWeight: "700",
-    letterSpacing: -0.8,
-  },
-  appTagline: {
-    color: "#7b7167",
-    fontSize: 14,
-    marginTop: 3,
-  },
-  architectureBody: {
-    color: "#7f756b",
-    fontSize: 14,
-    lineHeight: 22,
-    marginTop: 6,
-  },
-  architectureNote: {
-    backgroundColor: "#eee4d7",
-    borderRadius: 20,
-    marginTop: 36,
-    padding: 24,
-  },
-  architectureTitle: {
-    color: "#4a4038",
-    fontSize: 18,
-    fontWeight: "700",
-  },
-  bookCard: {
-    marginBottom: 30,
-    marginRight: 24,
-    width: 168,
-  },
-  bookCardPressed: {
-    opacity: 0.72,
-    transform: [{ scale: 0.985 }],
-  },
-  bookGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
-  bookMeta: {
-    color: "#887e74",
-    fontSize: 13,
-    marginTop: 4,
-  },
-  bookProgress: {
-    color: "#c65125",
-    fontSize: 12,
-    fontWeight: "600",
-    marginTop: 8,
-  },
-  bookTitle: {
-    color: "#342f2a",
-    fontSize: 16,
-    fontWeight: "600",
-    marginTop: 13,
-  },
   brandMark: {
     alignItems: "center",
     backgroundColor: "#df5d2c",
@@ -455,194 +297,10 @@ const styles = StyleSheet.create({
     fontSize: 38,
     fontWeight: "700",
   },
-  brandRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 14,
-  },
-  cover: {
-    backgroundColor: "#e8d4bd",
-    ...(Platform.OS === "web"
-      ? { boxShadow: "0 10px 16px rgba(62, 44, 32, 0.16)" }
-      : {
-          shadowColor: "#3e2c20",
-          shadowOffset: { width: 0, height: 10 },
-          shadowOpacity: 0.16,
-          shadowRadius: 16,
-        }),
-    borderRadius: 7,
-    height: 238,
-    justifyContent: "space-between",
-    overflow: "hidden",
-    padding: 20,
-  },
-  coverFruit: {
-    alignItems: "center",
-    alignSelf: "flex-end",
-    backgroundColor: "#dd5a29",
-    borderRadius: 18,
-    height: 48,
-    justifyContent: "center",
-    width: 48,
-  },
-  coverFruitText: {
-    color: "#fff6e9",
-    fontSize: 22,
-    fontWeight: "700",
-  },
-  coverTitle: {
-    color: "#46382d",
-    fontSize: 25,
-    fontWeight: "700",
-    lineHeight: 33,
-  },
-  dismissText: {
-    color: "#b54620",
-    fontSize: 13,
-    fontWeight: "700",
-    marginTop: 10,
-  },
-  errorCard: {
-    backgroundColor: "#f5dfd5",
-    borderRadius: 14,
-    marginBottom: 28,
-    padding: 16,
-  },
-  errorText: {
-    color: "#7d321c",
-    fontSize: 14,
-    lineHeight: 21,
-  },
-  importButton: {
-    alignItems: "center",
-    backgroundColor: "#d95f2b",
-    borderRadius: 999,
-    justifyContent: "center",
-    minHeight: 44,
-    minWidth: 136,
-    paddingHorizontal: 18,
-  },
-  importButtonPressed: {
-    backgroundColor: "#bd4d21",
-  },
-  importButtonText: {
-    color: "#fffaf3",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  libraryContent: {
-    alignSelf: "center",
-    maxWidth: 1080,
-    paddingBottom: 64,
-    paddingHorizontal: 28,
-    paddingTop: Platform.OS === "web" ? 48 : 64,
-    width: "100%",
-  },
-  libraryHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 48,
-  },
-  libraryScreen: {
-    backgroundColor: "#f7f1e8",
-    flex: 1,
-  },
   loadingScreen: {
     alignItems: "center",
     backgroundColor: "#f7f1e8",
     flex: 1,
     justifyContent: "center",
-  },
-  readerLoading: {
-    alignItems: "center",
-    backgroundColor: "#fbf7f0",
-    flex: 1,
-    justifyContent: "center",
-  },
-  readerPage: {
-    backgroundColor: "#fbf7f0",
-    ...(Platform.OS === "web"
-      ? { boxShadow: "0 10px 24px rgba(61, 48, 38, 0.12)" }
-      : {}),
-    borderRadius: Platform.OS === "web" ? 12 : 0,
-    flex: 1,
-    maxWidth: 920,
-    overflow: "hidden",
-    width: "100%",
-  },
-  readerScreen: {
-    backgroundColor: "#e8e1d8",
-    flex: 1,
-  },
-  readerStage: {
-    alignItems: "center",
-    flex: 1,
-    padding: Platform.OS === "web" ? 18 : 0,
-    paddingTop: 0,
-  },
-  readerTitle: {
-    color: "#4b443d",
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "600",
-    marginHorizontal: 12,
-    textAlign: "center",
-  },
-  readerToolbar: {
-    alignItems: "center",
-    backgroundColor: "#f4eee6",
-    borderBottomColor: "#ddd3c8",
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: "row",
-    minHeight: Platform.OS === "web" ? 54 : 64,
-    paddingHorizontal: 16,
-    paddingTop: Platform.OS === "web" ? 0 : 10,
-  },
-  sectionTitle: {
-    color: "#4b443d",
-    fontSize: 14,
-    fontWeight: "700",
-    letterSpacing: 1.4,
-    marginBottom: 22,
-    textTransform: "uppercase",
-  },
-  smallBrandMark: {
-    alignItems: "center",
-    backgroundColor: "#df5d2c",
-    borderRadius: 16,
-    height: 52,
-    justifyContent: "center",
-    width: 52,
-  },
-  smallBrandText: {
-    color: "#fffaf2",
-    fontSize: 25,
-    fontWeight: "700",
-  },
-  toolbarButton: {
-    minWidth: 70,
-    paddingVertical: 10,
-  },
-  toolbarButtonText: {
-    color: "#b94b24",
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  typeButton: {
-    alignItems: "center",
-    borderRadius: 8,
-    height: 34,
-    justifyContent: "center",
-    width: 42,
-  },
-  typeButtonText: {
-    color: "#5c534b",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  typeControls: {
-    flexDirection: "row",
-    minWidth: 84,
   },
 });

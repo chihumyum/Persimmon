@@ -11,9 +11,11 @@
   "dependencies": {
     "@persimmon/book-core": "workspace:*",
     "@persimmon/layout": "workspace:*",
+    "@persimmon/page-turn-core": "workspace:*",
     "@shopify/react-native-skia": "2.6.2",
     "react": "19.2.3",
     "react-native": "0.86.0",
+    "react-native-gesture-handler": "~2.32.0",
     "react-native-reanimated": "4.5.0",
     "react-native-worklets": "0.10.0"
   },

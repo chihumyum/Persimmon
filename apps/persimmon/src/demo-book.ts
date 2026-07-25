@@ -30,9 +30,7 @@ const readingBlocks: ParagraphBlockIR[] = Array.from(
         : [
             {
               text: passages[index % passages.length],
-              ...(index % 7 === 0
-                ? { marks: ["emphasis"] as const }
-                : {}),
+              ...(index % 7 === 0 ? { marks: ["emphasis"] as const } : {}),
             },
           ],
     source: {

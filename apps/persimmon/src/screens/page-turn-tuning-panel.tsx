@@ -1,0 +1,543 @@
+import { useCallback, useMemo, useRef, useState } from "react";
+import {
+  PanResponder,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type GestureResponderEvent,
+  type LayoutChangeEvent,
+} from "react-native";
+
+import {
+  DEFAULT_READER_CLICK_PAGE_TURN_TUNING,
+  DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
+  type ReaderClickPageTurnTuning,
+  type ReaderGesturePageTurnTuning,
+  type ReaderPageTurnTuning,
+} from "../library/types";
+
+interface PageTurnTuningPanelProps {
+  readonly top: number;
+  readonly tuning: ReaderPageTurnTuning;
+  readonly onChange: (tuning: ReaderPageTurnTuning) => void;
+  readonly onClose: () => void;
+}
+
+interface TuningSliderProps {
+  readonly label: string;
+  readonly maximum: number;
+  readonly minimum: number;
+  readonly step: number;
+  readonly value: number;
+  readonly valueLabel: string;
+  readonly onChange: (value: number) => void;
+}
+
+function TuningSlider({
+  label,
+  maximum,
+  minimum,
+  step,
+  value,
+  valueLabel,
+  onChange,
+}: TuningSliderProps) {
+  const trackWidth = useRef(1);
+  const updateFromEvent = useCallback(
+    (event: GestureResponderEvent) => {
+      const ratio = Math.min(
+        1,
+        Math.max(0, event.nativeEvent.locationX / trackWidth.current),
+      );
+      const stepCount = Math.round(
+        (minimum + ratio * (maximum - minimum) - minimum) / step,
+      );
+      onChange(
+        Number(
+          Math.min(
+            maximum,
+            Math.max(minimum, minimum + stepCount * step),
+          ).toFixed(3),
+        ),
+      );
+    },
+    [maximum, minimum, onChange, step],
+  );
+  const responder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: updateFromEvent,
+        onPanResponderMove: updateFromEvent,
+        onPanResponderTerminationRequest: () => false,
+      }),
+    [updateFromEvent],
+  );
+  const ratio = (value - minimum) / (maximum - minimum);
+  const percentage = `${Math.min(100, Math.max(0, ratio * 100))}%` as const;
+  const adjust = useCallback(
+    (direction: 1 | -1) => {
+      onChange(
+        Number(
+          Math.min(
+            maximum,
+            Math.max(minimum, value + direction * step),
+          ).toFixed(3),
+        ),
+      );
+    },
+    [maximum, minimum, onChange, step, value],
+  );
+
+  return (
+    <View style={styles.sliderRow}>
+      <View style={styles.sliderLabelRow}>
+        <Text style={styles.sliderLabel}>{label}</Text>
+        <Text style={styles.sliderValue}>{valueLabel}</Text>
+      </View>
+      <View
+        {...responder.panHandlers}
+        accessibilityActions={[
+          { name: "decrement", label: `减小${label}` },
+          { name: "increment", label: `增大${label}` },
+        ]}
+        accessibilityLabel={label}
+        accessibilityRole="adjustable"
+        accessibilityValue={{
+          min: minimum,
+          max: maximum,
+          now: value,
+          text: valueLabel,
+        }}
+        onAccessibilityAction={(event) => {
+          if (event.nativeEvent.actionName === "increment") {
+            adjust(1);
+          } else if (event.nativeEvent.actionName === "decrement") {
+            adjust(-1);
+          }
+        }}
+        onLayout={(event: LayoutChangeEvent) => {
+          trackWidth.current = Math.max(1, event.nativeEvent.layout.width);
+        }}
+        style={styles.sliderTouchTarget}
+      >
+        <View style={styles.sliderRail}>
+          <View style={[styles.sliderFill, { width: percentage }]} />
+        </View>
+        <View style={[styles.sliderThumb, { left: percentage }]} />
+      </View>
+    </View>
+  );
+}
+
+export function PageTurnTuningPanel({
+  top,
+  tuning,
+  onChange,
+  onClose,
+}: PageTurnTuningPanelProps) {
+  const [mode, setMode] = useState<"click" | "gesture">("click");
+  const updateClick = useCallback(
+    (key: keyof ReaderClickPageTurnTuning, value: number) => {
+      onChange({ ...tuning, click: { ...tuning.click, [key]: value } });
+    },
+    [onChange, tuning],
+  );
+  const updateGesture = useCallback(
+    (key: keyof ReaderGesturePageTurnTuning, value: number) => {
+      const gesture = { ...tuning.gesture, [key]: value };
+      if (key === "minimumSpeedScale" && value > gesture.maximumSpeedScale) {
+        gesture.maximumSpeedScale = value;
+      } else if (
+        key === "maximumSpeedScale" &&
+        value < gesture.minimumSpeedScale
+      ) {
+        gesture.minimumSpeedScale = value;
+      }
+      onChange({ ...tuning, gesture });
+    },
+    [onChange, tuning],
+  );
+
+  return (
+    <View style={[styles.panel, { top }]}>
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.eyebrow}>NATURAL PAGE TURN</Text>
+          <Text style={styles.title}>翻页原始常量</Text>
+        </View>
+        <Pressable
+          accessibilityLabel="关闭翻页曲线"
+          accessibilityRole="button"
+          onPress={onClose}
+          style={styles.closeButton}
+        >
+          <Text style={styles.closeText}>关闭</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.modeTabs}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setMode("click")}
+          style={[styles.modeTab, mode === "click" && styles.modeTabActive]}
+        >
+          <Text
+            style={[
+              styles.modeTabText,
+              mode === "click" && styles.modeTabTextActive,
+            ]}
+          >
+            点击翻页
+          </Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setMode("gesture")}
+          style={[styles.modeTab, mode === "gesture" && styles.modeTabActive]}
+        >
+          <Text
+            style={[
+              styles.modeTabText,
+              mode === "gesture" && styles.modeTabTextActive,
+            ]}
+          >
+            手势翻页
+          </Text>
+        </Pressable>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={styles.sliderList}
+        showsVerticalScrollIndicator
+        style={styles.sliderScroller}
+      >
+        {mode === "click" ? (
+          <>
+            <TuningSlider
+              label="隆起起点 · releaseX"
+              maximum={0.8}
+              minimum={0.58}
+              step={0.01}
+              value={tuning.click.releaseX}
+              valueLabel={tuning.click.releaseX.toFixed(2)}
+              onChange={(value) => updateClick("releaseX", value)}
+            />
+            <TuningSlider
+              label="向上速度 · liftVelocity"
+              maximum={1.8}
+              minimum={0.7}
+              step={0.05}
+              value={tuning.click.liftVelocity}
+              valueLabel={tuning.click.liftVelocity.toFixed(2)}
+              onChange={(value) => updateClick("liftVelocity", value)}
+            />
+            <TuningSlider
+              label="横向展开 · liftToLeft"
+              maximum={2.6}
+              minimum={1.4}
+              step={0.05}
+              value={tuning.click.liftToLeft}
+              valueLabel={tuning.click.liftToLeft.toFixed(2)}
+              onChange={(value) => updateClick("liftToLeft", value)}
+            />
+            <TuningSlider
+              label="曲率衰减 · curvatureRelaxation"
+              maximum={14}
+              minimum={3.5}
+              step={0.25}
+              value={tuning.click.curvatureRelaxation}
+              valueLabel={tuning.click.curvatureRelaxation.toFixed(2)}
+              onChange={(value) => updateClick("curvatureRelaxation", value)}
+            />
+            <TuningSlider
+              label="时间步倍率 · playbackSpeed"
+              maximum={2}
+              minimum={0.5}
+              step={0.05}
+              value={tuning.click.playbackSpeed}
+              valueLabel={tuning.click.playbackSpeed.toFixed(2)}
+              onChange={(value) => updateClick("playbackSpeed", value)}
+            />
+          </>
+        ) : (
+          <>
+            <TuningSlider
+              label="反向落页起点 · releaseX"
+              maximum={0.8}
+              minimum={0.58}
+              step={0.01}
+              value={tuning.gesture.releaseX}
+              valueLabel={tuning.gesture.releaseX.toFixed(2)}
+              onChange={(value) => updateGesture("releaseX", value)}
+            />
+            <TuningSlider
+              label="松手向上速度 · liftVelocity"
+              maximum={1.8}
+              minimum={0.7}
+              step={0.05}
+              value={tuning.gesture.liftVelocity}
+              valueLabel={tuning.gesture.liftVelocity.toFixed(2)}
+              onChange={(value) => updateGesture("liftVelocity", value)}
+            />
+            <TuningSlider
+              label="松手横向展开 · liftToLeft"
+              maximum={2.6}
+              minimum={1.4}
+              step={0.05}
+              value={tuning.gesture.liftToLeft}
+              valueLabel={tuning.gesture.liftToLeft.toFixed(2)}
+              onChange={(value) => updateGesture("liftToLeft", value)}
+            />
+            <TuningSlider
+              label="曲率衰减 · curvatureRelaxation"
+              maximum={14}
+              minimum={3.5}
+              step={0.25}
+              value={tuning.gesture.curvatureRelaxation}
+              valueLabel={tuning.gesture.curvatureRelaxation.toFixed(2)}
+              onChange={(value) => updateGesture("curvatureRelaxation", value)}
+            />
+            <TuningSlider
+              label="纸张重量 · pageWeight"
+              maximum={1.8}
+              minimum={0.5}
+              step={0.05}
+              value={tuning.gesture.pageWeight}
+              valueLabel={tuning.gesture.pageWeight.toFixed(2)}
+              onChange={(value) => updateGesture("pageWeight", value)}
+            />
+            <TuningSlider
+              label="提交阈值 · commitThreshold"
+              maximum={1.2}
+              minimum={0.4}
+              step={0.01}
+              value={tuning.gesture.commitThreshold}
+              valueLabel={tuning.gesture.commitThreshold.toFixed(2)}
+              onChange={(value) => updateGesture("commitThreshold", value)}
+            />
+            <TuningSlider
+              label="最低收尾速度 · minimumSpeedScale"
+              maximum={1.5}
+              minimum={0.5}
+              step={0.05}
+              value={tuning.gesture.minimumSpeedScale}
+              valueLabel={tuning.gesture.minimumSpeedScale.toFixed(2)}
+              onChange={(value) => updateGesture("minimumSpeedScale", value)}
+            />
+            <TuningSlider
+              label="最高收尾速度 · maximumSpeedScale"
+              maximum={3}
+              minimum={tuning.gesture.minimumSpeedScale}
+              step={0.05}
+              value={tuning.gesture.maximumSpeedScale}
+              valueLabel={tuning.gesture.maximumSpeedScale.toFixed(2)}
+              onChange={(value) => updateGesture("maximumSpeedScale", value)}
+            />
+            <TuningSlider
+              label="甩动速度增益 · velocityGain"
+              maximum={1.2}
+              minimum={0.1}
+              step={0.05}
+              value={tuning.gesture.velocityGain}
+              valueLabel={tuning.gesture.velocityGain.toFixed(2)}
+              onChange={(value) => updateGesture("velocityGain", value)}
+            />
+            <TuningSlider
+              label="松手衰减秒数 · idleDecaySeconds"
+              maximum={0.2}
+              minimum={0.03}
+              step={0.005}
+              value={tuning.gesture.idleDecaySeconds}
+              valueLabel={tuning.gesture.idleDecaySeconds.toFixed(3)}
+              onChange={(value) => updateGesture("idleDecaySeconds", value)}
+            />
+          </>
+        )}
+      </ScrollView>
+
+      <View style={styles.footer}>
+        <Text style={styles.equation}>
+          传播速度{" "}
+          {(
+            (mode === "click" ? tuning.click : tuning.gesture).liftVelocity *
+            (mode === "click" ? tuning.click : tuning.gesture).liftToLeft
+          ).toFixed(2)}
+        </Text>
+        <Pressable
+          accessibilityLabel="恢复当前默认常量"
+          accessibilityRole="button"
+          onPress={() =>
+            onChange(
+              mode === "click"
+                ? {
+                    ...tuning,
+                    click: DEFAULT_READER_CLICK_PAGE_TURN_TUNING,
+                  }
+                : {
+                    ...tuning,
+                    gesture: DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
+                  },
+            )
+          }
+        >
+          <Text style={styles.resetText}>恢复当前默认</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  closeButton: {
+    paddingHorizontal: 4,
+    paddingVertical: 6,
+  },
+  closeText: {
+    color: "#b94b24",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  equation: {
+    color: "#8a7d72",
+    fontSize: 12,
+    fontVariant: ["tabular-nums"],
+  },
+  eyebrow: {
+    color: "#b94b24",
+    fontSize: 9,
+    fontWeight: "700",
+    letterSpacing: 1.2,
+  },
+  footer: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 2,
+  },
+  header: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 3,
+  },
+  modeTab: {
+    alignItems: "center",
+    borderRadius: 9,
+    flex: 1,
+    paddingVertical: 7,
+  },
+  modeTabActive: {
+    backgroundColor: "#fbf7f0",
+  },
+  modeTabs: {
+    backgroundColor: "#e9dfd5",
+    borderRadius: 11,
+    flexDirection: "row",
+    marginBottom: 5,
+    padding: 2,
+  },
+  modeTabText: {
+    color: "#8a7d72",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  modeTabTextActive: {
+    color: "#b94b24",
+  },
+  panel: {
+    backgroundColor: "rgba(251, 247, 240, 0.98)",
+    borderColor: "rgba(91, 76, 65, 0.14)",
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    maxHeight: "82%",
+    maxWidth: 330,
+    padding: 14,
+    position: "absolute",
+    right: Platform.OS === "web" ? 30 : 12,
+    width: "84%",
+    zIndex: 25,
+    ...(Platform.OS === "web"
+      ? { boxShadow: "0 8px 28px rgba(61, 48, 38, 0.18)" }
+      : {
+          elevation: 8,
+          shadowColor: "#3d3026",
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.18,
+          shadowRadius: 16,
+        }),
+  },
+  resetText: {
+    color: "#b94b24",
+    fontSize: 12,
+    fontWeight: "600",
+    paddingVertical: 5,
+  },
+  sliderFill: {
+    backgroundColor: "#d95f2b",
+    borderRadius: 2,
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    top: 0,
+  },
+  sliderLabel: {
+    color: "#5c534b",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  sliderLabelRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  sliderList: {
+    paddingRight: 4,
+  },
+  sliderRail: {
+    backgroundColor: "#ddd2c7",
+    borderRadius: 2,
+    height: 4,
+    left: 0,
+    overflow: "hidden",
+    position: "absolute",
+    right: 0,
+    top: 12,
+  },
+  sliderRow: {
+    gap: 1,
+  },
+  sliderScroller: {
+    flexShrink: 1,
+  },
+  sliderThumb: {
+    backgroundColor: "#fbf7f0",
+    borderColor: "#d95f2b",
+    borderRadius: 7,
+    borderWidth: 2,
+    height: 14,
+    marginLeft: -7,
+    position: "absolute",
+    top: 7,
+    width: 14,
+  },
+  sliderTouchTarget: {
+    height: 28,
+    justifyContent: "center",
+  },
+  sliderValue: {
+    color: "#8a7d72",
+    fontSize: 11,
+    fontVariant: ["tabular-nums"],
+  },
+  title: {
+    color: "#3e3731",
+    fontSize: 15,
+    fontWeight: "700",
+    marginTop: 1,
+  },
+});

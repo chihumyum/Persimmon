@@ -1,5 +1,5 @@
 // Helper to ensure Skia loads or throws inside of React Suspense on web.
-import { use } from "react";
+import { type PropsWithChildren, use } from "react";
 import { LoadSkiaWeb } from "@shopify/react-native-skia/lib/module/web";
 
 let skiaPromise: Promise<void> | null = null;
@@ -9,7 +9,7 @@ function loadSkia() {
   return skiaPromise;
 }
 
-export function AsyncSkia() {
+export function AsyncSkia({ children }: PropsWithChildren) {
   use(loadSkia());
-  return null;
+  return children;
 }

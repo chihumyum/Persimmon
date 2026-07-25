@@ -1,0 +1,249 @@
+import { describe, expect, it } from "vitest";
+
+import type { PageAddress } from "./section-navigation";
+import {
+  MAX_CONCURRENT_PAGE_TURNS,
+  PAGE_TURN_START_INTERVAL_MS,
+  beginScheduledInteractivePageTurn,
+  createPageTurnSchedulerState,
+  handoffScheduledInteractivePageTurn,
+  markScheduledPageTurnLaneReady,
+  requestScheduledGesturePageTurn,
+  requestScheduledPageTurn,
+  resolveScheduledPageTurn,
+  scheduledPageAddress,
+  type PageTurnScheduler,
+} from "./page-turn-scheduler";
+
+function createHarness(pageCount = 20) {
+  let id = 0;
+  const scheduler: PageTurnScheduler = {
+    adjacent: (address, direction) => ({
+      sectionIndex: 0,
+      pageIndex: Math.min(
+        pageCount - 1,
+        Math.max(0, address.pageIndex + direction),
+      ),
+    }),
+    createId: () => `turn:${++id}`,
+  };
+  return scheduler;
+}
+
+function page(pageIndex: number): PageAddress {
+  return { sectionIndex: 0, pageIndex };
+}
+
+const release = {
+  pressedEdgeX: 0.25,
+  heldRollTilt: 0.8,
+  speedScale: 1.8,
+  settlingProgress: 0.6,
+};
+
+describe("page-turn scheduler", () => {
+  it("launches a normal edge turn immediately", () => {
+    const scheduler = createHarness();
+    const state = requestScheduledPageTurn(
+      createPageTurnSchedulerState(page(0)),
+      1,
+      scheduler,
+      0,
+    );
+
+    expect(state.desired).toEqual(page(1));
+    expect(state.nextTurnStartAtMs).toBe(PAGE_TURN_START_INTERVAL_MS);
+    expect(state.turns).toMatchObject([
+      {
+        id: "turn:1",
+        from: page(0),
+        to: page(1),
+        direction: 1,
+        lane: 0,
+        interactive: false,
+        handoffPending: false,
+        completed: false,
+      },
+    ]);
+  });
+
+  it("uniformly throttles ten inputs across one second to four starts", () => {
+    const scheduler = createHarness();
+    let state = createPageTurnSchedulerState(page(0));
+    for (let index = 0; index < 10; index += 1) {
+      state = requestScheduledPageTurn(state, 1, scheduler, index * 100);
+    }
+
+    expect(state.turns).toHaveLength(4);
+    expect(state.turns.map((turn) => turn.from.pageIndex)).toEqual([
+      0, 1, 2, 3,
+    ]);
+    expect(state.turns.map((turn) => turn.lane)).toEqual([0, 1, 2, 3]);
+    expect(state.desired).toEqual(page(4));
+  });
+
+  it("drops an instantaneous burst instead of replaying it later", () => {
+    const scheduler = createHarness();
+    let state = createPageTurnSchedulerState(page(0));
+    for (let index = 0; index < 10; index += 1) {
+      state = requestScheduledPageTurn(state, 1, scheduler, 100);
+    }
+
+    expect(state.turns).toHaveLength(1);
+    expect(state.desired).toEqual(page(1));
+
+    state = resolveScheduledPageTurn(state, "turn:1", true);
+    expect(state.turns).toHaveLength(0);
+    expect(state.settled).toEqual(page(1));
+  });
+
+  it("drops input at capacity and reuses a lane only for a later input", () => {
+    const scheduler = createHarness();
+    let state = createPageTurnSchedulerState(page(0));
+    for (let index = 0; index < MAX_CONCURRENT_PAGE_TURNS; index += 1) {
+      state = requestScheduledPageTurn(
+        state,
+        1,
+        scheduler,
+        index * PAGE_TURN_START_INTERVAL_MS,
+      );
+    }
+
+    const atCapacity = requestScheduledPageTurn(state, 1, scheduler, 1_000);
+    expect(atCapacity).toBe(state);
+    expect(state.desired).toEqual(page(4));
+
+    state = resolveScheduledPageTurn(state, "turn:1", true);
+    state = requestScheduledPageTurn(state, 1, scheduler, 1_250);
+    expect(state.turns.at(-1)).toMatchObject({
+      id: "turn:5",
+      from: page(4),
+      to: page(5),
+      lane: 0,
+    });
+  });
+
+  it("supports uniformly spaced backward turns", () => {
+    const scheduler = createHarness();
+    let state = createPageTurnSchedulerState(page(10));
+    for (let index = 0; index < MAX_CONCURRENT_PAGE_TURNS; index += 1) {
+      state = requestScheduledPageTurn(
+        state,
+        -1,
+        scheduler,
+        index * PAGE_TURN_START_INTERVAL_MS,
+      );
+    }
+
+    expect(state.turns.map((turn) => turn.from.pageIndex)).toEqual([
+      10, 9, 8, 7,
+    ]);
+    expect(scheduledPageAddress(state)).toEqual(page(6));
+  });
+
+  it("collapses out-of-order completions only after predecessors land", () => {
+    const scheduler = createHarness();
+    let state = createPageTurnSchedulerState(page(0));
+    state = requestScheduledPageTurn(state, 1, scheduler, 0);
+    state = requestScheduledPageTurn(state, 1, scheduler, 250);
+    state = requestScheduledPageTurn(state, 1, scheduler, 500);
+
+    state = resolveScheduledPageTurn(state, "turn:3", true);
+    expect(state.settled).toEqual(page(0));
+    expect(state.turns[2]?.completed).toBe(true);
+
+    state = resolveScheduledPageTurn(state, "turn:1", true);
+    expect(state.settled).toEqual(page(1));
+
+    state = resolveScheduledPageTurn(state, "turn:2", true);
+    expect(state.settled).toEqual(page(3));
+    expect(state.turns).toEqual([]);
+  });
+
+  it("drops an opposite direction instead of queueing it", () => {
+    const scheduler = createHarness();
+    let state = createPageTurnSchedulerState(page(4));
+    state = requestScheduledPageTurn(state, 1, scheduler, 0);
+    const unchanged = requestScheduledPageTurn(state, -1, scheduler, 250);
+
+    expect(unchanged).toBe(state);
+    expect(state.desired).toEqual(page(5));
+
+    state = resolveScheduledPageTurn(state, "turn:1", true);
+    expect(state.turns).toEqual([]);
+    expect(state.settled).toEqual(page(5));
+  });
+
+  it("hands a released drag to its lane before accepting the next drag", () => {
+    const scheduler = createHarness();
+    let state = beginScheduledInteractivePageTurn(
+      createPageTurnSchedulerState(page(0)),
+      1,
+      scheduler,
+      0,
+    );
+    state = handoffScheduledInteractivePageTurn(state, "turn:1", release, true);
+
+    expect(state.turns[0]).toMatchObject({
+      interactive: false,
+      handoffPending: true,
+      motion: "gesture",
+      gestureRelease: release,
+    });
+    expect(beginScheduledInteractivePageTurn(state, 1, scheduler, 250)).toBe(
+      state,
+    );
+
+    state = markScheduledPageTurnLaneReady(state, "turn:1");
+    state = beginScheduledInteractivePageTurn(state, 1, scheduler, 250);
+    expect(state.turns).toMatchObject([
+      { lane: 0, interactive: false, handoffPending: false },
+      { lane: 1, interactive: true, handoffPending: false },
+    ]);
+  });
+
+  it("lets a new finger claim a free lane without waiting for the tap throttle", () => {
+    const scheduler = createHarness();
+    let state = beginScheduledInteractivePageTurn(
+      createPageTurnSchedulerState(page(0)),
+      1,
+      scheduler,
+      0,
+    );
+    state = handoffScheduledInteractivePageTurn(
+      state,
+      "turn:1",
+      release,
+      false,
+    );
+    state = beginScheduledInteractivePageTurn(state, 1, scheduler, 100);
+
+    expect(state.turns).toMatchObject([
+      { id: "turn:1", lane: 0, interactive: false },
+      { id: "turn:2", lane: 1, interactive: true },
+    ]);
+    expect(state.nextTurnStartAtMs).toBe(100 + PAGE_TURN_START_INTERVAL_MS);
+  });
+
+  it("keeps rapid flicks in gesture lanes and drops excess releases", () => {
+    const scheduler = createHarness();
+    let state = createPageTurnSchedulerState(page(0));
+    for (let index = 0; index < MAX_CONCURRENT_PAGE_TURNS + 2; index += 1) {
+      state = requestScheduledGesturePageTurn(
+        state,
+        1,
+        release,
+        scheduler,
+        index * PAGE_TURN_START_INTERVAL_MS,
+      );
+    }
+
+    expect(state.turns).toHaveLength(MAX_CONCURRENT_PAGE_TURNS);
+    expect(state.turns.map((turn) => turn.lane)).toEqual([0, 1, 2, 3]);
+    expect(state.turns.every((turn) => turn.motion === "gesture")).toBe(true);
+    expect(state.turns.every((turn) => turn.gestureRelease === release)).toBe(
+      true,
+    );
+    expect(state.desired).toEqual(page(4));
+  });
+});

@@ -1,11 +1,10 @@
-import { importEpub, type EpubImportResult } from "@persimmon/epub-import";
 import * as DocumentPicker from "expo-document-picker";
 import { File as ExpoFile } from "expo-file-system";
 import { Platform } from "react-native";
 
 export interface PickedEpub {
   fileName: string;
-  result: EpubImportResult;
+  bytes: Uint8Array;
 }
 
 async function bytesOf(
@@ -40,6 +39,6 @@ export async function pickAndImportEpub(): Promise<PickedEpub | null> {
   }
   return {
     fileName: asset.name,
-    result: importEpub(await bytesOf(asset)),
+    bytes: await bytesOf(asset),
   };
 }

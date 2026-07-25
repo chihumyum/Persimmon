@@ -4,19 +4,26 @@
     "web": {
       "output": "single"
     },
-    "plugins": [
-      "expo-router"
-    ],
+    "plugins": ["expo-router"],
     "name": "Persimmon",
     "slug": "persimmon",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "dev.chihum.persimmon",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "dev.chihum.persimmon"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "30253096-6503-47de-9f5a-8a0a8ebd824e"
+      }
     }
   }
 }
