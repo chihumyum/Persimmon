@@ -1,5 +1,6 @@
 import {
   DEFAULT_PAGE_TURN_TUNING,
+  postHingeTurnProgressForFingerX,
   type ReleasedPageTurnGesture,
   type PageTurnTuning,
 } from "./page-turn-gesture";
@@ -7,6 +8,7 @@ import {
   DEFAULT_PAGE_PROFILE_POINTS,
   MAX_PRESSED_ROLL_TILT,
   MIN_PRESSED_EDGE_X,
+  turnBendRetention,
 } from "./rolled-page-strip";
 import {
   AUTOMATIC_PAGE_TURN_PRESS_DURATION_SECONDS,
@@ -34,7 +36,6 @@ const PROFILE_NORMAL_Z = 3;
 const SUBSTEPS_PER_PROFILE_SEGMENT = 8;
 const PROFILE_BEND_AMPLITUDE_SLICES = 257;
 const MAX_PROFILE_BEND_AMPLITUDE = 2.3382951135873746;
-const TURN_UNROLL_START = 0.08;
 const SETTLING_PAGE_START_PROGRESS = 0.5;
 const GESTURE_VELOCITY_TIME_CONSTANT = 0.045;
 const GESTURE_ACCELERATION_TIME_CONSTANT = 0.06;
@@ -149,6 +150,7 @@ export interface PageTurnWorkletState {
   pressedEdgeX: number;
   heldRollTilt: number;
   weakGrip: boolean;
+  dragTurnProgress: number;
   settlingProgress: number;
 
   driveElapsed: number;
@@ -222,6 +224,7 @@ export function createPageTurnWorkletState(
     pressedEdgeX: 1,
     heldRollTilt: 0,
     weakGrip: false,
+    dragTurnProgress: 0,
     settlingProgress: 0,
 
     driveElapsed: 0,
@@ -542,20 +545,11 @@ function rebuildTurnProfile(
 ): void {
   "worklet";
   const safeProgress = clamp(progress, 0, 1);
-  const unrollProgress = clamp(
-    (safeProgress - TURN_UNROLL_START) / (1 - TURN_UNROLL_START),
-    0,
-    1,
-  );
-  const curvatureRelaxation = state.tuningCurvatureRelaxation;
-  const floor = Math.exp(-curvatureRelaxation);
-  const bendRetention =
-    (Math.exp(-curvatureRelaxation * unrollProgress * unrollProgress) - floor) /
-    (1 - floor);
   rebuildProfile(
     state,
     startRotation + (Math.PI - startRotation) * safeProgress,
-    bendAmplitudeForChord(clamp(startX, MIN_PRESSED_EDGE_X, 1)) * bendRetention,
+    bendAmplitudeForChord(clamp(startX, MIN_PRESSED_EDGE_X, 1)) *
+      turnBendRetention(safeProgress, state.tuningCurvatureRelaxation),
     deltaTime,
   );
 }
@@ -575,6 +569,7 @@ function applyDraggedProfile(
     );
     state.pressedEdgeX = 1 - compression;
     state.heldRollTilt = 0;
+    state.dragTurnProgress = 0;
     rebuildPressedProfile(state, state.pressedEdgeX, 0, deltaTime);
     return;
   }
@@ -582,6 +577,20 @@ function applyDraggedProfile(
   state.gestureFingerX = clamp(1 + bookX - state.startBookX, -1, 1);
   state.pressedEdgeX = Math.max(MIN_PRESSED_EDGE_X, state.gestureFingerX);
   state.heldRollTilt = gestureLiftRotationForFingerX(state.gestureFingerX);
+  state.dragTurnProgress = postHingeTurnProgressForFingerX(
+    state.gestureFingerX,
+    state.startBookX,
+  );
+  if (state.dragTurnProgress > 0) {
+    rebuildTurnProfile(
+      state,
+      state.dragTurnProgress,
+      MIN_PRESSED_EDGE_X,
+      MAX_PRESSED_ROLL_TILT,
+      deltaTime,
+    );
+    return;
+  }
   rebuildPressedProfile(
     state,
     state.pressedEdgeX,
@@ -752,6 +761,8 @@ export function resetPageTurnWorklet(state: PageTurnWorkletState): void {
   state.outcome = PAGE_TURN_WORKLET_NO_OUTCOME;
   state.outcomeNotified = false;
   state.settlingIncomingPage = false;
+  state.dragTurnProgress = 0;
+  state.settlingProgress = 0;
   state.driveElapsed = 0;
   state.meanSpeed = 0;
   setFlatProfile(state);
@@ -781,6 +792,7 @@ export function beginPageTurnWorkletDrag(
   state.pressedEdgeX = 1;
   state.heldRollTilt = 0;
   state.weakGrip = startBookX < FULL_GESTURE_START_MIN_X;
+  state.dragTurnProgress = 0;
   state.settlingProgress = 0;
 
   if (settlingIncomingPage) {
@@ -913,14 +925,16 @@ export function playReleasedPageTurnWorklet(
     MAX_PRESSED_ROLL_TILT,
     Math.max(0, release.heldRollTilt),
   );
+  const startProgress = Math.min(1, Math.max(0, release.turnProgress));
   state.gestureFingerX = startX;
   state.pressedEdgeX = startX;
   state.heldRollTilt = startRotation;
-  rebuildPressedProfile(state, startX, startRotation, 0);
+  state.dragTurnProgress = startProgress;
+  rebuildTurnProfile(state, startProgress, startX, startRotation, 0);
   beginTurnDrive(
     state,
     startX,
-    0,
+    startProgress,
     Math.min(3, Math.max(0.5, release.speedScale)),
     startRotation,
   );
@@ -967,7 +981,7 @@ export function endPageTurnWorkletDrag(
     beginTurnDrive(
       state,
       state.pressedEdgeX,
-      0,
+      state.dragTurnProgress,
       gestureTurnSpeedScale(state, throwVelocity),
       state.heldRollTilt,
     );

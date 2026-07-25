@@ -53,12 +53,13 @@ describe("UI-runtime page-turn engine", () => {
 
     for (let index = 1; index <= 18; index += 1) {
       const time = 1 + index / 120;
-      const x = 0.92 - index * 0.048;
+      const x = 0.92 - index * 0.075;
       const y = 0.72 - index * 0.012;
       reference.moveDrag(x, y, time);
       movePageTurnWorkletDrag(worklet, x, y, 0, time);
       expectProfilesToMatch(reference, worklet.profile);
     }
+    expect(worklet.dragTurnProgress).toBeGreaterThan(0);
     expect(endPageTurnWorkletDrag(worklet, 1.17)).toBe(
       reference.endDrag(1.17) === "turn" ? 1 : -1,
     );
@@ -130,12 +131,14 @@ describe("UI-runtime page-turn engine", () => {
       pressedEdgeX: 0.25,
       heldRollTilt: 0.7,
       speedScale: 1.8,
+      turnProgress: 0.35,
       settlingProgress: 0,
     });
 
     expect(worklet.phase).toBe(PAGE_TURN_WORKLET_TURN);
     expect(worklet.pressedEdgeX).toBe(0.25);
     expect(worklet.driveStartX).toBe(0.25);
+    expect(worklet.driveStartProgress).toBe(0.35);
     expect(worklet.driveStartRotation).toBe(0.7);
     expect(worklet.driveSpeedScale).toBe(1.8);
     expect(worklet.profile.at(-4)).toBeLessThan(0.25);

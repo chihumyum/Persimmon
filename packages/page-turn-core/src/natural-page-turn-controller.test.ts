@@ -58,6 +58,32 @@ describe("natural page turn controller", () => {
     expect(controller.getPhase()).toBe("completed");
   });
 
+  it("unrolls continuously across the second half of a two-page drag", () => {
+    const controller = new NaturalPageTurnController();
+    const startBookX = 0.9;
+    const hingeBookX = startBookX - (1 - MIN_PRESSED_EDGE_X);
+    expect(controller.beginDrag(startBookX, 0.7, 0)).toBe(true);
+
+    controller.moveDrag(hingeBookX, 0.7, 0.2);
+    const hingeMetrics = controller.getMetrics();
+    controller.moveDrag(-0.55, 0.7, 0.4);
+    const unfoldingMetrics = controller.getMetrics();
+    controller.moveDrag(-1, 0.7, 0.6);
+    const nearLandingMetrics = controller.getMetrics();
+    const releaseProfile = controller
+      .getPoints()
+      .map((point) => ({ ...point }));
+
+    expect(unfoldingMetrics.curvature).toBeLessThan(hingeMetrics.curvature);
+    expect(unfoldingMetrics.edgeX).toBeLessThan(hingeMetrics.edgeX);
+    expect(nearLandingMetrics.curvature).toBeLessThan(
+      unfoldingMetrics.curvature,
+    );
+    expect(nearLandingMetrics.edgeX).toBeLessThan(-0.8);
+    expect(controller.endDrag(0.6)).toBe("turn");
+    expect(controller.getPoints()).toEqual(releaseProfile);
+  });
+
   it("always rebounds a weak inboard grip", () => {
     const controller = new NaturalPageTurnController();
     expect(controller.beginDrag(0.5, 0.7, 0)).toBe(true);

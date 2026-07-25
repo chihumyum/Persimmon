@@ -4,9 +4,11 @@ import {
   MAX_PRESSED_ROLL_TILT,
   MIN_PRESSED_EDGE_X,
   RolledPageStrip,
+  TURN_UNROLL_START,
   TURN_VALIDATION_FRAME_COUNT,
   pressedRollCompleteness,
   pressedRollHingeGeometry,
+  turnBendRetention,
 } from "./rolled-page-strip";
 
 describe("continuous-curvature page strip", () => {
@@ -114,7 +116,7 @@ describe("continuous-curvature page strip", () => {
   });
 
   it("has no shape jump at either unroll boundary", () => {
-    for (const boundary of [0.08, 1]) {
+    for (const boundary of [TURN_UNROLL_START, 1]) {
       const before = new RolledPageStrip();
       const after = new RolledPageStrip();
       before.setTurnProgress(boundary - 1e-6, 0.52);
@@ -131,6 +133,25 @@ describe("continuous-curvature page strip", () => {
       );
       expect(maximumDifference).toBeLessThan(0.0001);
     }
+  });
+
+  it("retains curl through the latter half and eases flat without a snap", () => {
+    const start = turnBendRetention(TURN_UNROLL_START, 7);
+    const middle = turnBendRetention(0.5, 7);
+    const later = turnBendRetention(0.75, 7);
+    const nearlyFlat = turnBendRetention(0.99, 7);
+    const flat = turnBendRetention(1, 7);
+
+    expect(start).toBe(1);
+    expect(middle).toBeGreaterThan(0.55);
+    expect(later).toBeGreaterThan(0.05);
+    expect(later).toBeLessThan(middle);
+    expect(nearlyFlat).toBeGreaterThan(0);
+    expect(nearlyFlat).toBeLessThan(0.0001);
+    expect(flat).toBe(0);
+    expect(nearlyFlat - flat).toBeLessThan(
+      turnBendRetention(0.98, 7) - nearlyFlat,
+    );
   });
 
   it("is deterministic and stops without residual motion", () => {

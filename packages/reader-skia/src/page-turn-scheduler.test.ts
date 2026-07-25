@@ -38,6 +38,7 @@ const release = {
   pressedEdgeX: 0.25,
   heldRollTilt: 0.8,
   speedScale: 1.8,
+  turnProgress: 0.35,
   settlingProgress: 0.6,
 };
 

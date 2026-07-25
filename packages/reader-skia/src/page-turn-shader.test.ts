@@ -218,12 +218,12 @@ describe("natural Skia page shader input", () => {
       sample.velocityX > 0 && sample.strength > peak.strength ? sample : peak,
     );
     const reversing = samples.find(
-      (sample) => sample.edgeX > 0 && sample.velocityX < -4,
+      (sample) => sample.edgeX > 0 && sample.velocityX < -1.2,
     );
     const crossed = samples.find((sample) => sample.edgeX < -0.035);
 
     expect(outward.velocityX).toBeGreaterThan(0);
-    expect(outward.strength).toBeGreaterThan(0.2);
+    expect(outward.strength).toBeGreaterThan(0.08);
     expect(reversing).toBeDefined();
     expect(reversing!.strength).toBeLessThan(outward.strength);
     expect(crossed).toBeDefined();

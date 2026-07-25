@@ -7,6 +7,7 @@ import {
   gestureLiftRotationForFingerX,
   gestureTurnSpeedScale,
   pageGestureModeForStart,
+  postHingeTurnProgressForFingerX,
   shouldCommitTurn,
 } from "@persimmon/page-turn-core";
 import {
@@ -571,6 +572,10 @@ function LazyReaderEngine({
         pressedEdgeX: Math.max(MIN_PRESSED_EDGE_X, fingerX),
         heldRollTilt: gestureLiftRotationForFingerX(fingerX),
         speedScale: gestureTurnSpeedScale(input.throwVelocity, coreTuning),
+        turnProgress: postHingeTurnProgressForFingerX(
+          fingerX,
+          input.startBookX,
+        ),
         settlingProgress: input.turnProgress,
       };
       if (input.interactive) {

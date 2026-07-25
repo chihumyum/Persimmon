@@ -13,6 +13,7 @@ import {
   gestureLiftRotationForFingerX,
   gestureTurnSpeedScale,
   pageGestureModeForStart,
+  postHingeTurnProgressForFingerX,
   shouldCommitTurn,
   turnPropagationSpeed,
   weakGripPressedEdgeX,
@@ -54,6 +55,7 @@ interface NaturalPageTurnDrag {
   gestureFingerX: number;
   pressedEdgeX: number;
   heldRollTilt: number;
+  turnProgress: number;
 }
 
 interface NaturalPageTurnDrive {
@@ -161,8 +163,20 @@ export class NaturalPageTurnController {
     }
     const startX = clamp(release.pressedEdgeX, MIN_PRESSED_EDGE_X, 1);
     const startRotation = clamp(release.heldRollTilt, 0, MAX_PRESSED_ROLL_TILT);
-    this.sheet.setPressedState(startX, startRotation, 0);
-    this.beginTurn(startX, 0, clamp(release.speedScale, 0.5, 3), startRotation);
+    const startProgress = clamp(release.turnProgress, 0, 1);
+    this.sheet.setTurnProgress(
+      startProgress,
+      startX,
+      0,
+      startRotation,
+      this.tuning.curvatureRelaxation,
+    );
+    this.beginTurn(
+      startX,
+      startProgress,
+      clamp(release.speedScale, 0.5, 3),
+      startRotation,
+    );
   }
 
   /**
@@ -252,6 +266,7 @@ export class NaturalPageTurnController {
       gestureFingerX: 1,
       pressedEdgeX: 1,
       heldRollTilt: 0,
+      turnProgress: 0,
     };
     this.applyDraggedEdge(startBookX, 0, this.drag);
     return true;
@@ -322,7 +337,12 @@ export class NaturalPageTurnController {
       pageWeight: this.tuning.pageWeight,
     };
     if (shouldCommitTurn(commitInput, this.tuning)) {
-      this.beginTurn(drag.pressedEdgeX, 0, speedScale, drag.heldRollTilt);
+      this.beginTurn(
+        drag.pressedEdgeX,
+        drag.turnProgress,
+        speedScale,
+        drag.heldRollTilt,
+      );
       return "turn";
     }
     this.beginRevert(drag.pressedEdgeX, drag.heldRollTilt);
@@ -531,6 +551,7 @@ export class NaturalPageTurnController {
       drag.gestureFingerX = 1;
       drag.pressedEdgeX = weakGripPressedEdgeX(drag.startBookX, bookX);
       drag.heldRollTilt = 0;
+      drag.turnProgress = 0;
       this.sheet.setPressedState(drag.pressedEdgeX, 0, deltaTime);
       return;
     }
@@ -538,6 +559,20 @@ export class NaturalPageTurnController {
     drag.gestureFingerX = anchoredGestureFingerX(drag.startBookX, bookX);
     drag.pressedEdgeX = Math.max(MIN_PRESSED_EDGE_X, drag.gestureFingerX);
     drag.heldRollTilt = gestureLiftRotationForFingerX(drag.gestureFingerX);
+    drag.turnProgress = postHingeTurnProgressForFingerX(
+      drag.gestureFingerX,
+      drag.startBookX,
+    );
+    if (drag.turnProgress > 0) {
+      this.sheet.setTurnProgress(
+        drag.turnProgress,
+        MIN_PRESSED_EDGE_X,
+        deltaTime,
+        MAX_PRESSED_ROLL_TILT,
+        this.tuning.curvatureRelaxation,
+      );
+      return;
+    }
     this.sheet.setPressedState(drag.pressedEdgeX, drag.heldRollTilt, deltaTime);
   }
 }

@@ -28,6 +28,7 @@ export interface ReleasedPageTurnGesture {
   readonly pressedEdgeX: number;
   readonly heldRollTilt: number;
   readonly speedScale: number;
+  readonly turnProgress: number;
   readonly settlingProgress: number;
 }
 
@@ -152,6 +153,33 @@ export function anchoredGestureFingerX(
   const safeStart = Number.isFinite(startBookX) ? startBookX : 1;
   const safeCurrent = Number.isFinite(currentBookX) ? currentBookX : safeStart;
   return clamp(1 + safeCurrent - safeStart, -1, 1);
+}
+
+/**
+ * Converts travel beyond the fully closed roll into the outgoing page's
+ * rotation-and-unroll phase. The start position normalizes the distance that
+ * remains between the hinge and the opposite outer edge, so the full visible
+ * spread remains active even when the finger starts inboard of the page edge.
+ */
+export function postHingeTurnProgressForFingerX(
+  fingerX: number,
+  startBookX = 1,
+): number {
+  "worklet";
+  const safeFingerX = Number.isFinite(fingerX)
+    ? Math.min(1, Math.max(-1, fingerX))
+    : MIN_PRESSED_EDGE_X;
+  const safeStartBookX = Number.isFinite(startBookX)
+    ? Math.min(1, Math.max(0, startBookX))
+    : 1;
+  return Math.min(
+    1,
+    Math.max(
+      0,
+      (MIN_PRESSED_EDGE_X - safeFingerX) /
+        (MIN_PRESSED_EDGE_X + safeStartBookX),
+    ),
+  );
 }
 
 export function slowCommitBookXForStart(

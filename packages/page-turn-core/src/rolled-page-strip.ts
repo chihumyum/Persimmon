@@ -33,7 +33,7 @@ interface ProfileParameters {
 const ROOT_INTEGRATION_STEPS = 256;
 const SUBSTEPS_PER_PROFILE_SEGMENT = 8;
 const FIRST_BESSEL_ZERO = 2.4048255577;
-const TURN_UNROLL_START = 0.08;
+export const TURN_UNROLL_START = 0.08;
 export const DEFAULT_CURVATURE_RELAXATION = 7;
 const PRESSED_SURFACE_CLEARANCE = 0.015;
 export const MAX_PRESSED_ROLL_TILT = Math.max(
@@ -238,19 +238,37 @@ function turnParameters(
   startRotation: number,
   curvatureRelaxation: number,
 ): ProfileParameters {
-  const unrollProgress = clamp(
-    (progress - TURN_UNROLL_START) / (1 - TURN_UNROLL_START),
-    0,
-    1,
-  );
-  const floor = Math.exp(-curvatureRelaxation);
-  const bendRetention =
-    (Math.exp(-curvatureRelaxation * unrollProgress * unrollProgress) - floor) /
-    (1 - floor);
   return {
     rotation: startRotation + (Math.PI - startRotation) * progress,
-    bendAmplitude: startAmplitude * bendRetention,
+    bendAmplitude:
+      startAmplitude * turnBendRetention(progress, curvatureRelaxation),
   };
+}
+
+/**
+ * Keeps a visible roll into the latter half of a turn, then unfolds it with
+ * zero slope at both ends. The relaxation control changes when that transition
+ * happens without reintroducing the old exponential snap-to-flat.
+ */
+export function turnBendRetention(
+  progress: number,
+  curvatureRelaxation: number,
+): number {
+  "worklet";
+  const safeProgress = Math.min(1, Math.max(0, progress));
+  const unrollProgress = Math.min(
+    1,
+    Math.max(0, (safeProgress - TURN_UNROLL_START) / (1 - TURN_UNROLL_START)),
+  );
+  const safeRelaxation = Math.min(14, Math.max(3.5, curvatureRelaxation));
+  const timingPower = DEFAULT_CURVATURE_RELAXATION / safeRelaxation;
+  const shapedProgress = unrollProgress ** timingPower;
+  const smoothProgress =
+    shapedProgress *
+    shapedProgress *
+    shapedProgress *
+    (shapedProgress * (shapedProgress * 6 - 15) + 10);
+  return 1 - smoothProgress;
 }
 
 function tangentAngle(material: number, parameters: ProfileParameters): number {

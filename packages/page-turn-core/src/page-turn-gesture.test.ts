@@ -14,6 +14,7 @@ import {
   gestureLiftRotationForFingerX,
   heldRollTiltForFingerX,
   pageGestureModeForStart,
+  postHingeTurnProgressForFingerX,
   shouldCommitTurn,
   slowCommitBookXForStart,
   turnCommitScore,
@@ -117,6 +118,13 @@ describe("page-turn gesture kinematics", () => {
       SLOW_COMMIT_EDGE_X,
       10,
     );
+  });
+
+  it("uses every remaining pixel after the roll closes", () => {
+    expect(postHingeTurnProgressForFingerX(MIN_PRESSED_EDGE_X, 0.8)).toBe(0);
+    expect(postHingeTurnProgressForFingerX(-0.8, 0.8)).toBe(1);
+    expect(postHingeTurnProgressForFingerX(-0.5, 1)).toBeGreaterThan(0.5);
+    expect(postHingeTurnProgressForFingerX(0.5, 1)).toBe(0);
   });
 
   it("caps an inboard press at a shallow, non-committing bow", () => {

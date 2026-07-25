@@ -29,4 +29,14 @@ describe("page turn gesture direction", () => {
       8,
     );
   });
+
+  it("preserves the complete two-page swipe range in spread layout", () => {
+    const physicalPageWidth = 400;
+    expect(
+      bookXForGestureTravel(0.9, -physicalPageWidth, 1, physicalPageWidth),
+    ).toBeCloseTo(-0.1, 8);
+    expect(
+      bookXForGestureTravel(0.9, -physicalPageWidth * 2, 1, physicalPageWidth),
+    ).toBe(-1);
+  });
 });
