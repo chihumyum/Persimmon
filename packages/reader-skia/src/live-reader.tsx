@@ -60,6 +60,15 @@ import {
   PAGE_TURN_LANE_HARD_LIMIT,
   calculatePageTurnConcurrency,
 } from "./page-turn-concurrency";
+import { pageTurnBackgroundSlots } from "./page-turn-background";
+import {
+  pageTurnXScale,
+  shouldDrawPageTurnShadow,
+} from "./page-turn-direction";
+import {
+  pageTurnCaptureAddresses,
+  type PageTurnCaptureAddresses,
+} from "./page-turn-textures";
 import { ReaderPageLayer } from "./reader-page-layer";
 import { READER_PAPER_COLOR } from "./reader-theme";
 import {
@@ -137,11 +146,6 @@ export interface LiveReaderProps {
 interface TurnTexture {
   readonly frontImage: CapturedPage["image"] | null;
   readonly backImage: CapturedPage["image"] | null;
-}
-
-interface TurnCaptureAddresses {
-  readonly front?: PageAddress;
-  readonly back?: PageAddress;
 }
 
 interface RunningPageTurn {
@@ -515,7 +519,7 @@ function LazyReaderEngine({
       turnDirection: 1 | -1,
       _settlingIncomingPage = false,
     ) => {
-      const xScale = turnDirection === -1 ? -1 : 1;
+      const xScale = pageTurnXScale(turnDirection);
       const packed = packPageTurnProfile(controller.getPoints(), xScale);
       const summary = summarizePageTurnShadow(
         controller.getPoints(),
@@ -528,6 +532,7 @@ function LazyReaderEngine({
         [summary.center, summary.width, summary.strength, summary.direction],
         width,
         layout === "spread",
+        turnDirection,
       );
       webPageTurnFrames.current.set(turnId, frame);
       const handles = webPageTurnMeshRefs.current.get(turnId);
@@ -1107,25 +1112,10 @@ function LazyReaderEngine({
   );
 
   const captureAddressesForTurn = useCallback(
-    (turn: ScheduledPageTurn): TurnCaptureAddresses => {
+    (turn: ScheduledPageTurn): PageTurnCaptureAddresses => {
       const current = addressesForView(turn.from);
       const target = addressesForView(turn.to);
-      return {
-        front:
-          layout === "spread"
-            ? turn.direction === 1
-              ? current[1]
-              : current[0]
-            : turn.direction === 1
-              ? current[0]
-              : target[0],
-        back:
-          layout === "spread"
-            ? turn.direction === 1
-              ? target[0]
-              : target[1]
-            : undefined,
-      };
+      return pageTurnCaptureAddresses(layout, turn.direction, current, target);
     },
     [addressesForView, layout],
   );
@@ -1410,16 +1400,12 @@ function LazyReaderEngine({
     if (!oldestRenderableTurn || !newestRenderableTurn) {
       return settledAddresses;
     }
-    const oldestFrom = addressesForView(oldestRenderableTurn.from);
-    const newestTarget = addressesForView(newestRenderableTurn.to);
-    if (layout === "single") {
-      return [
-        oldestRenderableTurn.direction === 1 ? newestTarget[0] : oldestFrom[0],
-      ];
-    }
-    return oldestRenderableTurn.direction === 1
-      ? [oldestFrom[0], newestTarget[1]]
-      : [newestTarget[0], oldestFrom[1]];
+    return pageTurnBackgroundSlots(
+      layout,
+      oldestRenderableTurn.direction,
+      addressesForView(oldestRenderableTurn.from),
+      addressesForView(newestRenderableTurn.to),
+    );
   })();
   const visiblePaperTurns = renderableTurns.filter((turn) => !turn.completed);
   const paperPaintPasses: readonly {
@@ -1427,7 +1413,10 @@ function LazyReaderEngine({
     readonly face: PageTurnFace | "both";
   }[] =
     layout === "spread" && visiblePaperTurns.length > 1
-      ? spreadPageTurnPaintPasses(visiblePaperTurns)
+      ? spreadPageTurnPaintPasses(
+          visiblePaperTurns,
+          visiblePaperTurns[0]!.direction,
+        )
       : (oldestRenderableTurn?.direction === 1
           ? [...visiblePaperTurns].reverse()
           : visiblePaperTurns
@@ -1505,7 +1494,7 @@ function LazyReaderEngine({
                     key={`${turn.id}:${face}`}
                     automaticPageTurnTuning={automaticPageTurnTuning}
                     backImage={texture.backImage ?? undefined}
-                    drawShadow={face !== "back"}
+                    drawShadow={shouldDrawPageTurnShadow(turn.direction, face)}
                     face={face}
                     gesturePageTurnTuning={gesturePageTurnTuning}
                     height={height}
@@ -1523,7 +1512,7 @@ function LazyReaderEngine({
                 <PageTurnMesh
                   key={`${turn.id}:${face}`}
                   backImage={texture.backImage ?? undefined}
-                  drawShadow={face !== "back"}
+                  drawShadow={shouldDrawPageTurnShadow(turn.direction, face)}
                   face={face}
                   paperImage={texture.frontImage}
                   nativeFrame={
@@ -1650,6 +1639,7 @@ function WebPageTurnFaceMesh({
       height={height}
       initialProfile={initialProfile}
       paperImage={paperImage}
+      direction={turn.direction}
       spread={spread}
       width={width}
     />

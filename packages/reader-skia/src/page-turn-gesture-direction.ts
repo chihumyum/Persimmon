@@ -1,4 +1,6 @@
-export type PageTurnDirection = 1 | -1;
+import type { PageTurnDirection } from "./page-turn-direction";
+
+export type { PageTurnDirection } from "./page-turn-direction";
 
 /**
  * Maps physical finger travel to logical reading order.

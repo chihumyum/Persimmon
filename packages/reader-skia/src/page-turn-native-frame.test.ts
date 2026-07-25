@@ -68,6 +68,7 @@ describe("native profile page-turn frame", () => {
     expect(frame.paperUniforms.profile[0]).toBe(0);
     expect(frame.paperUniforms.profile.at(-4)).toBe(1);
     expect(frame.paperUniforms.runs.slice(0, 4)).toEqual([0, 64, 1, 1]);
+    expect(frame.paperRect.width).toBe(0);
   });
 
   it("reuses the fixed shadow uniform buffer", () => {
@@ -124,12 +125,7 @@ describe("native profile page-turn frame", () => {
     expect(paperPageSize).toEqual([1_000, 700]);
     expect(shadowGeometry).toEqual([500, 500, -1, 2]);
     expect(shadowPageSize).toEqual([1_000, 700]);
-    expect(paperRect).toEqual({
-      x: 0,
-      y: 0,
-      width: 1_000,
-      height: 700,
-    });
+    expect(paperRect).toEqual({ x: 0, y: 0, width: 0, height: 700 });
   });
 
   it("covers every curve segment during taps, drags, and incoming settles", () => {

@@ -183,7 +183,7 @@ describe("page-turn scheduler", () => {
     });
   });
 
-  it("collapses out-of-order completions only after predecessors land", () => {
+  it("advances the settled background as completed prefixes land", () => {
     const scheduler = createHarness();
     let state = createPageTurnSchedulerState(page(0));
     state = requestScheduledPageTurn(state, 1, scheduler, 0);
@@ -196,9 +196,34 @@ describe("page-turn scheduler", () => {
 
     state = resolveScheduledPageTurn(state, "turn:1", true);
     expect(state.settled).toEqual(page(1));
+    expect(state.turns[0]?.id).toBe("turn:2");
 
     state = resolveScheduledPageTurn(state, "turn:2", true);
     expect(state.settled).toEqual(page(3));
+    expect(state.turns).toEqual([]);
+  });
+
+  it("keeps the backward landing background current during a burst", () => {
+    const scheduler = createHarness();
+    let state = createPageTurnSchedulerState(page(10));
+    state = requestScheduledPageTurn(state, -1, scheduler, 0);
+    state = requestScheduledPageTurn(state, -1, scheduler, 250);
+    state = requestScheduledPageTurn(state, -1, scheduler, 500);
+
+    state = resolveScheduledPageTurn(state, "turn:1", true);
+
+    expect(state.settled).toEqual(page(9));
+    expect(state.turns).toMatchObject([
+      { id: "turn:2", completed: false },
+      { id: "turn:3", completed: false },
+    ]);
+
+    state = resolveScheduledPageTurn(state, "turn:2", true);
+    expect(state.settled).toEqual(page(8));
+    expect(state.turns[0]?.id).toBe("turn:3");
+
+    state = resolveScheduledPageTurn(state, "turn:3", true);
+    expect(state.settled).toEqual(page(7));
     expect(state.turns).toEqual([]);
   });
 

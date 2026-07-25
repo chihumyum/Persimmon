@@ -20,6 +20,7 @@ import { scheduleOnRN, scheduleOnUI } from "react-native-worklets";
 import { useEffect, useMemo } from "react";
 
 import {
+  hidePageTurnNativeSharedFrame,
   updatePageTurnNativeSharedFrame,
   usePageTurnNativeSharedFrame,
   type PageTurnNativeSharedFrame,
@@ -277,11 +278,12 @@ export function useNativePageTurnDriver({
           current.phase = PAGE_TURN_WORKLET_IDLE;
           current.outcome = PAGE_TURN_WORKLET_NO_OUTCOME;
           current.outcomeNotified = false;
+          hidePageTurnNativeSharedFrame(frame);
         }
         return current;
       }, true);
     });
-  }, [command, state]);
+  }, [command, frame, state]);
 
   const gesture = useMemo(() => {
     const interactiveBlocked =

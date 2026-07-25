@@ -15,6 +15,7 @@ import { useFrameCallback, useSharedValue } from "react-native-reanimated";
 import { scheduleOnRN, scheduleOnUI } from "react-native-worklets";
 
 import {
+  hidePageTurnNativeSharedFrame,
   updatePageTurnNativeSharedFrame,
   usePageTurnNativeSharedFrame,
 } from "./page-turn-native-shared-frame";
@@ -180,8 +181,9 @@ function useNativeProgrammaticPageTurnLane(
         current.outcomeNotified = false;
         return current;
       }, true);
+      hidePageTurnNativeSharedFrame(frame);
     });
-  }, [commandId, state]);
+  }, [commandId, frame, state]);
 
   return frame;
 }

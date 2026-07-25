@@ -1,6 +1,10 @@
 import { DEFAULT_PAGE_PROFILE_POINTS } from "@persimmon/page-turn-core";
 
 import {
+  isPageTurnSourceFacing,
+  type PageTurnDirection,
+} from "./page-turn-direction";
+import {
   limitPageTurnMaterialSlope,
   pageTurnCameraBookX,
   pageTurnPerspectiveCorrectProgress,
@@ -41,6 +45,7 @@ export function buildPageTurnLookup(
   sampleCount: number,
   minimumBookX = 0,
   maximumBookX = 1,
+  direction: PageTurnDirection = 1,
 ): number[] {
   const safeSampleCount = Math.max(
     PAGE_TURN_SEGMENT_COUNT,
@@ -140,7 +145,7 @@ export function buildPageTurnLookup(
       profile,
       visibleSegment,
       visibleProgress,
-      frontFacing,
+      isPageTurnSourceFacing(direction, frontFacing),
     );
     lookup[lookupOffset + 3] =
       (frontFacing ? 1 : -1) * (1 + Math.max(0, visibleDepth));
@@ -153,7 +158,7 @@ function pageTurnSurfaceLight(
   profile: ArrayLike<number>,
   segmentIndex: number,
   segmentProgress: number,
-  frontFacing: boolean,
+  sourceFacing: boolean,
 ): number {
   const offset = segmentIndex * PROFILE_FLOATS_PER_POINT;
   const normalZ = Math.abs(
@@ -165,7 +170,7 @@ function pageTurnSurfaceLight(
   );
   const deformation = 1 - normalZ;
   const curvatureShadow = deformation * 0.16;
-  const undersideShadow = frontFacing ? 0 : deformation * 0.055;
+  const undersideShadow = sourceFacing ? 0 : deformation * 0.055;
   const shadow = Math.min(0.2, curvatureShadow + undersideShadow);
   return 1 - shadow;
 }

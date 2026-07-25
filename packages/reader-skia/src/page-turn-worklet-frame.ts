@@ -5,6 +5,7 @@ import {
 } from "@persimmon/page-turn-core";
 
 import { updateDynamicPageTurnShadow } from "./page-turn-shadow-physics";
+import { isPageTurnSourceFacing, pageTurnXScale } from "./page-turn-direction";
 import {
   limitPageTurnMaterialSlope,
   pageTurnCameraBookX,
@@ -64,7 +65,7 @@ function surfaceLight(
   profile: Float32Array,
   segmentIndex: number,
   progress: number,
-  frontFacing: boolean,
+  sourceFacing: boolean,
 ): number {
   "worklet";
   const offset = segmentIndex * PROFILE_FLOATS_PER_POINT;
@@ -77,7 +78,7 @@ function surfaceLight(
   );
   const deformation = 1 - normalZ;
   const curvatureShadow = deformation * 0.16;
-  const undersideShadow = frontFacing ? 0 : deformation * 0.055;
+  const undersideShadow = sourceFacing ? 0 : deformation * 0.055;
   return 1 - Math.min(0.2, curvatureShadow + undersideShadow);
 }
 
@@ -103,7 +104,7 @@ export function updatePageTurnRenderFrame(
   const bookXSpan = Math.max(0.000001, maximumBookX - minimumBookX);
   const halfCellBookX = (0.5 * bookXSpan) / sampleCount;
   const cameraBookX = pageTurnCameraBookX(minimumBookX, maximumBookX);
-  const xScale = state.direction === -1 ? -1 : 1;
+  const xScale = pageTurnXScale(state.direction);
 
   for (let sample = 0; sample < sampleCount; sample += 1) {
     visibleDepth[sample] = Number.NEGATIVE_INFINITY;
@@ -195,7 +196,7 @@ export function updatePageTurnRenderFrame(
         profile,
         segmentIndex,
         progress,
-        frontFacing,
+        isPageTurnSourceFacing(state.direction, frontFacing),
       );
       mapping[lookupOffset + 3] =
         (frontFacing ? 1 : -1) * (1 + Math.max(0, depth));

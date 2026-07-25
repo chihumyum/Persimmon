@@ -5,6 +5,7 @@ import {
 } from "@persimmon/page-turn-core";
 
 import { updateDynamicPageTurnShadow } from "./page-turn-shadow-physics";
+import { pageTurnXScale } from "./page-turn-direction";
 import {
   PAGE_TURN_CAMERA_DISTANCE,
   PAGE_TURN_MAX_PERSPECTIVE_SCALE,
@@ -84,14 +85,17 @@ export function createPageTurnNativeFrame(
         pageTurnCameraBookX(minimumBookX, maximumBookX),
         PAGE_TURN_CAMERA_DISTANCE,
         PAGE_TURN_MAX_PERSPECTIVE_SCALE,
-        0,
+        1,
       ],
       profile: new Array<number>(
         DEFAULT_PAGE_PROFILE_POINTS * PROFILE_FLOATS_PER_POINT,
       ).fill(0),
       runs: new Array<number>(NATIVE_PAGE_PROFILE_RUNS * 4).fill(0),
     },
-    paperRect: { x: 0, y: 0, width, height },
+    // A persistent native lane is invisible until its command installs a
+    // direction-correct worklet profile. This prevents a backward turn from
+    // painting the default forward profile for one frame.
+    paperRect: { x: 0, y: 0, width: 0, height },
   };
   const profile = frame.paperUniforms.profile;
   for (let index = 0; index < DEFAULT_PAGE_PROFILE_POINTS; index += 1) {
@@ -117,6 +121,7 @@ export function resetPageTurnNativeFrameViewportValues(
   spread: boolean,
 ): void {
   "worklet";
+  const hidden = paperRect.width <= 0;
   const paperWidth = spread ? width * 0.5 : width;
   const spineX = spread ? paperWidth : 0;
   const minimumBookX = spread ? -1 : 0;
@@ -142,7 +147,7 @@ export function resetPageTurnNativeFrameViewportValues(
 
   paperRect.x = 0;
   paperRect.y = 0;
-  paperRect.width = width;
+  paperRect.width = hidden ? 0 : width;
   paperRect.height = height;
 }
 
@@ -176,8 +181,9 @@ export function updatePageTurnNativeFrameValues(
 ): void {
   "worklet";
   const profile = state.profile;
-  const xScale = state.direction === -1 ? -1 : 1;
+  const xScale = pageTurnXScale(state.direction);
   const projectedProfile = paperUniforms.profile;
+  paperUniforms.perspective[3] = xScale;
   const cameraBookX = paperUniforms.perspective[0]!;
   let paperMinimumX = Number.POSITIVE_INFINITY;
   let paperMaximumX = Number.NEGATIVE_INFINITY;

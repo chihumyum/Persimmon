@@ -46,6 +46,7 @@ interface PageTurnMeshProps {
   readonly spread?: boolean;
   readonly face?: PageTurnFace | "both";
   readonly drawShadow?: boolean;
+  readonly direction?: 1 | -1;
 }
 
 export interface PageTurnMeshHandle {
@@ -57,6 +58,7 @@ export function buildWebPageTurnRenderFrame(
   shadow: readonly number[],
   viewportWidth: number,
   spread: boolean,
+  direction: 1 | -1 = 1,
 ): PageTurnRenderFrame {
   return {
     mapping: buildPageTurnLookup(
@@ -64,6 +66,7 @@ export function buildWebPageTurnRenderFrame(
       pageTurnLookupSampleCount(viewportWidth),
       spread ? -1 : 0,
       1,
+      direction,
     ),
     shadow: [...shadow],
   };
@@ -207,6 +210,7 @@ const LookupPageTurnMesh = forwardRef<PageTurnMeshHandle, PageTurnMeshProps>(
       spread = false,
       face = "both",
       drawShadow = true,
+      direction = 1,
     },
     ref,
   ) {
@@ -230,8 +234,9 @@ const LookupPageTurnMesh = forwardRef<PageTurnMeshHandle, PageTurnMeshProps>(
         lookupSamples,
         minimumBookX,
         maximumBookX,
+        direction,
       );
-    }, [initialProfile, lookupSamples, maximumBookX, minimumBookX]);
+    }, [direction, initialProfile, lookupSamples, maximumBookX, minimumBookX]);
     const fallbackFrame = useSharedValue<PageTurnRenderFrame>({
       mapping: initialLookup,
       shadow: [0.5, 0.045, 0, 1],
@@ -377,10 +382,12 @@ float4 sampleRun(float bookX, float4 run) {
   float depth = mix(before.y, after.y, progress);
   float normalZ = abs(mix(before.w, after.w, progress));
   bool frontFacing = deltaX > 0.0;
+  bool sourceFacing =
+    (frontFacing ? 1.0 : -1.0) * perspective.w > 0.0;
   float deformation = 1.0 - normalZ;
   float shade =
     deformation * 0.16 +
-    (frontFacing ? 0.0 : deformation * 0.055);
+    (sourceFacing ? 0.0 : deformation * 0.055);
   return float4(material, 1.0 - min(0.2, shade), depth, frontFacing ? 1.0 : -1.0);
 }
 

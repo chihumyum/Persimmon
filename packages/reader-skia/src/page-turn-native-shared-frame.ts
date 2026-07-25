@@ -20,6 +20,20 @@ export interface PageTurnNativeSharedFrame {
   readonly paperRect: SharedValue<PageTurnPaperRect>;
 }
 
+export function hidePageTurnNativeSharedFrame(
+  frame: PageTurnNativeSharedFrame,
+): void {
+  "worklet";
+  frame.shadowUniforms.modify((shadowUniforms) => {
+    shadowUniforms.shadow[2] = 0;
+    return shadowUniforms;
+  }, true);
+  frame.paperRect.modify((paperRect) => {
+    paperRect.width = 0;
+    return paperRect;
+  }, true);
+}
+
 export function resetPageTurnNativeSharedFrameViewport(
   frame: PageTurnNativeSharedFrame,
   width: number,
