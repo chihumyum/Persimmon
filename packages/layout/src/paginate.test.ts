@@ -229,4 +229,46 @@ describe("paginateBook", () => {
     expect(result.pages[0]!.items[0]!.frame.y).toBe(0);
     expect(result.pages[1]!.items[0]!.frame.y).toBe(0);
   });
+
+  it("lets reader paragraph spacing override adjacent publisher margins", () => {
+    const book: BookIR = {
+      schemaVersion: BOOK_IR_VERSION,
+      id: "reader-spacing-test",
+      revisionId: "v1",
+      title: "Reader spacing",
+      assets: {},
+      sections: [
+        {
+          id: "chapter",
+          blocks: [
+            {
+              kind: "paragraph",
+              id: "first",
+              runs: [{ text: "First" }],
+              style: { marginAfterEm: 2 },
+            },
+            {
+              kind: "paragraph",
+              id: "second",
+              runs: [{ text: "Second" }],
+              style: { marginBeforeEm: 2 },
+            },
+          ],
+        },
+      ],
+    };
+    const result = paginateBook(
+      book,
+      {
+        ...layoutSpec,
+        viewport: { width: 120, height: 100 },
+        paragraphGap: 5,
+        paragraphGapMode: "reader",
+      },
+      createFixedBackend(20, 20),
+    );
+
+    expect(result.pages).toHaveLength(1);
+    expect(result.pages[0]!.items[1]!.frame.y).toBe(25);
+  });
 });

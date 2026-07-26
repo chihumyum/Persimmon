@@ -50,9 +50,22 @@ export interface StoredBookManifest {
 }
 
 export interface ReaderSettings {
-  readonly fontSize: number;
+  readonly appearance: ReaderAppearanceSettings;
   readonly layout: "single" | "spread";
   readonly pageTurnTuning: ReaderPageTurnTuning;
+}
+
+export type ReaderFontFamily = "serif" | "sans";
+
+export type ReaderProgressDisplay = "footer" | "header" | "both" | "hidden";
+
+export interface ReaderAppearanceSettings {
+  readonly fontFamily: ReaderFontFamily;
+  readonly fontSize: number;
+  readonly lineHeight: number;
+  readonly paragraphSpacing: number;
+  readonly horizontalMargin: number;
+  readonly progressDisplay: ReaderProgressDisplay;
 }
 
 export interface ReaderPageTurnTuning {
@@ -109,8 +122,17 @@ export const DEFAULT_READER_PAGE_TURN_TUNING: ReaderPageTurnTuning = {
   gesture: DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
 };
 
-export const DEFAULT_READER_SETTINGS: ReaderSettings = {
+export const DEFAULT_READER_APPEARANCE: ReaderAppearanceSettings = {
+  fontFamily: "serif",
   fontSize: 20,
+  lineHeight: 1.65,
+  paragraphSpacing: 0.9,
+  horizontalMargin: 32,
+  progressDisplay: "footer",
+};
+
+export const DEFAULT_READER_SETTINGS: ReaderSettings = {
+  appearance: DEFAULT_READER_APPEARANCE,
   layout: "single",
   pageTurnTuning: DEFAULT_READER_PAGE_TURN_TUNING,
 };

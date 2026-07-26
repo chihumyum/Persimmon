@@ -20,8 +20,12 @@ import type {
   LibraryBookSummary,
   OpenedLibraryBook,
 } from "../library/repository";
-import type { ReaderPageTurnTuning } from "../library/types";
+import type {
+  ReaderAppearanceSettings,
+  ReaderPageTurnTuning,
+} from "../library/types";
 import { PageTurnTuningPanel } from "./page-turn-tuning-panel";
+import { ReadingStylePanel } from "./reading-style-panel";
 
 const ReaderSurface = React.lazy(() => import("../reader/reader-surface"));
 
@@ -47,12 +51,12 @@ function flattenNavigation(
 
 export interface ReaderScreenProps {
   readonly entry: LibraryBookSummary;
-  readonly fontSize: number;
+  readonly appearance: ReaderAppearanceSettings;
   readonly layout: ReaderLayoutMode;
   readonly pageTurnTuning: ReaderPageTurnTuning;
   readonly opened: OpenedLibraryBook;
   readonly onBack: () => void;
-  readonly onFontSizeChange: (fontSize: number) => void;
+  readonly onAppearanceChange: (appearance: ReaderAppearanceSettings) => void;
   readonly onLayoutChange: (layout: ReaderLayoutMode) => void;
   readonly onPageTurnTuningChange: (tuning: ReaderPageTurnTuning) => void;
   readonly onProgress: (progress: ReaderProgress) => void;
@@ -60,12 +64,12 @@ export interface ReaderScreenProps {
 
 export function ReaderScreen({
   entry,
-  fontSize,
+  appearance,
   layout,
   pageTurnTuning,
   opened,
   onBack,
-  onFontSizeChange,
+  onAppearanceChange,
   onLayoutChange,
   onPageTurnTuningChange,
   onProgress,
@@ -75,6 +79,7 @@ export function ReaderScreen({
   const [tocVisible, setTocVisible] = useState(false);
   const [turning, setTurning] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
+  const [styleVisible, setStyleVisible] = useState(false);
   const [tuningVisible, setTuningVisible] = useState(false);
   const [navigationTarget, setNavigationTarget] = useState<
     BookPosition | undefined
@@ -110,6 +115,7 @@ export function ReaderScreen({
       return;
     }
     if (controlsVisible) {
+      setStyleVisible(false);
       setTuningVisible(false);
     }
     setControlsVisible((visible) => !visible);
@@ -118,6 +124,7 @@ export function ReaderScreen({
     setTurning(nextTurning);
     if (nextTurning) {
       setControlsVisible(false);
+      setStyleVisible(false);
       setTuningVisible(false);
       setTocVisible(false);
     }
@@ -153,8 +160,11 @@ export function ReaderScreen({
                   book={opened.book}
                   width={viewport.width}
                   height={viewport.height}
-                  fontSize={fontSize}
+                  appearance={appearance}
                   layout={layout}
+                  topInset={insets.top}
+                  bottomInset={insets.bottom}
+                  progressHeaderVisible={!controlsVisible}
                   automaticPageTurnTuning={pageTurnTuning.click}
                   gesturePageTurnTuning={pageTurnTuning.gesture}
                   initialPosition={navigationTarget ?? entry.locator?.position}
@@ -187,7 +197,11 @@ export function ReaderScreen({
               accessibilityLabel="打开目录"
               accessibilityRole="button"
               disabled={navigationRows.length === 0}
-              onPress={() => setTocVisible((visible) => !visible)}
+              onPress={() => {
+                setStyleVisible(false);
+                setTuningVisible(false);
+                setTocVisible((visible) => !visible);
+              }}
               style={styles.floatingButton}
             >
               <Text style={styles.floatingButtonText}>目录</Text>
@@ -211,28 +225,24 @@ export function ReaderScreen({
             <Pressable
               accessibilityLabel="调节翻页常量"
               accessibilityRole="button"
-              onPress={() => setTuningVisible((visible) => !visible)}
+              onPress={() => {
+                setStyleVisible(false);
+                setTuningVisible((visible) => !visible);
+              }}
               style={styles.floatingButton}
             >
               <Text style={styles.floatingButtonText}>曲线</Text>
             </Pressable>
             <Pressable
-              accessibilityLabel="减小字号"
+              accessibilityLabel="打开阅读样式"
               accessibilityRole="button"
-              disabled={fontSize <= 16}
-              onPress={() => onFontSizeChange(Math.max(16, fontSize - 2))}
+              onPress={() => {
+                setTuningVisible(false);
+                setStyleVisible((visible) => !visible);
+              }}
               style={styles.floatingButton}
             >
-              <Text style={styles.typeButtonText}>A−</Text>
-            </Pressable>
-            <Pressable
-              accessibilityLabel="增大字号"
-              accessibilityRole="button"
-              disabled={fontSize >= 30}
-              onPress={() => onFontSizeChange(Math.min(30, fontSize + 2))}
-              style={styles.floatingButton}
-            >
-              <Text style={styles.typeButtonText}>A+</Text>
+              <Text style={styles.typeButtonText}>Aa</Text>
             </Pressable>
           </View>
         </View>
@@ -244,6 +254,15 @@ export function ReaderScreen({
           tuning={pageTurnTuning}
           onChange={onPageTurnTuningChange}
           onClose={() => setTuningVisible(false)}
+        />
+      ) : null}
+
+      {!turning && controlsVisible && styleVisible ? (
+        <ReadingStylePanel
+          appearance={appearance}
+          top={insets.top + 52}
+          onChange={onAppearanceChange}
+          onClose={() => setStyleVisible(false)}
         />
       ) : null}
 
