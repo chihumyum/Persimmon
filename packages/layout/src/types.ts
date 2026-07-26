@@ -139,7 +139,7 @@ export interface PaginationResult<TParagraphHandle> {
 
 export function createDefaultPageLayoutSpec(viewport: Size): PageLayoutSpec {
   const body: TypographyPreset = {
-    fontFamilies: ["Noto Serif SC", "serif"],
+    fontFamilies: ["Noto Serif SC", "Noto Sans Math", "serif"],
     fontSize: 20,
     heightMultiplier: 1.65,
     weight: 400,

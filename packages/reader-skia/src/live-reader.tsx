@@ -134,6 +134,7 @@ import {
   spreadPageTurnPaintPasses,
   type PageTurnFace,
 } from "./page-turn-stack";
+import { reduceNoteReturnAnchor, type NoteReturnAnchor } from "./note-return";
 
 export interface ReaderProgress {
   locator: BookLocator;
@@ -205,12 +206,6 @@ interface ReaderLinkHit {
     readonly width: number;
     readonly height: number;
   };
-}
-
-interface NoteReturnAnchor {
-  readonly position: BookPosition;
-  readonly label: string;
-  readonly noteKind?: PageLinkRegion["link"]["noteKind"];
 }
 
 const MINIMUM_LINK_TOUCH_TARGET = 44;
@@ -403,6 +398,13 @@ function LazyReaderEngine({
   const [noteReturnAnchor, setNoteReturnAnchor] = useState<
     NoteReturnAnchor | undefined
   >();
+  const clearNoteReturnAnchor = useCallback(
+    () =>
+      setNoteReturnAnchor((current) =>
+        reduceNoteReturnAnchor(current, { type: "cleared" }),
+      ),
+    [],
+  );
   // Native Gesture Handler can deliver begin and release to the RN thread
   // inside one React render interval. Keep scheduling ownership synchronous
   // so a short flick can release the exact turn it just claimed instead of
@@ -454,7 +456,7 @@ function LazyReaderEngine({
     (region: PageLinkRegion) => {
       if (region.link.kind === "note-backlink" && noteReturnAnchor) {
         if (jumpToPosition(noteReturnAnchor.position)) {
-          setNoteReturnAnchor(undefined);
+          clearNoteReturnAnchor();
         }
         return;
       }
@@ -462,22 +464,25 @@ function LazyReaderEngine({
         return;
       }
       if (region.link.kind === "note-reference") {
-        setNoteReturnAnchor({
-          position: region.source,
-          label: region.link.label,
-          ...(region.link.noteKind ? { noteKind: region.link.noteKind } : {}),
-        });
-      } else if (region.link.kind === "note-backlink") {
-        setNoteReturnAnchor(undefined);
+        setNoteReturnAnchor((current) =>
+          reduceNoteReturnAnchor(current, {
+            type: "note-opened",
+            position: region.source,
+            label: region.link.label,
+            ...(region.link.noteKind ? { noteKind: region.link.noteKind } : {}),
+          }),
+        );
+      } else {
+        clearNoteReturnAnchor();
       }
     },
-    [jumpToPosition, noteReturnAnchor],
+    [clearNoteReturnAnchor, jumpToPosition, noteReturnAnchor],
   );
   const returnToNoteReference = useCallback(() => {
     if (noteReturnAnchor && jumpToPosition(noteReturnAnchor.position)) {
-      setNoteReturnAnchor(undefined);
+      clearNoteReturnAnchor();
     }
-  }, [jumpToPosition, noteReturnAnchor]);
+  }, [clearNoteReturnAnchor, jumpToPosition, noteReturnAnchor]);
 
   useEffect(() => {
     if (Platform.OS === "web") {
@@ -525,6 +530,9 @@ function LazyReaderEngine({
     (turnId: string) => {
       mutateReaderState((current) =>
         resolveScheduledPageTurn(current, turnId, true),
+      );
+      setNoteReturnAnchor((current) =>
+        reduceNoteReturnAnchor(current, { type: "page-turned" }),
       );
     },
     [mutateReaderState],
@@ -1932,17 +1940,57 @@ function LazyReaderEngine({
           />
         ))}
         {noteReturnAnchor ? (
-          <Pressable
-            accessibilityLabel={`返回${noteKindLabel(noteReturnAnchor.noteKind)}引用位置 ${noteReturnAnchor.label}`}
-            accessibilityRole="button"
-            onPress={returnToNoteReference}
-            style={({ pressed }) => [
-              styles.noteReturnButton,
-              pressed && styles.noteReturnButtonPressed,
+          <View
+            style={[
+              styles.noteReturnControls,
+              noteReturnAnchor.presentation === "compact"
+                ? styles.noteReturnControlsCompact
+                : styles.noteReturnControlsExpanded,
             ]}
           >
-            <Text style={styles.noteReturnText}>↩ 返回正文</Text>
-          </Pressable>
+            <Pressable
+              accessibilityLabel={`返回${noteKindLabel(noteReturnAnchor.noteKind)}引用位置 ${noteReturnAnchor.label}`}
+              accessibilityRole="button"
+              hitSlop={6}
+              onPress={returnToNoteReference}
+              style={({ pressed }) => [
+                styles.noteReturnButton,
+                noteReturnAnchor.presentation === "compact"
+                  ? styles.noteReturnButtonCompact
+                  : styles.noteReturnButtonExpanded,
+                pressed && styles.noteReturnButtonPressed,
+              ]}
+            >
+              <Text
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+                style={styles.noteReturnText}
+              >
+                {noteReturnAnchor.presentation === "compact"
+                  ? "↩"
+                  : "↩ 返回正文"}
+              </Text>
+            </Pressable>
+            <View style={styles.noteReturnDivider} />
+            <Pressable
+              accessibilityLabel={`关闭返回${noteKindLabel(noteReturnAnchor.noteKind)}引用位置的按钮`}
+              accessibilityRole="button"
+              hitSlop={6}
+              onPress={clearNoteReturnAnchor}
+              style={({ pressed }) => [
+                styles.noteReturnDismissButton,
+                pressed && styles.noteReturnButtonPressed,
+              ]}
+            >
+              <Text
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+                style={styles.noteReturnDismissText}
+              >
+                ×
+              </Text>
+            </Pressable>
+          </View>
         ) : null}
       </View>
     ) : null;
@@ -2327,17 +2375,26 @@ const styles = StyleSheet.create({
   },
   noteReturnButton: {
     alignItems: "center",
+    justifyContent: "center",
+    minHeight: 44,
+  },
+  noteReturnButtonCompact: {
+    width: 44,
+  },
+  noteReturnButtonExpanded: {
+    flex: 1,
+    paddingHorizontal: 14,
+  },
+  noteReturnControls: {
+    alignItems: "stretch",
     backgroundColor: "rgba(251, 247, 240, 0.96)",
     borderColor: "rgba(166, 79, 45, 0.28)",
-    borderRadius: 18,
+    borderRadius: 22,
     borderWidth: StyleSheet.hairlineWidth,
-    justifyContent: "center",
-    left: "30%",
-    minHeight: 36,
-    paddingHorizontal: 14,
+    bottom: 52,
+    flexDirection: "row",
+    overflow: "hidden",
     position: "absolute",
-    right: "30%",
-    top: 14,
     ...(Platform.OS === "web"
       ? { boxShadow: "0 3px 12px rgba(61, 48, 38, 0.14)" }
       : {
@@ -2347,6 +2404,31 @@ const styles = StyleSheet.create({
           shadowOpacity: 0.14,
           shadowRadius: 6,
         }),
+  },
+  noteReturnControlsCompact: {
+    right: 16,
+    width: 88,
+  },
+  noteReturnControlsExpanded: {
+    right: 16,
+    width: 180,
+  },
+  noteReturnDismissButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 44,
+    width: 44,
+  },
+  noteReturnDismissText: {
+    color: "#8b6f62",
+    fontSize: 18,
+    fontWeight: "500",
+    lineHeight: 20,
+  },
+  noteReturnDivider: {
+    alignSelf: "stretch",
+    backgroundColor: "rgba(166, 79, 45, 0.18)",
+    width: StyleSheet.hairlineWidth,
   },
   noteReturnButtonPressed: {
     backgroundColor: "rgba(244, 229, 216, 0.98)",

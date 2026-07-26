@@ -1,3 +1,4 @@
+import { NotoSansMath_400Regular } from "@expo-google-fonts/noto-sans-math/400Regular";
 import { NotoSerifSC_400Regular } from "@expo-google-fonts/noto-serif-sc/400Regular";
 import type { BookIR, BookPosition } from "@persimmon/book-core";
 import {
@@ -24,6 +25,13 @@ const READER_FONT: DataModule =
         default: NotoSerifSC_400Regular as unknown as string,
       }
     : NotoSerifSC_400Regular;
+const READER_SYMBOL_FONT: DataModule =
+  Platform.OS === "web"
+    ? {
+        __esModule: true,
+        default: NotoSansMath_400Regular as unknown as string,
+      }
+    : NotoSansMath_400Regular;
 
 export interface ReaderSurfaceProps {
   book: BookIR;
@@ -56,6 +64,7 @@ export default function ReaderSurface({
 }: ReaderSurfaceProps) {
   const fontProvider = useFonts({
     "Noto Serif SC": [READER_FONT],
+    "Noto Sans Math": [READER_SYMBOL_FONT],
   });
 
   if (!fontProvider) {

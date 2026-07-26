@@ -138,6 +138,30 @@ test.beforeEach(async ({ page }) => {
   await page.reload();
 });
 
+test("ships footnote and endnote fixtures in the built-in demo book", async ({
+  page,
+}) => {
+  await page.getByRole("button", { name: "打开 柿子熟了" }).click();
+  await waitForReaderReady(page);
+
+  await expect(page.getByRole("link", { name: "打开脚注 1" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "打开脚注 2" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "打开尾注 3" })).toBeVisible();
+
+  await page.getByRole("link", { name: "打开脚注 2" }).click();
+  await expect(
+    page.getByRole("button", { name: "返回脚注引用位置 2" }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "返回正文 2" })).toHaveCount(0);
+
+  await page
+    .getByRole("button", { name: "关闭返回脚注引用位置的按钮" })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "返回脚注引用位置 2" }),
+  ).toHaveCount(0);
+});
+
 test("imports, reads, navigates, resumes, and deletes a local EPUB", async ({
   page,
 }) => {
@@ -282,7 +306,26 @@ test("opens a footnote and returns to its exact reference", async ({
     page.getByRole("button", { name: "返回脚注引用位置 1" }),
   ).toHaveCount(0);
 
+  await page.getByRole("link", { name: "打开脚注 1" }).click();
+  const returnButton = page.getByRole("button", {
+    name: "返回脚注引用位置 1",
+  });
+  await expect(returnButton).toHaveText("↩ 返回正文");
+
+  await turnPageAndWait(page, "上一页");
+  await expect(returnButton).toHaveText("↩");
+  await page
+    .getByRole("button", { name: "关闭返回脚注引用位置的按钮" })
+    .click();
+  await expect(returnButton).toHaveCount(0);
+
   await page.waitForTimeout(400);
+  await page.getByRole("button", { name: "切换阅读工具" }).click();
+  await page.getByRole("button", { name: "打开目录" }).click();
+  await page.getByRole("button", { name: "跳转到 第一章" }).click();
+  await expect(page.getByRole("link", { name: "打开脚注 1" })).toBeVisible({
+    timeout: 10_000,
+  });
   await page.getByRole("button", { name: "返回书架" }).click();
   await page.evaluate(async () => {
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
