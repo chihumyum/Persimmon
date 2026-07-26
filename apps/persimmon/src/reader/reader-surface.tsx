@@ -8,10 +8,11 @@ import {
   type GesturePageTurnTuning,
   type ReaderAppearance,
   type ReaderLayoutMode,
+  type ReaderPageTurnAnimation,
   type ReaderProgress,
   type ReaderSelectionMenuRequest,
+  type ReaderTheme,
 } from "@persimmon/reader-skia";
-import { READER_PAPER_COLOR } from "@persimmon/reader-skia/theme";
 import { useFonts, type DataModule } from "@shopify/react-native-skia";
 import { useCallback, useEffect, useMemo } from "react";
 import {
@@ -58,6 +59,8 @@ export interface ReaderSurfaceProps {
   height: number;
   appearance: ReaderAppearanceSettings;
   layout: ReaderLayoutMode;
+  pageTurnAnimation: ReaderPageTurnAnimation;
+  theme: ReaderTheme;
   topInset: number;
   bottomInset: number;
   progressHeaderVisible: boolean;
@@ -102,6 +105,8 @@ function FontBackedReaderSurface({
   height,
   appearance,
   layout,
+  pageTurnAnimation,
+  theme,
   topInset,
   bottomInset,
   progressHeaderVisible,
@@ -147,9 +152,11 @@ function FontBackedReaderSurface({
 
   if (!fontProvider) {
     return (
-      <View style={styles.loading}>
-        <ActivityIndicator color="#d95f2b" />
-        <Text style={styles.loadingText}>正在准备中文排版…</Text>
+      <View style={[styles.loading, { backgroundColor: theme.paper }]}>
+        <ActivityIndicator color={theme.accent} />
+        <Text style={[styles.loadingText, { color: theme.secondaryText }]}>
+          正在准备中文排版…
+        </Text>
       </View>
     );
   }
@@ -162,6 +169,8 @@ function FontBackedReaderSurface({
       height={height}
       appearance={liveAppearance}
       layout={layout}
+      pageTurnAnimation={pageTurnAnimation}
+      theme={theme}
       topInset={topInset}
       bottomInset={bottomInset}
       progressHeaderVisible={progressHeaderVisible}
@@ -182,13 +191,11 @@ function FontBackedReaderSurface({
 const styles = StyleSheet.create({
   loading: {
     alignItems: "center",
-    backgroundColor: READER_PAPER_COLOR,
     flex: 1,
     gap: 12,
     justifyContent: "center",
   },
   loadingText: {
-    color: "#81766c",
     fontSize: 14,
   },
 });

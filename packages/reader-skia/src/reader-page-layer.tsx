@@ -12,6 +12,7 @@ import type { DerivedValue } from "react-native-reanimated";
 
 import type { DecodedImageCache } from "./image-cache";
 import type { ReaderProgressDisplay } from "./reader-appearance";
+import { DEFAULT_READER_THEME, type ReaderTheme } from "./reader-theme";
 import {
   SkiaPageDecorationLayer,
   type SkiaPageDecoration,
@@ -25,6 +26,7 @@ interface ReaderPageLayerProps {
   readonly progressDisplay?: ReaderProgressDisplay;
   readonly offsetX?: number;
   readonly translateX?: DerivedValue<Transforms3d>;
+  readonly theme?: ReaderTheme;
 }
 
 export function ReaderPageLayer({
@@ -35,6 +37,7 @@ export function ReaderPageLayer({
   progressDisplay = "hidden",
   offsetX = 0,
   translateX,
+  theme = DEFAULT_READER_THEME,
 }: ReaderPageLayerProps) {
   return (
     <Group transform={translateX}>
@@ -63,7 +66,7 @@ export function ReaderPageLayer({
                 width={item.frame.width}
                 height={item.frame.height}
                 r={18}
-                color="#eed9c8"
+                color={theme.imagePlaceholder}
               />
             );
           }
@@ -81,7 +84,7 @@ export function ReaderPageLayer({
                   y={item.frame.y}
                   width={2}
                   height={item.frame.height}
-                  color="#c97a52"
+                  color={theme.noteAccent}
                 />
               ) : null}
               <Group clip={item.frame}>

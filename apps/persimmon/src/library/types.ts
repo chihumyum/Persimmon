@@ -9,6 +9,17 @@ import type {
   EpubImportMetadata,
   EpubImportWarning,
 } from "@persimmon/epub-import";
+import type {
+  ReaderColorMode,
+  ReaderPageTurnAnimation,
+  ReaderThemeName,
+} from "@persimmon/reader-skia";
+
+export type {
+  ReaderColorMode,
+  ReaderPageTurnAnimation,
+  ReaderThemeName,
+} from "@persimmon/reader-skia";
 
 export const LIBRARY_SCHEMA_VERSION = 2 as const;
 
@@ -52,6 +63,7 @@ export interface StoredBookManifest {
 export interface ReaderSettings {
   readonly appearance: ReaderAppearanceSettings;
   readonly layout: "single" | "spread";
+  readonly pageTurnAnimation: ReaderPageTurnAnimation;
   readonly pageTurnTuning: ReaderPageTurnTuning;
 }
 
@@ -60,6 +72,8 @@ export type ReaderFontFamily = "serif" | "sans";
 export type ReaderProgressDisplay = "footer" | "header" | "both" | "hidden";
 
 export interface ReaderAppearanceSettings {
+  readonly theme: ReaderThemeName;
+  readonly colorMode: ReaderColorMode;
   readonly fontFamily: ReaderFontFamily;
   readonly fontSize: number;
   readonly lineHeight: number;
@@ -123,6 +137,8 @@ export const DEFAULT_READER_PAGE_TURN_TUNING: ReaderPageTurnTuning = {
 };
 
 export const DEFAULT_READER_APPEARANCE: ReaderAppearanceSettings = {
+  theme: "warm",
+  colorMode: "system",
   fontFamily: "serif",
   fontSize: 20,
   lineHeight: 1.65,
@@ -134,6 +150,7 @@ export const DEFAULT_READER_APPEARANCE: ReaderAppearanceSettings = {
 export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   appearance: DEFAULT_READER_APPEARANCE,
   layout: "single",
+  pageTurnAnimation: "natural",
   pageTurnTuning: DEFAULT_READER_PAGE_TURN_TUNING,
 };
 

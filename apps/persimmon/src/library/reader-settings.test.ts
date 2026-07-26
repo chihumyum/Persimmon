@@ -17,6 +17,7 @@ describe("reader settings", () => {
         fontSize: 22,
       },
       layout: "spread",
+      pageTurnAnimation: "natural",
       pageTurnTuning: DEFAULT_READER_PAGE_TURN_TUNING,
     });
   });
@@ -25,6 +26,8 @@ describe("reader settings", () => {
     expect(
       normalizeSettings({
         appearance: {
+          theme: "not-yet-supported",
+          colorMode: "dark",
           fontFamily: "sans",
           fontSize: 100,
           lineHeight: 1.83,
@@ -43,6 +46,8 @@ describe("reader settings", () => {
       }),
     ).toEqual({
       appearance: {
+        theme: "warm",
+        colorMode: "dark",
         fontFamily: "sans",
         fontSize: 32,
         lineHeight: 1.85,
@@ -51,6 +56,7 @@ describe("reader settings", () => {
         progressDisplay: "both",
       },
       layout: "single",
+      pageTurnAnimation: "natural",
       pageTurnTuning: {
         click: {
           releaseX: 0.58,
@@ -61,6 +67,21 @@ describe("reader settings", () => {
         },
         gesture: DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
       },
+    });
+  });
+
+  it("normalizes the page-turn animation and follows-system color mode", () => {
+    expect(
+      normalizeSettings({
+        appearance: { colorMode: "unknown" },
+        pageTurnAnimation: "none",
+      }),
+    ).toMatchObject({
+      appearance: {
+        theme: "warm",
+        colorMode: "system",
+      },
+      pageTurnAnimation: "none",
     });
   });
 

@@ -20,6 +20,7 @@ import {
   DEFAULT_READER_SETTINGS,
   LibraryError,
   type ReaderAppearanceSettings,
+  type ReaderPageTurnAnimation,
   type ReaderPageTurnTuning,
   type ReaderSettings,
 } from "./library/types";
@@ -69,6 +70,7 @@ export function PersimmonApp() {
   const [readerSettings, setReaderSettings] = useState<ReaderSettings>(
     DEFAULT_READER_SETTINGS,
   );
+  const readerSettingsRef = useRef<ReaderSettings>(DEFAULT_READER_SETTINGS);
   const [importing, setImporting] = useState(false);
   const [openingBookId, setOpeningBookId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -95,6 +97,7 @@ export function PersimmonApp() {
         ]);
         if (!cancelled) {
           setEntries(books);
+          readerSettingsRef.current = settings;
           setReaderSettings(settings);
         }
       })
@@ -190,7 +193,9 @@ export function PersimmonApp() {
     }, 250);
   }, []);
 
-  const updateReaderSettings = useCallback((next: ReaderSettings) => {
+  const updateReaderSettings = useCallback((patch: Partial<ReaderSettings>) => {
+    const next = { ...readerSettingsRef.current, ...patch };
+    readerSettingsRef.current = next;
     setReaderSettings(next);
     if (settingsTimer.current) {
       clearTimeout(settingsTimer.current);
@@ -203,21 +208,27 @@ export function PersimmonApp() {
   }, []);
   const updateAppearance = useCallback(
     (appearance: ReaderAppearanceSettings) => {
-      updateReaderSettings({ ...readerSettings, appearance });
+      updateReaderSettings({ appearance });
     },
-    [readerSettings, updateReaderSettings],
+    [updateReaderSettings],
   );
   const updateLayout = useCallback(
     (layout: ReaderSettings["layout"]) => {
-      updateReaderSettings({ ...readerSettings, layout });
+      updateReaderSettings({ layout });
     },
-    [readerSettings, updateReaderSettings],
+    [updateReaderSettings],
   );
   const updatePageTurnTuning = useCallback(
     (pageTurnTuning: ReaderPageTurnTuning) => {
-      updateReaderSettings({ ...readerSettings, pageTurnTuning });
+      updateReaderSettings({ pageTurnTuning });
     },
-    [readerSettings, updateReaderSettings],
+    [updateReaderSettings],
+  );
+  const updatePageTurnAnimation = useCallback(
+    (pageTurnAnimation: ReaderPageTurnAnimation) => {
+      updateReaderSettings({ pageTurnAnimation });
+    },
+    [updateReaderSettings],
   );
 
   const deleteEntry = useCallback(
@@ -255,6 +266,7 @@ export function PersimmonApp() {
         entry={activeEntry}
         appearance={readerSettings.appearance}
         layout={readerSettings.layout}
+        pageTurnAnimation={readerSettings.pageTurnAnimation}
         pageTurnTuning={readerSettings.pageTurnTuning}
         opened={activeBook}
         onBack={() => {
@@ -263,6 +275,7 @@ export function PersimmonApp() {
         }}
         onAppearanceChange={updateAppearance}
         onLayoutChange={updateLayout}
+        onPageTurnAnimationChange={updatePageTurnAnimation}
         onPageTurnTuningChange={updatePageTurnTuning}
         onProgress={updateProgress}
       />

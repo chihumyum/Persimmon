@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
+import type { ReaderTheme } from "@persimmon/reader-skia";
 import {
   PanResponder,
   Platform,
@@ -14,12 +15,14 @@ import {
 import {
   DEFAULT_READER_APPEARANCE,
   type ReaderAppearanceSettings,
+  type ReaderColorMode,
   type ReaderFontFamily,
   type ReaderProgressDisplay,
 } from "../library/types";
 
 interface ReadingStylePanelProps {
   readonly appearance: ReaderAppearanceSettings;
+  readonly theme: ReaderTheme;
   readonly top: number;
   readonly onChange: (appearance: ReaderAppearanceSettings) => void;
   readonly onClose: () => void;
@@ -32,6 +35,7 @@ interface StyleSliderProps {
   readonly minimum: number;
   readonly step: number;
   readonly value: number;
+  readonly theme: ReaderTheme;
   readonly onChange: (value: number) => void;
 }
 
@@ -54,6 +58,7 @@ function StyleSlider({
   minimum,
   step,
   value,
+  theme,
   onChange,
 }: StyleSliderProps) {
   const trackWidth = useRef(1);
@@ -115,8 +120,12 @@ function StyleSlider({
   return (
     <View style={styles.sliderRow}>
       <View style={styles.sliderLabelRow}>
-        <Text style={styles.sliderLabel}>{label}</Text>
-        <Text style={styles.sliderValue}>{valueLabel}</Text>
+        <Text style={[styles.sliderLabel, { color: theme.controlText }]}>
+          {label}
+        </Text>
+        <Text style={[styles.sliderValue, { color: theme.secondaryText }]}>
+          {valueLabel}
+        </Text>
       </View>
       <View style={styles.sliderControl}>
         <Pressable
@@ -124,9 +133,17 @@ function StyleSlider({
           accessibilityRole="button"
           disabled={value <= minimum}
           onPress={() => adjust(-1)}
-          style={styles.stepButton}
+          style={[
+            styles.stepButton,
+            {
+              backgroundColor: theme.panelRaised,
+              borderColor: theme.border,
+            },
+          ]}
         >
-          <Text style={styles.stepButtonText}>−</Text>
+          <Text style={[styles.stepButtonText, { color: theme.controlText }]}>
+            −
+          </Text>
         </Pressable>
         <View
           {...responder.panHandlers}
@@ -158,19 +175,43 @@ function StyleSlider({
           }}
           style={styles.sliderTouchTarget}
         >
-          <View style={styles.sliderRail}>
-            <View style={[styles.sliderFill, { width: percentage }]} />
+          <View
+            style={[styles.sliderRail, { backgroundColor: theme.panelMuted }]}
+          >
+            <View
+              style={[
+                styles.sliderFill,
+                { backgroundColor: theme.accent, width: percentage },
+              ]}
+            />
           </View>
-          <View style={[styles.sliderThumb, { left: percentage }]} />
+          <View
+            style={[
+              styles.sliderThumb,
+              {
+                backgroundColor: theme.paper,
+                borderColor: theme.accent,
+                left: percentage,
+              },
+            ]}
+          />
         </View>
         <Pressable
           accessibilityLabel={`增大${label}`}
           accessibilityRole="button"
           disabled={value >= maximum}
           onPress={() => adjust(1)}
-          style={styles.stepButton}
+          style={[
+            styles.stepButton,
+            {
+              backgroundColor: theme.panelRaised,
+              borderColor: theme.border,
+            },
+          ]}
         >
-          <Text style={styles.stepButtonText}>＋</Text>
+          <Text style={[styles.stepButtonText, { color: theme.controlText }]}>
+            ＋
+          </Text>
         </Pressable>
       </View>
     </View>
@@ -196,8 +237,18 @@ const PROGRESS_OPTIONS: readonly {
   { value: "hidden", label: "隐藏" },
 ];
 
+const COLOR_MODE_OPTIONS: readonly {
+  readonly value: ReaderColorMode;
+  readonly label: string;
+}[] = [
+  { value: "system", label: "自动" },
+  { value: "light", label: "浅色" },
+  { value: "dark", label: "深色" },
+];
+
 export function ReadingStylePanel({
   appearance,
+  theme,
   top,
   onChange,
   onClose,
@@ -217,11 +268,23 @@ export function ReadingStylePanel({
   );
 
   return (
-    <View style={[styles.panel, { top }]}>
+    <View
+      style={[
+        styles.panel,
+        {
+          backgroundColor: theme.panel,
+          borderColor: theme.border,
+          shadowColor: theme.shadow,
+          top,
+        },
+      ]}
+    >
       <View style={styles.header}>
         <View>
-          <Text style={styles.eyebrow}>READING APPEARANCE</Text>
-          <Text style={styles.title}>阅读样式</Text>
+          <Text style={[styles.eyebrow, { color: theme.accentStrong }]}>
+            READING APPEARANCE
+          </Text>
+          <Text style={[styles.title, { color: theme.text }]}>阅读样式</Text>
         </View>
         <Pressable
           accessibilityLabel="关闭阅读样式"
@@ -229,7 +292,9 @@ export function ReadingStylePanel({
           onPress={onClose}
           style={styles.closeButton}
         >
-          <Text style={styles.closeText}>完成</Text>
+          <Text style={[styles.closeText, { color: theme.accentStrong }]}>
+            完成
+          </Text>
         </Pressable>
       </View>
 
@@ -239,7 +304,96 @@ export function ReadingStylePanel({
         style={styles.settingsScroller}
       >
         <View style={styles.settingSection}>
-          <Text style={styles.sectionLabel}>字体</Text>
+          <Text style={[styles.sectionLabel, { color: theme.controlText }]}>
+            颜色模式
+          </Text>
+          <View
+            style={[
+              styles.progressOptions,
+              { backgroundColor: theme.panelMuted },
+            ]}
+          >
+            {COLOR_MODE_OPTIONS.map((option) => {
+              const selected = appearance.colorMode === option.value;
+              return (
+                <Pressable
+                  key={option.value}
+                  aria-checked={selected}
+                  accessibilityLabel={`${option.label}颜色模式`}
+                  accessibilityRole="radio"
+                  onPress={() => update("colorMode", option.value)}
+                  style={[
+                    styles.progressOption,
+                    selected && {
+                      backgroundColor: theme.panelRaised,
+                      borderColor: theme.accent,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.optionLabel,
+                      {
+                        color: selected
+                          ? theme.accentStrong
+                          : theme.secondaryText,
+                      },
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={styles.settingSection}>
+          <Text style={[styles.sectionLabel, { color: theme.controlText }]}>
+            阅读主题
+          </Text>
+          <View
+            accessible
+            accessibilityLabel="暖色纸张主题，已选择"
+            accessibilityRole="radio"
+            accessibilityState={{ checked: true }}
+            aria-checked={true}
+            style={[
+              styles.themeOption,
+              {
+                backgroundColor: theme.panelRaised,
+                borderColor: theme.accent,
+              },
+            ]}
+          >
+            <View style={styles.themePreview}>
+              <View
+                style={[styles.themeSwatch, { backgroundColor: "#fbf7f0" }]}
+              />
+              <View
+                style={[styles.themeSwatch, { backgroundColor: "#1f1a17" }]}
+              />
+            </View>
+            <View style={styles.themeCopy}>
+              <Text style={[styles.optionLabel, { color: theme.accentStrong }]}>
+                默认暖色
+              </Text>
+              <Text
+                style={[
+                  styles.optionDescription,
+                  { color: theme.secondaryText },
+                ]}
+              >
+                浅色与深色分别调校
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.settingSection}>
+          <Text style={[styles.sectionLabel, { color: theme.controlText }]}>
+            字体
+          </Text>
           <View style={styles.optionRow}>
             {FONT_OPTIONS.map((option) => {
               const selected = appearance.fontFamily === option.value;
@@ -250,7 +404,15 @@ export function ReadingStylePanel({
                   accessibilityLabel={`${option.label}字体`}
                   accessibilityRole="radio"
                   onPress={() => update("fontFamily", option.value)}
-                  style={[styles.fontOption, selected && styles.optionSelected]}
+                  style={[
+                    styles.fontOption,
+                    {
+                      backgroundColor: selected
+                        ? theme.panelRaised
+                        : "transparent",
+                      borderColor: selected ? theme.accent : "transparent",
+                    },
+                  ]}
                 >
                   <Text
                     style={[
@@ -258,7 +420,11 @@ export function ReadingStylePanel({
                       option.value === "serif"
                         ? styles.serifSample
                         : styles.sansSample,
-                      selected && styles.optionTextSelected,
+                      {
+                        color: selected
+                          ? theme.accentStrong
+                          : theme.controlText,
+                      },
                     ]}
                   >
                     {option.sample}
@@ -266,7 +432,11 @@ export function ReadingStylePanel({
                   <Text
                     style={[
                       styles.optionLabel,
-                      selected && styles.optionTextSelected,
+                      {
+                        color: selected
+                          ? theme.accentStrong
+                          : theme.secondaryText,
+                      },
                     ]}
                   >
                     {option.label}
@@ -283,6 +453,7 @@ export function ReadingStylePanel({
           maximum={32}
           minimum={16}
           step={1}
+          theme={theme}
           value={appearance.fontSize}
           onChange={(value) => update("fontSize", value)}
         />
@@ -292,6 +463,7 @@ export function ReadingStylePanel({
           maximum={2.1}
           minimum={1.25}
           step={0.05}
+          theme={theme}
           value={appearance.lineHeight}
           onChange={(value) => update("lineHeight", value)}
         />
@@ -301,6 +473,7 @@ export function ReadingStylePanel({
           maximum={2}
           minimum={0}
           step={0.1}
+          theme={theme}
           value={appearance.paragraphSpacing}
           onChange={(value) => update("paragraphSpacing", value)}
         />
@@ -310,13 +483,21 @@ export function ReadingStylePanel({
           maximum={72}
           minimum={16}
           step={4}
+          theme={theme}
           value={appearance.horizontalMargin}
           onChange={(value) => update("horizontalMargin", value)}
         />
 
         <View style={styles.settingSection}>
-          <Text style={styles.sectionLabel}>阅读进度</Text>
-          <View style={styles.progressOptions}>
+          <Text style={[styles.sectionLabel, { color: theme.controlText }]}>
+            阅读进度
+          </Text>
+          <View
+            style={[
+              styles.progressOptions,
+              { backgroundColor: theme.panelMuted },
+            ]}
+          >
             {PROGRESS_OPTIONS.map((option) => {
               const selected = appearance.progressDisplay === option.value;
               return (
@@ -328,13 +509,20 @@ export function ReadingStylePanel({
                   onPress={() => update("progressDisplay", option.value)}
                   style={[
                     styles.progressOption,
-                    selected && styles.optionSelected,
+                    selected && {
+                      backgroundColor: theme.panelRaised,
+                      borderColor: theme.accent,
+                    },
                   ]}
                 >
                   <Text
                     style={[
                       styles.optionLabel,
-                      selected && styles.optionTextSelected,
+                      {
+                        color: selected
+                          ? theme.accentStrong
+                          : theme.secondaryText,
+                      },
                     ]}
                   >
                     {option.label}
@@ -346,14 +534,18 @@ export function ReadingStylePanel({
         </View>
       </ScrollView>
 
-      <View style={styles.footer}>
-        <Text style={styles.footerHint}>调整后会从当前文字位置重新排版</Text>
+      <View style={[styles.footer, { borderTopColor: theme.border }]}>
+        <Text style={[styles.footerHint, { color: theme.secondaryText }]}>
+          调整后会从当前文字位置重新排版
+        </Text>
         <Pressable
           accessibilityLabel="恢复默认阅读样式"
           accessibilityRole="button"
           onPress={() => onChange(DEFAULT_READER_APPEARANCE)}
         >
-          <Text style={styles.resetText}>恢复默认</Text>
+          <Text style={[styles.resetText, { color: theme.accentStrong }]}>
+            恢复默认
+          </Text>
         </Pressable>
       </View>
     </View>
@@ -414,6 +606,10 @@ const styles = StyleSheet.create({
     color: "#81756b",
     fontSize: 11,
     fontWeight: "600",
+  },
+  optionDescription: {
+    fontSize: 10,
+    lineHeight: 14,
   },
   optionRow: {
     flexDirection: "row",
@@ -559,6 +755,8 @@ const styles = StyleSheet.create({
   },
   stepButton: {
     alignItems: "center",
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
     height: 28,
     justifyContent: "center",
     width: 28,
@@ -567,6 +765,30 @@ const styles = StyleSheet.create({
     color: "#b94b24",
     fontSize: 18,
     fontWeight: "600",
+  },
+  themeCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  themeOption: {
+    alignItems: "center",
+    borderRadius: 11,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+  },
+  themePreview: {
+    flexDirection: "row",
+  },
+  themeSwatch: {
+    borderColor: "rgba(127, 109, 94, 0.28)",
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: 20,
+    marginRight: -4,
+    width: 20,
   },
   title: {
     color: "#3e3731",
