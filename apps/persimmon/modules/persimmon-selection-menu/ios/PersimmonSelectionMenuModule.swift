@@ -30,6 +30,14 @@ private final class SelectionMenuAnchorView: UITextView, UIEditMenuInteractionDe
     false
   }
 
+  override func selectionRects(for range: UITextRange) -> [UITextSelectionRect] {
+    []
+  }
+
+  override func caretRect(for position: UITextPosition) -> CGRect {
+    .zero
+  }
+
   func present(text: String, rectInWindow: CGRect, from viewController: UIViewController) {
     self.text = text
     selectedRange = NSRange(location: 0, length: (text as NSString).length)
