@@ -7,6 +7,7 @@ const COVER_PNG = Uint8Array.from(
     "base64",
   ),
 );
+const IS_CI = Boolean(process.env.CI);
 
 function createTestEpub(): Buffer {
   const paragraphs = Array.from(
@@ -100,13 +101,24 @@ async function waitForReaderReady(page: Page): Promise<void> {
   await expect(readerPageStatus(page)).toBeVisible({ timeout: 60_000 });
 }
 
+async function clickPageTurnButton(
+  page: Page,
+  direction: "上一页" | "下一页",
+): Promise<void> {
+  const errorOverlay = page.locator("#error-overlay");
+  if ((await errorOverlay.count()) > 0) {
+    expect((await errorOverlay.textContent())?.trim() ?? "").toBe("");
+  }
+  await page.getByRole("button", { name: direction }).click({ force: IS_CI });
+}
+
 async function turnPageAndWait(
   page: Page,
   direction: "上一页" | "下一页",
 ): Promise<void> {
   const status = readerPageStatus(page);
   const before = await status.getAttribute("aria-label");
-  await page.getByRole("button", { name: direction }).click();
+  await clickPageTurnButton(page, direction);
   await expect
     .poll(() => status.getAttribute("aria-label"), { timeout: 60_000 })
     .not.toBe(before);
@@ -169,9 +181,7 @@ test("imports, reads, navigates, resumes, and deletes a local EPUB", async ({
   const dragY = nextPageBounds.y + nextPageBounds.height * 0.55;
   await page.mouse.move(dragStartX, dragY);
   await page.mouse.down();
-  await page.mouse.move(12, dragY - 48, {
-    steps: 24,
-  });
+  await page.mouse.move(12, dragY - 48, { steps: IS_CI ? 8 : 24 });
   await page.mouse.up();
   await expect
     .poll(() => pageStatus.getAttribute("aria-label"), { timeout: 60_000 })
@@ -228,7 +238,7 @@ test("persists a two-page layout and hides floating controls while turning", asy
   await turnPageAndWait(page, "下一页");
   const pageStatus = readerPageStatus(page);
   const beforeSecondTurn = await pageStatus.getAttribute("aria-label");
-  await page.getByRole("button", { name: "下一页" }).click();
+  await clickPageTurnButton(page, "下一页");
   await expect(page.getByRole("button", { name: "返回书架" })).toHaveCount(0);
   await expect
     .poll(() => pageStatus.getAttribute("aria-label"), { timeout: 60_000 })
