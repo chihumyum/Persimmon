@@ -203,3 +203,60 @@ test("persists a two-page layout and hides floating controls while turning", asy
     page.getByRole("button", { name: "切换到单页布局" }),
   ).toBeVisible();
 });
+
+test("customizes typography and persists header progress placement", async ({
+  page,
+}) => {
+  await page.getByRole("button", { name: "打开 柿子熟了" }).click();
+  await expect(page.getByLabel(/本章第 1 页/)).toBeVisible();
+
+  await page.getByRole("button", { name: "打开阅读样式" }).click();
+  await expect(page.getByText("阅读样式", { exact: true })).toBeVisible();
+  await page.getByRole("radio", { name: "无衬线字体" }).click();
+  await page.getByRole("button", { name: "增大字号" }).click();
+  await page.getByRole("button", { name: "增大行距" }).click();
+  await page.getByRole("button", { name: "增大段落间距" }).click();
+  await page.getByRole("button", { name: "增大左右页边距" }).click();
+  await page.getByRole("radio", { name: "进度显示在页眉" }).click();
+
+  await expect(page.getByRole("radio", { name: "无衬线字体" })).toBeChecked();
+  await expect(page.getByRole("slider", { name: "字号" })).toHaveAttribute(
+    "aria-valuenow",
+    "21",
+  );
+  await expect(page.getByRole("slider", { name: "行距" })).toHaveAttribute(
+    "aria-valuenow",
+    "1.7",
+  );
+  await expect(page.getByRole("slider", { name: "段落间距" })).toHaveAttribute(
+    "aria-valuenow",
+    "1",
+  );
+  await expect(
+    page.getByRole("slider", { name: "左右页边距" }),
+  ).toHaveAttribute("aria-valuenow", "36");
+  await page.getByRole("button", { name: "关闭阅读样式" }).click();
+  await page.getByRole("button", { name: "切换阅读工具" }).click();
+  await expect(page.getByLabel(/页眉：.+，全书 \d+%/)).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.locator('[aria-label^="本章第 "]')).toHaveCount(0);
+
+  await page.getByRole("button", { name: "切换阅读工具" }).click();
+  await page.waitForTimeout(400);
+  await page.getByRole("button", { name: "返回书架" }).click();
+  await page.getByRole("button", { name: "打开 柿子熟了" }).click();
+  await page.getByRole("button", { name: "切换阅读工具" }).click();
+  await expect(page.getByLabel(/页眉：.+，全书 \d+%/)).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.locator('[aria-label^="本章第 "]')).toHaveCount(0);
+
+  await page.getByRole("button", { name: "切换阅读工具" }).click();
+  await page.getByRole("button", { name: "打开阅读样式" }).click();
+  await expect(page.getByRole("radio", { name: "无衬线字体" })).toBeChecked();
+  await expect(page.getByRole("slider", { name: "字号" })).toHaveAttribute(
+    "aria-valuenow",
+    "21",
+  );
+});

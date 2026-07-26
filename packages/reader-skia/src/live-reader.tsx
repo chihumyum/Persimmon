@@ -85,6 +85,10 @@ import {
   type PageTurnCaptureAddresses,
 } from "./page-turn-textures";
 import { ReaderPageLayer } from "./reader-page-layer";
+import {
+  DEFAULT_LIVE_READER_APPEARANCE,
+  type ReaderAppearance,
+} from "./reader-appearance";
 import { READER_PAPER_COLOR } from "./reader-theme";
 import {
   bookForSection,
@@ -147,8 +151,13 @@ export interface LiveReaderProps {
   fontProvider: SkTypefaceFontProvider;
   width: number;
   height: number;
+  appearance?: ReaderAppearance;
+  /** @deprecated Pass `appearance.fontSize` instead. */
   fontSize?: number;
   layout?: ReaderLayoutMode;
+  topInset?: number;
+  bottomInset?: number;
+  progressHeaderVisible?: boolean;
   initialPosition?: BookPosition;
   loadResource?: ResourceLoader;
   automaticPageTurnTuning?: AutomaticPageTurnTuning;
@@ -189,8 +198,14 @@ interface QueuedPageGestureMove {
   readonly dx: number;
 }
 
-interface LazyReaderEngineProps extends LiveReaderProps {
-  readonly fontSize: number;
+interface LazyReaderEngineProps
+  extends Omit<
+    LiveReaderProps,
+    "appearance" | "bottomInset" | "fontSize" | "topInset"
+  > {
+  readonly appearance: ReaderAppearance;
+  readonly topInset: number;
+  readonly bottomInset: number;
 }
 
 function LazyReaderEngine({
@@ -198,8 +213,11 @@ function LazyReaderEngine({
   fontProvider,
   width,
   height,
-  fontSize,
+  appearance,
   layout = "single",
+  topInset,
+  bottomInset,
+  progressHeaderVisible = true,
   initialPosition,
   loadResource,
   automaticPageTurnTuning = DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
@@ -222,9 +240,33 @@ function LazyReaderEngine({
     () => createSkiaParagraphBackend(fontProvider),
     [fontProvider],
   );
+  const typographyAppearance = useMemo<ReaderAppearance>(
+    () => ({
+      fontFamily: appearance.fontFamily,
+      fontSize: appearance.fontSize,
+      lineHeight: appearance.lineHeight,
+      paragraphSpacing: appearance.paragraphSpacing,
+      horizontalMargin: appearance.horizontalMargin,
+      progressDisplay: "hidden",
+    }),
+    [
+      appearance.fontFamily,
+      appearance.fontSize,
+      appearance.horizontalMargin,
+      appearance.lineHeight,
+      appearance.paragraphSpacing,
+    ],
+  );
   const spec = useMemo(
-    () => createReaderLayoutSpec(physicalPageWidth, height, fontSize),
-    [fontSize, height, physicalPageWidth],
+    () =>
+      createReaderLayoutSpec(
+        physicalPageWidth,
+        height,
+        typographyAppearance,
+        topInset,
+        bottomInset,
+      ),
+    [bottomInset, height, physicalPageWidth, topInset, typographyAppearance],
   );
   const paginationCache = useMemo(
     () => new Map<number, PaginationResult<SkParagraph>>(),
@@ -1108,7 +1150,7 @@ function LazyReaderEngine({
       key: JSON.stringify([
         book.id,
         book.revisionId,
-        fontSize,
+        typographyAppearance,
         layout,
         address.sectionIndex,
         address.pageIndex,
@@ -1117,7 +1159,14 @@ function LazyReaderEngine({
       height,
       metadata: address,
     }),
-    [book.id, book.revisionId, fontSize, height, layout, physicalPageWidth],
+    [
+      book.id,
+      book.revisionId,
+      height,
+      layout,
+      physicalPageWidth,
+      typographyAppearance,
+    ],
   );
   const createPageCapture = useCallback(
     (
@@ -1567,6 +1616,19 @@ function LazyReaderEngine({
     settledLastAddress.pageIndex !== readerState.settled.pageIndex
       ? `${readerState.settled.pageIndex + 1}–${settledLastAddress.pageIndex + 1}`
       : `${readerState.settled.pageIndex + 1}`;
+  const currentSectionTitle =
+    book.sections[readerState.settled.sectionIndex]?.title ?? book.title;
+  const showProgressHeader =
+    progressHeaderVisible &&
+    (appearance.progressDisplay === "header" ||
+      appearance.progressDisplay === "both");
+  const showProgressFooter =
+    appearance.progressDisplay === "footer" ||
+    appearance.progressDisplay === "both";
+  const progressHorizontalMargin = Math.min(
+    appearance.horizontalMargin,
+    Math.max(8, (physicalPageWidth - 96) / 2),
+  );
   const oldestRenderableTurn = renderableTurns[0];
   const newestRenderableTurn = renderableTurns.at(-1);
   const turnBackgroundSlots: readonly (PageAddress | undefined)[] = (() => {
@@ -1745,15 +1807,44 @@ function LazyReaderEngine({
         </View>
       ) : null}
 
-      <View
-        accessibilityLabel={`本章第 ${settledPageLabel} 页，共 ${localPageCount} 页，全书 ${publicationPercentage}%`}
-        accessibilityLiveRegion="polite"
-        style={styles.pageBadge}
-      >
-        <Text style={styles.pageText}>
-          {settledPageLabel} / {localPageCount} · {publicationPercentage}%
-        </Text>
-      </View>
+      {showProgressHeader ? (
+        <View
+          accessibilityLabel={`页眉：${currentSectionTitle}，全书 ${publicationPercentage}%`}
+          accessibilityLiveRegion="polite"
+          style={[
+            styles.pageHeader,
+            {
+              left: progressHorizontalMargin,
+              right: progressHorizontalMargin,
+              top: topInset + 12,
+            },
+          ]}
+        >
+          <Text numberOfLines={1} style={styles.pageHeaderTitle}>
+            {currentSectionTitle}
+          </Text>
+          <Text style={styles.pageText}>{publicationPercentage}%</Text>
+        </View>
+      ) : null}
+
+      {showProgressFooter ? (
+        <View
+          accessibilityLabel={`本章第 ${settledPageLabel} 页，共 ${localPageCount} 页，全书 ${publicationPercentage}%`}
+          accessibilityLiveRegion="polite"
+          style={[
+            styles.pageFooter,
+            {
+              bottom: bottomInset + 12,
+              left: progressHorizontalMargin,
+              right: progressHorizontalMargin,
+            },
+          ]}
+        >
+          <Text style={styles.pageText}>
+            {settledPageLabel} / {localPageCount} · {publicationPercentage}%
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
   return Platform.OS === "web" ? (
@@ -1935,8 +2026,12 @@ export function LiveReader({
   fontProvider,
   width,
   height,
-  fontSize = 20,
+  appearance,
+  fontSize,
   layout = "single",
+  topInset = 0,
+  bottomInset = 0,
+  progressHeaderVisible = true,
   initialPosition,
   loadResource,
   automaticPageTurnTuning,
@@ -1953,12 +2048,26 @@ export function LiveReader({
     },
     [onProgress],
   );
+  const resolvedAppearance = useMemo<ReaderAppearance>(
+    () =>
+      appearance ?? {
+        ...DEFAULT_LIVE_READER_APPEARANCE,
+        fontSize: fontSize ?? DEFAULT_LIVE_READER_APPEARANCE.fontSize,
+      },
+    [appearance, fontSize],
+  );
   const layoutKey = JSON.stringify([
     book.revisionId,
     width,
     height,
-    fontSize,
+    resolvedAppearance.fontFamily,
+    resolvedAppearance.fontSize,
+    resolvedAppearance.lineHeight,
+    resolvedAppearance.paragraphSpacing,
+    resolvedAppearance.horizontalMargin,
     layout,
+    topInset,
+    bottomInset,
   ]);
   const normalizedAutomaticPageTurnTuning = useMemo(
     () => normalizeAutomaticPageTurnTuning(automaticPageTurnTuning),
@@ -1976,8 +2085,11 @@ export function LiveReader({
       fontProvider={fontProvider}
       width={width}
       height={height}
-      fontSize={fontSize}
+      appearance={resolvedAppearance}
       layout={layout}
+      topInset={topInset}
+      bottomInset={bottomInset}
+      progressHeaderVisible={progressHeaderVisible}
       initialPosition={anchorRef.current}
       loadResource={loadResource}
       automaticPageTurnTuning={normalizedAutomaticPageTurnTuning}
@@ -2113,13 +2225,24 @@ const styles = StyleSheet.create({
   leftEdge: {
     left: 0,
   },
-  pageBadge: {
+  pageFooter: {
     alignItems: "center",
-    bottom: 14,
-    left: 0,
     pointerEvents: "none",
     position: "absolute",
-    right: 0,
+  },
+  pageHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+    justifyContent: "space-between",
+    pointerEvents: "none",
+    position: "absolute",
+  },
+  pageHeaderTitle: {
+    color: "#8b8177",
+    flex: 1,
+    fontSize: 12,
+    letterSpacing: 0.2,
   },
   pageText: {
     color: "#8b8177",

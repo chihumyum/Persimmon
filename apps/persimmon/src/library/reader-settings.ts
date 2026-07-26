@@ -1,33 +1,97 @@
 import {
+  DEFAULT_READER_APPEARANCE,
   DEFAULT_READER_CLICK_PAGE_TURN_TUNING,
   DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
   DEFAULT_READER_PAGE_TURN_TUNING,
   DEFAULT_READER_SETTINGS,
+  type ReaderAppearanceSettings,
   type ReaderClickPageTurnTuning,
+  type ReaderFontFamily,
   type ReaderGesturePageTurnTuning,
   type ReaderPageTurnTuning,
+  type ReaderProgressDisplay,
   type ReaderSettings,
 } from "./types";
 
 export function normalizeSettings(value: unknown): ReaderSettings {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !("fontSize" in value) ||
-    typeof value.fontSize !== "number" ||
-    !Number.isFinite(value.fontSize)
-  ) {
+  if (typeof value !== "object" || value === null) {
     return DEFAULT_READER_SETTINGS;
   }
 
+  const appearanceSource =
+    "appearance" in value &&
+    typeof value.appearance === "object" &&
+    value.appearance !== null
+      ? value.appearance
+      : value;
+
   return {
-    fontSize: Math.min(30, Math.max(16, Math.round(value.fontSize / 2) * 2)),
+    appearance: normalizeAppearance(appearanceSource),
     layout:
       "layout" in value && value.layout === "spread" ? "spread" : "single",
     pageTurnTuning: normalizePageTurnTuning(
       "pageTurnTuning" in value ? value.pageTurnTuning : undefined,
     ),
   };
+}
+
+function normalizeAppearance(value: object): ReaderAppearanceSettings {
+  return {
+    fontFamily: readerFontFamily(value),
+    fontSize: steppedNumber(
+      value,
+      "fontSize",
+      16,
+      32,
+      1,
+      DEFAULT_READER_APPEARANCE.fontSize,
+    ),
+    lineHeight: steppedNumber(
+      value,
+      "lineHeight",
+      1.25,
+      2.1,
+      0.05,
+      DEFAULT_READER_APPEARANCE.lineHeight,
+    ),
+    paragraphSpacing: steppedNumber(
+      value,
+      "paragraphSpacing",
+      0,
+      2,
+      0.1,
+      DEFAULT_READER_APPEARANCE.paragraphSpacing,
+    ),
+    horizontalMargin: steppedNumber(
+      value,
+      "horizontalMargin",
+      16,
+      72,
+      4,
+      DEFAULT_READER_APPEARANCE.horizontalMargin,
+    ),
+    progressDisplay: readerProgressDisplay(value),
+  };
+}
+
+function readerFontFamily(value: object): ReaderFontFamily {
+  return "fontFamily" in value && value.fontFamily === "sans"
+    ? "sans"
+    : "serif";
+}
+
+function readerProgressDisplay(value: object): ReaderProgressDisplay {
+  if (!("progressDisplay" in value)) {
+    return DEFAULT_READER_APPEARANCE.progressDisplay;
+  }
+  switch (value.progressDisplay) {
+    case "header":
+    case "both":
+    case "hidden":
+      return value.progressDisplay;
+    default:
+      return "footer";
+  }
 }
 
 function normalizePageTurnTuning(value: unknown): ReaderPageTurnTuning {
@@ -189,4 +253,22 @@ function boundedNumber(
   return typeof candidate === "number" && Number.isFinite(candidate)
     ? Math.min(maximum, Math.max(minimum, candidate))
     : fallback;
+}
+
+function steppedNumber(
+  value: object,
+  key: string,
+  minimum: number,
+  maximum: number,
+  step: number,
+  fallback: number,
+): number {
+  const candidate =
+    key in value ? (value as Record<string, unknown>)[key] : undefined;
+  if (typeof candidate !== "number" || !Number.isFinite(candidate)) {
+    return fallback;
+  }
+  const clamped = Math.min(maximum, Math.max(minimum, candidate));
+  const stepCount = Math.round((clamped - minimum) / step);
+  return Number((minimum + stepCount * step).toFixed(3));
 }

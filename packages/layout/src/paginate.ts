@@ -198,6 +198,14 @@ function gapBefore(
   previousBlock: BlockIR | undefined,
   spec: PageLayoutSpec,
 ): number {
+  if (
+    spec.paragraphGapMode === "reader" &&
+    block.kind === "paragraph" &&
+    previousBlock?.kind === "paragraph"
+  ) {
+    return spec.paragraphGap;
+  }
+
   const currentMargin = block.style?.marginBeforeEm;
   const previousMargin = previousBlock?.style?.marginAfterEm;
   if (currentMargin !== undefined || previousMargin !== undefined) {
