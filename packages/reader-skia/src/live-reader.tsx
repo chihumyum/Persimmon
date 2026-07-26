@@ -294,6 +294,7 @@ interface LazyReaderEngineProps
   readonly appearance: ReaderAppearance;
   readonly topInset: number;
   readonly bottomInset: number;
+  readonly imageCache: DecodedImageCache;
 }
 
 interface ReaderLinkHit {
@@ -367,6 +368,7 @@ function LazyReaderEngine({
   theme = DEFAULT_READER_THEME,
   topInset,
   bottomInset,
+  imageCache,
   toolbarVisible = false,
   initialPosition,
   loadResource,
@@ -450,13 +452,6 @@ function LazyReaderEngine({
   );
   const pageDecorationCache = useMemo(
     () => new Map<string, CachedPageDecoration>(),
-    [],
-  );
-  const imageCache = useMemo(
-    () =>
-      new DecodedImageCache(
-        Platform.OS === "web" ? 64 * 1024 * 1024 : 32 * 1024 * 1024,
-      ),
     [],
   );
   const pageCaptureCache = useMemo(
@@ -831,9 +826,8 @@ function LazyReaderEngine({
         disposeSkiaPageDecorationAfterPaint(cached.decoration);
       }
       pageDecorationCache.clear();
-      imageCache.dispose();
     },
-    [imageCache, pageCaptureCache, pageDecorationCache, paginationCache],
+    [pageCaptureCache, pageDecorationCache, paginationCache],
   );
 
   useEffect(() => {
@@ -3100,6 +3094,16 @@ export function LiveReader({
   onSelectionMenuRequest,
   onTurningChange,
 }: LiveReaderProps) {
+  // Geometry changes remount LazyReaderEngine. Keep decoded images above that
+  // boundary so a layout switch neither releases nor decodes them twice.
+  const imageCache = useMemo(
+    () =>
+      new DecodedImageCache(
+        Platform.OS === "web" ? 64 * 1024 * 1024 : 32 * 1024 * 1024,
+      ),
+    [],
+  );
+  useEffect(() => () => imageCache.dispose(), [imageCache]);
   const anchorRef = useRef(initialPosition);
   const handleProgress = useCallback(
     (progress: ReaderProgress) => {
@@ -3153,6 +3157,7 @@ export function LiveReader({
       theme={theme}
       topInset={topInset}
       bottomInset={bottomInset}
+      imageCache={imageCache}
       toolbarVisible={toolbarVisible}
       initialPosition={anchorRef.current}
       loadResource={loadResource}

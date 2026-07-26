@@ -46,6 +46,10 @@ interface Viewport {
   readonly height: number;
 }
 
+interface ReaderFrame extends Viewport {
+  readonly layout: ReaderLayoutMode;
+}
+
 interface NavigationRow {
   readonly item: BookNavigationItem;
   readonly depth: number;
@@ -104,7 +108,8 @@ export function ReaderScreen({
     () => resolveReaderTheme(appearance.theme, resolvedColorScheme),
     [appearance.theme, resolvedColorScheme],
   );
-  const [viewport, setViewport] = useState<Viewport | null>(null);
+  const [readerFrame, setReaderFrame] = useState<ReaderFrame | null>(null);
+  const measuredViewportRef = useRef<Viewport | null>(null);
   const [tocVisible, setTocVisible] = useState(false);
   const [turning, setTurning] = useState(false);
   const [selecting, setSelecting] = useState(false);
@@ -113,6 +118,7 @@ export function ReaderScreen({
   const [layoutVisible, setLayoutVisible] = useState(false);
   const [layoutTransitioning, setLayoutTransitioning] = useState(false);
   const [tuningVisible, setTuningVisible] = useState(false);
+  const layoutTransitioningRef = useRef(false);
   const pendingLayoutRef = useRef<ReaderLayoutMode | undefined>(undefined);
   const layoutFrameRef = useRef(0);
   const [navigationTarget, setNavigationTarget] = useState<
@@ -133,24 +139,47 @@ export function ReaderScreen({
       layoutFrameRef.current = 0;
     }
   }, []);
-  useEffect(() => cancelLayoutFrame, [cancelLayoutFrame]);
+  useEffect(
+    () => () => {
+      cancelLayoutFrame();
+      pendingLayoutRef.current = undefined;
+      layoutTransitioningRef.current = false;
+    },
+    [cancelLayoutFrame],
+  );
   useEffect(() => {
     if (pendingLayoutRef.current !== layout) {
       return;
     }
+    // The container can resize after the layout setting changes. Commit that
+    // measured viewport and the reader mode together so the keyed Skia engine
+    // rebuilds once while its font/resource-owning surface stays mounted.
     cancelLayoutFrame();
     layoutFrameRef.current = requestAnimationFrame(() => {
-      layoutFrameRef.current = 0;
-      pendingLayoutRef.current = undefined;
-      setLayoutTransitioning(false);
+      layoutFrameRef.current = requestAnimationFrame(() => {
+        layoutFrameRef.current = 0;
+        const measuredViewport = measuredViewportRef.current;
+        if (measuredViewport) {
+          setReaderFrame({ ...measuredViewport, layout });
+        }
+        pendingLayoutRef.current = undefined;
+        layoutTransitioningRef.current = false;
+        setLayoutTransitioning(false);
+      });
     });
   }, [cancelLayoutFrame, layout]);
   const handleLayoutChange = useCallback(
     (nextLayout: ReaderLayoutMode) => {
-      if (nextLayout === layout || layoutTransitioning) {
+      if (
+        nextLayout === layout ||
+        layoutTransitioningRef.current ||
+        turning ||
+        selecting
+      ) {
         return;
       }
       pendingLayoutRef.current = nextLayout;
+      layoutTransitioningRef.current = true;
       setLayoutVisible(false);
       setLayoutTransitioning(true);
       cancelLayoutFrame();
@@ -161,19 +190,29 @@ export function ReaderScreen({
         });
       });
     },
-    [cancelLayoutFrame, layout, layoutTransitioning, onLayoutChange],
+    [cancelLayoutFrame, layout, onLayoutChange, selecting, turning],
   );
 
-  const measureReader = useCallback((event: LayoutChangeEvent) => {
-    const { width, height } = event.nativeEvent.layout;
-    if (width > 0 && height > 0) {
-      setViewport((current) =>
-        current?.width === width && current.height === height
-          ? current
-          : { width, height },
-      );
-    }
-  }, []);
+  const measureReader = useCallback(
+    (event: LayoutChangeEvent) => {
+      const { width, height } = event.nativeEvent.layout;
+      if (width > 0 && height > 0) {
+        const measuredViewport = { width, height };
+        measuredViewportRef.current = measuredViewport;
+        if (layoutTransitioningRef.current) {
+          return;
+        }
+        setReaderFrame((current) =>
+          current?.width === width &&
+          current.height === height &&
+          current.layout === layout
+            ? current
+            : { ...measuredViewport, layout },
+        );
+      }
+    },
+    [layout],
+  );
 
   const jumpTo = useCallback((position: BookPosition) => {
     setNavigationTarget(position);
@@ -257,13 +296,7 @@ export function ReaderScreen({
             layout === "spread" && styles.readerSpread,
           ]}
         >
-          {viewport && layoutTransitioning ? (
-            <View
-              style={[styles.readerLoading, { backgroundColor: theme.paper }]}
-            >
-              <ActivityIndicator color={theme.accent} />
-            </View>
-          ) : viewport ? (
+          {readerFrame ? (
             <Suspense
               fallback={
                 <View
@@ -280,10 +313,10 @@ export function ReaderScreen({
                 <ReaderSurface
                   key={`${opened.book.revisionId}:${readerGeneration}`}
                   book={opened.book}
-                  width={viewport.width}
-                  height={viewport.height}
+                  width={readerFrame.width}
+                  height={readerFrame.height}
                   appearance={appearance}
-                  layout={layout}
+                  layout={readerFrame.layout}
                   pageTurnAnimation={pageTurnAnimation}
                   theme={theme}
                   topInset={insets.top}
@@ -303,6 +336,16 @@ export function ReaderScreen({
                 />
               </AsyncSkia>
             </Suspense>
+          ) : null}
+          {readerFrame && layoutTransitioning ? (
+            <View
+              style={[
+                styles.readerTransitionOverlay,
+                { backgroundColor: theme.paper },
+              ]}
+            >
+              <ActivityIndicator color={theme.accent} />
+            </View>
           ) : null}
         </View>
       </View>
@@ -560,6 +603,16 @@ const styles = StyleSheet.create({
     maxWidth: 920,
     overflow: "hidden",
     width: "100%",
+  },
+  readerTransitionOverlay: {
+    alignItems: "center",
+    bottom: 0,
+    justifyContent: "center",
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+    zIndex: 5,
   },
   readerSpread: {
     maxWidth: 1280,

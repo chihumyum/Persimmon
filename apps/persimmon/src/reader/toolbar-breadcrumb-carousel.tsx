@@ -7,7 +7,7 @@ import {
 } from "./toolbar-breadcrumb";
 
 const HORIZONTAL_PADDING = 24;
-const CAROUSEL_EDGE_PAUSE_MS = 1200;
+const CAROUSEL_GAP = 36;
 const CAROUSEL_PIXELS_PER_SECOND = 28;
 
 export interface ToolbarBreadcrumbCarouselProps {
@@ -28,39 +28,27 @@ export function ToolbarBreadcrumbCarousel({
   const translateX = useRef(new Animated.Value(0)).current;
   const overflowing =
     availableWidth > 0 && estimatedFullLabelWidth > availableWidth;
-  const travel = Math.max(0, estimatedFullLabelWidth - availableWidth);
+  const cycleDistance = estimatedFullLabelWidth + CAROUSEL_GAP;
 
   useEffect(() => {
     translateX.stopAnimation();
     translateX.setValue(0);
-    if (!overflowing || travel <= 0) {
+    if (!overflowing || cycleDistance <= 0) {
       return;
     }
-    const travelDuration = Math.max(
-      1600,
-      (travel / CAROUSEL_PIXELS_PER_SECOND) * 1000,
-    );
+    const cycleDuration = (cycleDistance / CAROUSEL_PIXELS_PER_SECOND) * 1000;
     const carousel = Animated.loop(
-      Animated.sequence([
-        Animated.delay(CAROUSEL_EDGE_PAUSE_MS),
-        Animated.timing(translateX, {
-          duration: travelDuration,
-          easing: Easing.inOut(Easing.cubic),
-          toValue: -travel,
-          useNativeDriver: true,
-        }),
-        Animated.delay(CAROUSEL_EDGE_PAUSE_MS),
-        Animated.timing(translateX, {
-          duration: travelDuration,
-          easing: Easing.inOut(Easing.cubic),
-          toValue: 0,
-          useNativeDriver: true,
-        }),
-      ]),
+      Animated.timing(translateX, {
+        duration: cycleDuration,
+        easing: Easing.linear,
+        toValue: -cycleDistance,
+        useNativeDriver: true,
+      }),
+      { resetBeforeIteration: true },
     );
     carousel.start();
     return () => carousel.stop();
-  }, [overflowing, translateX, travel]);
+  }, [cycleDistance, overflowing, translateX]);
 
   if (!fullLabel) {
     return null;
@@ -81,19 +69,33 @@ export function ToolbarBreadcrumbCarousel({
     >
       {overflowing ? (
         <View style={styles.carouselViewport}>
-          <Animated.Text
-            numberOfLines={1}
+          <Animated.View
             style={[
-              styles.carouselLabel,
+              styles.carouselTrack,
               {
-                color,
                 transform: [{ translateX }],
-                width: estimatedFullLabelWidth,
+                width: cycleDistance * 2,
               },
             ]}
           >
-            {fullLabel}
-          </Animated.Text>
+            {[0, 1].map((copy) => (
+              <Text
+                key={copy}
+                accessible={false}
+                numberOfLines={1}
+                style={[
+                  styles.carouselLabel,
+                  {
+                    color,
+                    marginRight: CAROUSEL_GAP,
+                    width: estimatedFullLabelWidth,
+                  },
+                ]}
+              >
+                {fullLabel}
+              </Text>
+            ))}
+          </Animated.View>
         </View>
       ) : (
         <Text numberOfLines={1} style={[styles.label, { color }]}>
@@ -110,6 +112,10 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     lineHeight: 17,
     textAlign: "left",
+  },
+  carouselTrack: {
+    alignItems: "center",
+    flexDirection: "row",
   },
   carouselViewport: {
     alignSelf: "stretch",
