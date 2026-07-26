@@ -49,6 +49,22 @@ export interface TextSelectionGeometry {
   readonly endHandle: TextSelectionHandle;
 }
 
+export function textSelectionContainsPoint(
+  geometry: Pick<TextSelectionGeometry, "rects">,
+  x: number,
+  y: number,
+  hitSlop = 0,
+): boolean {
+  const inset = Math.max(0, hitSlop);
+  return geometry.rects.some(
+    (rect) =>
+      x >= rect.x - inset &&
+      x <= rect.x + rect.width + inset &&
+      y >= rect.y - inset &&
+      y <= rect.y + rect.height + inset,
+  );
+}
+
 interface TextBlockEntry {
   readonly sectionId: string;
   readonly blockId: string;

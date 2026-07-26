@@ -12,6 +12,7 @@ import {
   hitTestVisibleText,
   normalizeTextSelection,
   selectedText,
+  textSelectionContainsPoint,
   textSelectionGeometry,
   wordRangeAt,
   wordSelectionAt,
@@ -196,5 +197,21 @@ describe("visible text geometry", () => {
       startHandle: { x: 370, top: 30, bottom: 50 },
       endHandle: { x: 420, top: 30, bottom: 50 },
     });
+  });
+
+  it("distinguishes taps on selected text from taps outside the selection", () => {
+    const geometry = textSelectionGeometry(
+      document,
+      {
+        anchor: { sectionId: "section-1", blockId: "block-1", offset: 5 },
+        focus: { sectionId: "section-1", blockId: "block-1", offset: 10 },
+      },
+      visible,
+    )!;
+
+    expect(textSelectionContainsPoint(geometry, 390, 40)).toBe(true);
+    expect(textSelectionContainsPoint(geometry, 368, 40)).toBe(false);
+    expect(textSelectionContainsPoint(geometry, 368, 40, 2)).toBe(true);
+    expect(textSelectionContainsPoint(geometry, 390, 60)).toBe(false);
   });
 });

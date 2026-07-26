@@ -140,6 +140,7 @@ import {
   createTextSelectionDocument,
   hitTestVisibleText,
   selectedText,
+  textSelectionContainsPoint,
   textSelectionGeometry,
   wordSelectionAt,
   type TextSelection,
@@ -1226,6 +1227,34 @@ function LazyReaderEngine({
     },
     [onSelectionMenuRequest, selectionDocument, visibleTextPages],
   );
+  const handleTextSelectionTap = useCallback(
+    (localX: number, localY: number, absoluteX: number, absoluteY: number) => {
+      const current = textSelectionRef.current;
+      if (!current) {
+        return;
+      }
+      readerOriginRef.current = {
+        x: absoluteX - localX,
+        y: absoluteY - localY,
+      };
+      const geometry = textSelectionGeometry(
+        selectionDocument,
+        current,
+        visibleTextPages,
+      );
+      if (geometry && textSelectionContainsPoint(geometry, localX, localY, 2)) {
+        showTextSelectionMenu(current);
+        return;
+      }
+      clearTextSelection();
+    },
+    [
+      clearTextSelection,
+      selectionDocument,
+      showTextSelectionMenu,
+      visibleTextPages,
+    ],
+  );
   const selectWordAtPoint = useCallback(
     (localX: number, localY: number, absoluteX: number, absoluteY: number) => {
       readerOriginRef.current = {
@@ -1748,6 +1777,24 @@ function LazyReaderEngine({
         }),
     [selectWordAtPoint, transitionReady],
   );
+  const selectionTapGesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .enabled(Platform.OS !== "web" && selectingText && !transitionReady)
+        .maxDistance(8)
+        .runOnJS(true)
+        .onEnd((event, success) => {
+          if (success) {
+            handleTextSelectionTap(
+              event.x,
+              event.y,
+              event.absoluteX,
+              event.absoluteY,
+            );
+          }
+        }),
+    [handleTextSelectionTap, selectingText, transitionReady],
+  );
   const createSelectionHandleGesture = useCallback(
     (endpoint: TextSelectionEndpoint) =>
       Gesture.Pan()
@@ -1784,8 +1831,13 @@ function LazyReaderEngine({
     [createSelectionHandleGesture],
   );
   const nativeReaderGesture = useMemo(
-    () => Gesture.Race(selectionLongPressGesture, nativePageTurn.gesture),
-    [nativePageTurn.gesture, selectionLongPressGesture],
+    () =>
+      Gesture.Race(
+        selectionLongPressGesture,
+        selectionTapGesture,
+        nativePageTurn.gesture,
+      ),
+    [nativePageTurn.gesture, selectionLongPressGesture, selectionTapGesture],
   );
   const nativePoolCommands = useMemo(() => {
     const commands: (NativeProgrammaticPageTurnCommand | undefined)[] =

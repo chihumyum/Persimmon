@@ -20,6 +20,10 @@ private final class SelectionMenuAnchorView: UIView, UIEditMenuInteractionDelega
     true
   }
 
+  override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+    false
+  }
+
   override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
     action == #selector(copy(_:))
   }
