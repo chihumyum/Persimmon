@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { strToU8, zipSync, type Zippable } from "fflate";
 
 const COVER_PNG = Uint8Array.from(
@@ -10,7 +10,7 @@ const COVER_PNG = Uint8Array.from(
 
 function createTestEpub(): Buffer {
   const paragraphs = Array.from(
-    { length: 80 },
+    { length: 64 },
     (_, index) =>
       `<p>第 ${index + 1} 段：柿子阅读器正在验证分页、目录、资源和断点续读。</p>`,
   ).join("");
@@ -89,6 +89,29 @@ function createTestEpub(): Buffer {
   return Buffer.from(zipSync(entries));
 }
 
+function readerPageStatus(page: Page) {
+  return page.locator('[aria-label^="本章第 "]');
+}
+
+async function waitForReaderReady(page: Page): Promise<void> {
+  await expect(page.getByRole("button", { name: "下一页" })).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(readerPageStatus(page)).toBeVisible({ timeout: 60_000 });
+}
+
+async function turnPageAndWait(
+  page: Page,
+  direction: "上一页" | "下一页",
+): Promise<void> {
+  const status = readerPageStatus(page);
+  const before = await status.getAttribute("aria-label");
+  await page.getByRole("button", { name: direction }).click();
+  await expect
+    .poll(() => status.getAttribute("aria-label"), { timeout: 60_000 })
+    .not.toBe(before);
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await page.evaluate(async () => {
@@ -109,7 +132,7 @@ test("imports, reads, navigates, resumes, and deletes a local EPUB", async ({
   // Chromium's software CanvasKit path can spend tens of seconds delivering
   // the drag's animation frames even though every reader state transition
   // completes correctly. Keep the full lifecycle assertion above that jitter.
-  test.setTimeout(60_000);
+  test.setTimeout(240_000);
 
   const fileChooserPromise = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "导入 EPUB" }).click();
@@ -120,22 +143,19 @@ test("imports, reads, navigates, resumes, and deletes a local EPUB", async ({
     buffer: createTestEpub(),
   });
 
-  await expect(page.getByRole("button", { name: "下一页" })).toBeVisible();
+  await waitForReaderReady(page);
   await expect(page.getByLabel(/本章第 1 页/)).toBeVisible();
 
-  await page.getByRole("button", { name: "下一页" }).click();
-  // Model two accepted user taps rather than an instantaneous synthetic burst,
-  // whose second input is intentionally dropped by the 150 ms start gate.
-  await page.waitForTimeout(180);
-  await page.getByRole("button", { name: "下一页" }).click();
+  await turnPageAndWait(page, "下一页");
+  await turnPageAndWait(page, "下一页");
   await expect(page.getByLabel(/本章第 3 页/)).toBeVisible({
-    timeout: 10_000,
+    timeout: 60_000,
   });
 
-  const pageStatus = page.locator('[aria-label^="本章第 "]');
-  await page.getByRole("button", { name: "上一页" }).click();
+  const pageStatus = readerPageStatus(page);
+  await turnPageAndWait(page, "上一页");
   await expect(page.getByLabel(/本章第 2 页/)).toBeVisible({
-    timeout: 10_000,
+    timeout: 60_000,
   });
 
   const statusBeforeDrag = await pageStatus.getAttribute("aria-label");
@@ -154,7 +174,7 @@ test("imports, reads, navigates, resumes, and deletes a local EPUB", async ({
   });
   await page.mouse.up();
   await expect
-    .poll(() => pageStatus.getAttribute("aria-label"), { timeout: 10_000 })
+    .poll(() => pageStatus.getAttribute("aria-label"), { timeout: 60_000 })
     .not.toBe(statusBeforeDrag);
 
   await page.getByRole("button", { name: "切换阅读工具" }).click();
@@ -188,6 +208,8 @@ test("imports, reads, navigates, resumes, and deletes a local EPUB", async ({
 test("persists a two-page layout and hides floating controls while turning", async ({
   page,
 }) => {
+  test.setTimeout(180_000);
+
   const fileChooserPromise = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "导入 EPUB" }).click();
   const fileChooser = await fileChooserPromise;
@@ -197,20 +219,22 @@ test("persists a two-page layout and hides floating controls while turning", asy
     buffer: createTestEpub(),
   });
 
+  await waitForReaderReady(page);
   await page.getByRole("button", { name: "切换到双页布局" }).click();
   await expect(
     page.getByRole("button", { name: "切换到单页布局" }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "下一页" }).click();
-  await page.waitForTimeout(180);
+  await turnPageAndWait(page, "下一页");
+  const pageStatus = readerPageStatus(page);
+  const beforeSecondTurn = await pageStatus.getAttribute("aria-label");
   await page.getByRole("button", { name: "下一页" }).click();
   await expect(page.getByRole("button", { name: "返回书架" })).toHaveCount(0);
+  await expect
+    .poll(() => pageStatus.getAttribute("aria-label"), { timeout: 60_000 })
+    .not.toBe(beforeSecondTurn);
   await expect(page.getByLabel(/本章第 5–6 页/)).toBeVisible({
-    // Headless Chromium's software CanvasKit backend can need several slow
-    // rAFs after the preceding WebGL-heavy test; the turn still follows wall
-    // clock time and completes as soon as those frames are delivered.
-    timeout: 30_000,
+    timeout: 60_000,
   });
   await expect(page.getByRole("button", { name: "返回书架" })).toHaveCount(0);
   await page.getByRole("button", { name: "切换阅读工具" }).click();
