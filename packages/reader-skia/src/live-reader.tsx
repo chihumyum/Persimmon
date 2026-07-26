@@ -98,6 +98,10 @@ import {
 } from "./page-turn-textures";
 import { ReaderPageLayer } from "./reader-page-layer";
 import {
+  createReaderEngineGeneration,
+  reconcileReaderEngineGeneration,
+} from "./reader-engine-generation";
+import {
   DEFAULT_LIVE_READER_APPEARANCE,
   type ReaderAppearance,
   type ReaderProgressDisplay,
@@ -295,6 +299,7 @@ interface LazyReaderEngineProps
   readonly topInset: number;
   readonly bottomInset: number;
   readonly imageCache: DecodedImageCache;
+  readonly readerGeneration: string;
 }
 
 interface ReaderLinkHit {
@@ -369,6 +374,7 @@ function LazyReaderEngine({
   topInset,
   bottomInset,
   imageCache,
+  readerGeneration,
   toolbarVisible = false,
   initialPosition,
   loadResource,
@@ -432,7 +438,7 @@ function LazyReaderEngine({
   );
   const paginationCache = useMemo(
     () => new Map<number, PaginationResult<SkParagraph>>(),
-    [],
+    [readerGeneration],
   );
   const sectionPageCountCache = useMemo(
     () =>
@@ -452,7 +458,7 @@ function LazyReaderEngine({
   );
   const pageDecorationCache = useMemo(
     () => new Map<string, CachedPageDecoration>(),
-    [],
+    [readerGeneration],
   );
   const pageCaptureCache = useMemo(
     () =>
@@ -461,7 +467,7 @@ function LazyReaderEngine({
         hardByteBudget: PAGE_CAPTURE_CACHE_HARD_BYTE_BUDGET,
         disposeValue: disposeCapturedPageAfterPaint,
       }),
-    [],
+    [readerGeneration],
   );
   const turnCaptureLeasesRef = useRef(
     new Map<string, TurnCaptureLease<CapturedPage>>(),
@@ -697,8 +703,23 @@ function LazyReaderEngine({
       turnConcurrency.minimumTurnIntervalMs,
     ],
   );
-  const [readerState, setReaderState] = useState(() =>
-    createPageTurnSchedulerState(initialAddress),
+  const [storedReaderGeneration, setStoredReaderGeneration] = useState(() =>
+    createReaderEngineGeneration(readerGeneration, initialAddress),
+  );
+  const activeReaderGeneration = reconcileReaderEngineGeneration(
+    storedReaderGeneration,
+    readerGeneration,
+    initialAddress,
+  );
+  if (activeReaderGeneration !== storedReaderGeneration) {
+    setStoredReaderGeneration(activeReaderGeneration);
+  }
+  const readerState = activeReaderGeneration.scheduler;
+  const readerGenerationRef = useRef(readerGeneration);
+  readerGenerationRef.current = readerGeneration;
+  const readerGenerationIsCurrent = useCallback(
+    () => readerGenerationRef.current === readerGeneration,
+    [readerGeneration],
   );
   const [noteReturnAnchor, setNoteReturnAnchor] = useState<
     NoteReturnAnchor | undefined
@@ -714,18 +735,53 @@ function LazyReaderEngine({
     () => createTextSelectionDocument(book),
     [book],
   );
-  const [textSelection, setTextSelection] = useState<TextSelection | undefined>(
-    undefined,
-  );
+  const [storedTextSelection, setStoredTextSelection] = useState<{
+    readonly generation: string;
+    readonly selection: TextSelection | undefined;
+  }>(() => ({
+    generation: readerGeneration,
+    selection: undefined,
+  }));
+  const textSelection =
+    storedTextSelection.generation === readerGeneration
+      ? storedTextSelection.selection
+      : undefined;
+  if (storedTextSelection.generation !== readerGeneration) {
+    setStoredTextSelection({
+      generation: readerGeneration,
+      selection: undefined,
+    });
+  }
   const selectingText = textSelection !== undefined;
   const textSelectionRef = useRef(textSelection);
-  const commitTextSelection = useCallback((selection: TextSelection) => {
-    textSelectionRef.current = selection;
-    setTextSelection(selection);
-  }, []);
+  textSelectionRef.current = textSelection;
+  const selectionMenuGenerationRef = useRef(readerGeneration);
+  useEffect(() => {
+    if (selectionMenuGenerationRef.current === readerGeneration) {
+      return;
+    }
+    selectionMenuGenerationRef.current = readerGeneration;
+    onSelectionMenuDismiss?.();
+  }, [onSelectionMenuDismiss, readerGeneration]);
+  const commitTextSelection = useCallback(
+    (selection: TextSelection) => {
+      if (!readerGenerationIsCurrent()) {
+        return;
+      }
+      textSelectionRef.current = selection;
+      setStoredTextSelection({
+        generation: readerGeneration,
+        selection,
+      });
+    },
+    [readerGeneration, readerGenerationIsCurrent],
+  );
   const clearTextSelection = useCallback(() => {
     textSelectionRef.current = undefined;
-    setTextSelection(undefined);
+    setStoredTextSelection({
+      generation: readerGenerationRef.current,
+      selection: undefined,
+    });
     onSelectionMenuDismiss?.();
   }, [onSelectionMenuDismiss]);
   // Native Gesture Handler can deliver begin and release to the RN thread
@@ -733,19 +789,30 @@ function LazyReaderEngine({
   // so a short flick can release the exact turn it just claimed instead of
   // reading the previous render's driverTurn.
   const readerStateRef = useRef(readerState);
+  readerStateRef.current = readerState;
   const mutateReaderState = useCallback(
     (
       update: (current: PageTurnSchedulerState) => PageTurnSchedulerState,
     ): PageTurnSchedulerState => {
+      if (!readerGenerationIsCurrent()) {
+        return readerStateRef.current;
+      }
       const current = readerStateRef.current;
       const next = update(current);
       if (next !== current) {
         readerStateRef.current = next;
-        setReaderState(next);
+        setStoredReaderGeneration((stored) =>
+          stored.key === readerGeneration
+            ? {
+                key: readerGeneration,
+                scheduler: next,
+              }
+            : stored,
+        );
       }
       return next;
     },
-    [],
+    [readerGeneration, readerGenerationIsCurrent],
   );
   const pageAddressForPosition = useCallback(
     (position: BookPosition): PageAddress | undefined => {
@@ -763,7 +830,10 @@ function LazyReaderEngine({
   );
   const jumpToPosition = useCallback(
     (position: BookPosition): boolean => {
-      if (readerStateRef.current.turns.length > 0) {
+      if (
+        !readerGenerationIsCurrent() ||
+        readerStateRef.current.turns.length > 0
+      ) {
         return false;
       }
       const target = pageAddressForPosition(position);
@@ -773,7 +843,7 @@ function LazyReaderEngine({
       mutateReaderState(() => createPageTurnSchedulerState(target));
       return true;
     },
-    [mutateReaderState, pageAddressForPosition],
+    [mutateReaderState, pageAddressForPosition, readerGenerationIsCurrent],
   );
   const handleLinkPress = useCallback(
     (region: PageLinkRegion) => {
@@ -854,6 +924,9 @@ function LazyReaderEngine({
 
   const settleTurn = useCallback(
     (turnId: string) => {
+      if (!readerGenerationIsCurrent()) {
+        return;
+      }
       mutateReaderState((current) =>
         resolveScheduledPageTurn(current, turnId, true),
       );
@@ -861,7 +934,7 @@ function LazyReaderEngine({
         reduceNoteReturnAnchor(current, { type: "page-turned" }),
       );
     },
-    [mutateReaderState],
+    [mutateReaderState, readerGenerationIsCurrent],
   );
 
   const activeTurns = readerState.turns;
@@ -872,6 +945,10 @@ function LazyReaderEngine({
   driverTurnRef.current = driverTurn;
   const handedOffTurnIdsRef = useRef(new Set<string>());
   const nativeInteractiveTurnIdRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    handedOffTurnIdsRef.current.clear();
+    nativeInteractiveTurnIdRef.current = undefined;
+  }, [readerGeneration]);
   useEffect(() => {
     const retainedTurnIds = new Set(activeTurns.map((turn) => turn.id));
     for (const turnId of handedOffTurnIdsRef.current) {
@@ -966,6 +1043,9 @@ function LazyReaderEngine({
   );
   const completeNativeTurn = useCallback(
     (outcome: number) => {
+      if (!readerGenerationIsCurrent()) {
+        return;
+      }
       const pendingInteractiveTurnId = nativeInteractiveTurnIdRef.current;
       const current =
         driverTurnRef.current ??
@@ -990,10 +1070,13 @@ function LazyReaderEngine({
         cancelInteractiveTurn(current.id);
       }
     },
-    [cancelInteractiveTurn, settleTurn],
+    [cancelInteractiveTurn, readerGenerationIsCurrent, settleTurn],
   );
   const completeScheduledTurn = useCallback(
     (turnId: string, outcome: number) => {
+      if (!readerGenerationIsCurrent()) {
+        return;
+      }
       handedOffTurnIdsRef.current.delete(turnId);
       if (outcome > 0) {
         settleTurn(turnId);
@@ -1001,7 +1084,7 @@ function LazyReaderEngine({
         cancelInteractiveTurn(turnId);
       }
     },
-    [cancelInteractiveTurn, settleTurn],
+    [cancelInteractiveTurn, readerGenerationIsCurrent, settleTurn],
   );
   const markScheduledTurnLaneStarted = useCallback(
     (turnId: string) => {
@@ -1099,6 +1182,9 @@ function LazyReaderEngine({
 
   const requestTurn = useCallback(
     (requestedDirection: 1 | -1) => {
+      if (!readerGenerationIsCurrent()) {
+        return;
+      }
       if (pageTurnAnimation === "none") {
         let turned = false;
         mutateReaderState((current) => {
@@ -1121,10 +1207,19 @@ function LazyReaderEngine({
         requestScheduledPageTurn(current, requestedDirection, turnScheduler),
       );
     },
-    [adjacent, mutateReaderState, pageTurnAnimation, turnScheduler],
+    [
+      adjacent,
+      mutateReaderState,
+      pageTurnAnimation,
+      readerGenerationIsCurrent,
+      turnScheduler,
+    ],
   );
   const requestGestureTurn = useCallback(
     (input: PageGestureReleaseInput) => {
+      if (!readerGenerationIsCurrent()) {
+        return;
+      }
       const coreTuning = gestureTuningForCore(gesturePageTurnTuning);
       if (pageGestureModeForStart(input.startBookX) !== "full") {
         return;
@@ -1208,6 +1303,7 @@ function LazyReaderEngine({
       gesturePageTurnTuning,
       mutateReaderState,
       pageTurnAnimation,
+      readerGenerationIsCurrent,
       requestTurn,
       stopRunningTurn,
       turnScheduler,
@@ -1215,6 +1311,9 @@ function LazyReaderEngine({
   );
   const beginNativeInteractiveTurn = useCallback(
     (requestedDirection: 1 | -1) => {
+      if (!readerGenerationIsCurrent()) {
+        return;
+      }
       const scheduled = mutateReaderState((current) =>
         beginScheduledInteractivePageTurn(
           current,
@@ -1228,7 +1327,7 @@ function LazyReaderEngine({
           ? active.id
           : undefined;
     },
-    [mutateReaderState, turnScheduler],
+    [mutateReaderState, readerGenerationIsCurrent, turnScheduler],
   );
   const beginInteractiveTurn = useCallback(
     (
@@ -2219,12 +2318,15 @@ function LazyReaderEngine({
     readerState.desired,
   );
   const handleNativeCenterTap = useCallback(() => {
+    if (!readerGenerationIsCurrent()) {
+      return;
+    }
     if (textSelectionRef.current) {
       clearTextSelection();
       return;
     }
     onCenterPress?.();
-  }, [clearTextSelection, onCenterPress]);
+  }, [clearTextSelection, onCenterPress, readerGenerationIsCurrent]);
   const handleNativePageTap = useCallback(
     (direction: 1 | -1) => {
       if (textSelectionRef.current) {
@@ -3099,8 +3201,8 @@ export function LiveReader({
   onSelectionMenuRequest,
   onTurningChange,
 }: LiveReaderProps) {
-  // Geometry changes remount LazyReaderEngine. Keep decoded images above that
-  // boundary so a layout switch neither releases nor decodes them twice.
+  // Decoded resources belong to the open book, not to one pagination
+  // generation. Retain them while geometry-dependent caches are replaced.
   const imageCache = useMemo(
     () =>
       new DecodedImageCache(
@@ -3125,7 +3227,7 @@ export function LiveReader({
       },
     [appearance, fontSize],
   );
-  const layoutKey = JSON.stringify([
+  const readerGeneration = JSON.stringify([
     book.revisionId,
     width,
     height,
@@ -3151,7 +3253,6 @@ export function LiveReader({
 
   return (
     <LazyReaderEngine
-      key={layoutKey}
       book={book}
       fontProvider={fontProvider}
       width={width}
@@ -3163,6 +3264,7 @@ export function LiveReader({
       topInset={topInset}
       bottomInset={bottomInset}
       imageCache={imageCache}
+      readerGeneration={readerGeneration}
       toolbarVisible={toolbarVisible}
       initialPosition={anchorRef.current}
       loadResource={loadResource}

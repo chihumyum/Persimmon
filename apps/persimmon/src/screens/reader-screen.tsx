@@ -128,7 +128,7 @@ export function ReaderScreen({
   const [currentPosition, setCurrentPosition] = useState<
     BookPosition | undefined
   >(entry.locator?.position);
-  const [readerGeneration, setReaderGeneration] = useState(0);
+  const [navigationGeneration, setNavigationGeneration] = useState(0);
   const navigationRows = useMemo(
     () => flattenNavigation(opened.book.navigation ?? []),
     [opened.book.navigation],
@@ -153,8 +153,8 @@ export function ReaderScreen({
       return;
     }
     // The container can resize after the layout setting changes. Commit that
-    // measured viewport and the reader mode together so the keyed Skia engine
-    // rebuilds once while its font/resource-owning surface stays mounted.
+    // measured viewport and the reader mode together. The Skia engine stays
+    // mounted and replaces only geometry-dependent pagination and captures.
     cancelLayoutFrame();
     layoutFrameRef.current = requestAnimationFrame(() => {
       layoutFrameRef.current = requestAnimationFrame(() => {
@@ -218,7 +218,7 @@ export function ReaderScreen({
   const jumpTo = useCallback((position: BookPosition) => {
     setNavigationTarget(position);
     setCurrentPosition(position);
-    setReaderGeneration((current) => current + 1);
+    setNavigationGeneration((current) => current + 1);
     setTocVisible(false);
   }, []);
   const handleProgress = useCallback(
@@ -312,7 +312,7 @@ export function ReaderScreen({
             >
               <AsyncSkia>
                 <ReaderSurface
-                  key={`${opened.book.revisionId}:${readerGeneration}`}
+                  key={`${opened.book.revisionId}:${navigationGeneration}`}
                   book={opened.book}
                   width={readerFrame.width}
                   height={readerFrame.height}
