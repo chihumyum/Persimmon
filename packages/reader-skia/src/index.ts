@@ -22,5 +22,6 @@ export {
   type LiveReaderProps,
   type ReaderLayoutMode,
   type ReaderProgress,
+  type ReaderSelectionMenuRequest,
 } from "./live-reader";
 export { normalizeUtf16Boundary, type Utf16BoundaryAffinity } from "./utf16";

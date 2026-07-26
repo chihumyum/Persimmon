@@ -44,6 +44,7 @@ export interface NativePageTurnCommand {
 }
 
 interface NativePageTurnDriverOptions {
+  readonly gesturesEnabled: boolean;
   readonly width: number;
   readonly height: number;
   readonly physicalPageWidth: number;
@@ -162,6 +163,7 @@ function materialXForTouch(
  * receives only one begin event and one final outcome per turn.
  */
 export function useNativePageTurnDriver({
+  gesturesEnabled,
   width,
   height,
   physicalPageWidth,
@@ -307,6 +309,7 @@ export function useNativePageTurnDriver({
     const interactiveBlocked =
       !canStartInteractive || (command !== undefined && !command.interactive);
     const pan = Gesture.Pan()
+      .enabled(gesturesEnabled)
       // Gesture Handler measures in logical points. Converting one device
       // pixel keeps the initial paper response below a visible spatial step
       // on both Retina iOS screens and dense Android displays.
@@ -557,6 +560,7 @@ export function useNativePageTurnDriver({
       });
 
     const tap = Gesture.Tap()
+      .enabled(gesturesEnabled)
       .maxDistance(8)
       .onEnd((event, success) => {
         "worklet";
@@ -581,6 +585,7 @@ export function useNativePageTurnDriver({
     gestureProbe,
     gestureRequestHandled,
     gestureTarget,
+    gesturesEnabled,
     height,
     onCenterTap,
     onGestureBegin,
