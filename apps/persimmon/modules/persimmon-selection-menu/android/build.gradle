@@ -1,0 +1,16 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'dev.chihum.persimmon'
+version = '0.1.0'
+
+android {
+  namespace 'dev.chihum.persimmon.selectionmenu'
+
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+  }
+}

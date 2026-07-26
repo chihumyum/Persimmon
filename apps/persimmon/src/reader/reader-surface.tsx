@@ -6,9 +6,11 @@ import {
   type GesturePageTurnTuning,
   type ReaderLayoutMode,
   type ReaderProgress,
+  type ReaderSelectionMenuRequest,
 } from "@persimmon/reader-skia";
 import { READER_PAPER_COLOR } from "@persimmon/reader-skia/theme";
 import { useFonts, type DataModule } from "@shopify/react-native-skia";
+import { useCallback } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -16,6 +18,11 @@ import {
   Text,
   View,
 } from "react-native";
+
+import {
+  hideSelectionMenu,
+  showSelectionMenu,
+} from "../../modules/persimmon-selection-menu";
 
 const READER_FONT: DataModule =
   Platform.OS === "web"
@@ -37,6 +44,7 @@ export interface ReaderSurfaceProps {
   loadResource: (assetId: string) => Promise<Uint8Array | undefined>;
   onCenterPress: () => void;
   onProgress: (progress: ReaderProgress) => void;
+  onSelectionChange: (selecting: boolean) => void;
   onTurningChange: (turning: boolean) => void;
 }
 
@@ -52,11 +60,21 @@ export default function ReaderSurface({
   loadResource,
   onCenterPress,
   onProgress,
+  onSelectionChange,
   onTurningChange,
 }: ReaderSurfaceProps) {
   const fontProvider = useFonts({
     "Noto Serif SC": [READER_FONT],
   });
+  const handleSelectionMenuRequest = useCallback(
+    ({ text, rectInWindow }: ReaderSelectionMenuRequest) => {
+      void showSelectionMenu(text, rectInWindow);
+    },
+    [],
+  );
+  const handleSelectionMenuDismiss = useCallback(() => {
+    void hideSelectionMenu();
+  }, []);
 
   if (!fontProvider) {
     return (
@@ -81,6 +99,9 @@ export default function ReaderSurface({
       loadResource={loadResource}
       onCenterPress={onCenterPress}
       onProgress={onProgress}
+      onSelectionChange={onSelectionChange}
+      onSelectionMenuDismiss={handleSelectionMenuDismiss}
+      onSelectionMenuRequest={handleSelectionMenuRequest}
       onTurningChange={onTurningChange}
     />
   );

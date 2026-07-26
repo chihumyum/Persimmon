@@ -74,6 +74,7 @@ export function ReaderScreen({
   const [viewport, setViewport] = useState<Viewport | null>(null);
   const [tocVisible, setTocVisible] = useState(false);
   const [turning, setTurning] = useState(false);
+  const [selecting, setSelecting] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [tuningVisible, setTuningVisible] = useState(false);
   const [navigationTarget, setNavigationTarget] = useState<
@@ -122,6 +123,14 @@ export function ReaderScreen({
       setTocVisible(false);
     }
   }, []);
+  const handleSelectionChange = useCallback((nextSelecting: boolean) => {
+    setSelecting(nextSelecting);
+    if (nextSelecting) {
+      setControlsVisible(false);
+      setTuningVisible(false);
+      setTocVisible(false);
+    }
+  }, []);
 
   return (
     <View style={styles.readerScreen}>
@@ -161,6 +170,7 @@ export function ReaderScreen({
                   loadResource={loadResource}
                   onCenterPress={handleCenterPress}
                   onProgress={onProgress}
+                  onSelectionChange={handleSelectionChange}
                   onTurningChange={handleTurningChange}
                 />
               </AsyncSkia>
@@ -169,7 +179,7 @@ export function ReaderScreen({
         </View>
       </View>
 
-      {!turning && controlsVisible ? (
+      {!turning && !selecting && controlsVisible ? (
         <View
           pointerEvents="box-none"
           style={[styles.floatingControls, { top: insets.top + 8 }]}
@@ -238,7 +248,7 @@ export function ReaderScreen({
         </View>
       ) : null}
 
-      {!turning && controlsVisible && tuningVisible ? (
+      {!turning && !selecting && controlsVisible && tuningVisible ? (
         <PageTurnTuningPanel
           top={insets.top + 52}
           tuning={pageTurnTuning}

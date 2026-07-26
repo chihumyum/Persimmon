@@ -1,0 +1,6 @@
+{
+  "name": "persimmon-selection-menu",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.ts"
+}
