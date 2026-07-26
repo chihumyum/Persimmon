@@ -1,13 +1,19 @@
 import ExpoModulesCore
 import UIKit
 
-private final class SelectionMenuAnchorView: UIView, UIEditMenuInteractionDelegate {
-  private var selectedText = ""
+private final class SelectionMenuAnchorView: UITextView, UIEditMenuInteractionDelegate {
   private lazy var editMenuInteraction = UIEditMenuInteraction(delegate: self)
 
-  override init(frame: CGRect) {
-    super.init(frame: frame)
+  init() {
+    super.init(frame: .zero, textContainer: nil)
     backgroundColor = .clear
+    textColor = .clear
+    tintColor = .clear
+    isEditable = false
+    isSelectable = true
+    isScrollEnabled = false
+    textContainerInset = .zero
+    textContainer.lineFragmentPadding = 0
     accessibilityElementsHidden = true
     addInteraction(editMenuInteraction)
   }
@@ -24,16 +30,9 @@ private final class SelectionMenuAnchorView: UIView, UIEditMenuInteractionDelega
     false
   }
 
-  override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-    action == #selector(copy(_:))
-  }
-
-  override func copy(_ sender: Any?) {
-    UIPasteboard.general.string = selectedText
-  }
-
   func present(text: String, rectInWindow: CGRect, from viewController: UIViewController) {
-    selectedText = text
+    self.text = text
+    selectedRange = NSRange(location: 0, length: (text as NSString).length)
 
     let container = viewController.view!
     let localOrigin = container.convert(rectInWindow.origin, from: nil)
@@ -64,21 +63,8 @@ private final class SelectionMenuAnchorView: UIView, UIEditMenuInteractionDelega
     editMenuInteraction.dismissMenu()
     resignFirstResponder()
     removeFromSuperview()
-    selectedText = ""
-  }
-
-  func editMenuInteraction(
-    _ interaction: UIEditMenuInteraction,
-    menuFor configuration: UIEditMenuConfiguration,
-    suggestedActions: [UIMenuElement]
-  ) -> UIMenu? {
-    let copyAction = UIAction(
-      title: "Copy",
-      image: UIImage(systemName: "doc.on.doc")
-    ) { [weak self] _ in
-      self?.copy(nil)
-    }
-    return UIMenu(children: [copyAction])
+    text = ""
+    selectedRange = NSRange(location: 0, length: 0)
   }
 
   func editMenuInteraction(
@@ -90,7 +76,7 @@ private final class SelectionMenuAnchorView: UIView, UIEditMenuInteractionDelega
 }
 
 public final class PersimmonSelectionMenuModule: Module {
-  private let anchorView = SelectionMenuAnchorView(frame: .zero)
+  private let anchorView = SelectionMenuAnchorView()
 
   public func definition() -> ModuleDefinition {
     Name("PersimmonSelectionMenu")
