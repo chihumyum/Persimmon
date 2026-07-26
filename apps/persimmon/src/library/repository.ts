@@ -151,7 +151,10 @@ class IndexedDbLibraryRepository implements LibraryRepository {
   }
 
   async importBook(input: ImportBookInput): Promise<LibraryBookSummary> {
-    return this.persistImportedBook(input, new Date().toISOString());
+    return this.persistImportedBook(
+      input,
+      input.addedAt ?? new Date().toISOString(),
+    );
   }
 
   private async persistImportedBook(
@@ -275,6 +278,13 @@ class IndexedDbLibraryRepository implements LibraryRepository {
 
   async saveProgress(locator: BookLocator): Promise<void> {
     await this.requireDatabase().put("progress", locator);
+  }
+
+  async getOriginalEpub(bookId: string): Promise<Uint8Array | undefined> {
+    if (bookId === DEMO_BOOK.id) {
+      return undefined;
+    }
+    return (await this.requireDatabase().get("books", bookId))?.originalEpub;
   }
 
   async getResource(

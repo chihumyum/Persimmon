@@ -37,6 +37,7 @@ export function demoSummary(locator?: BookLocator): LibraryBookSummary {
     author: "Persimmon",
     sourceName: "内置试读",
     addedAt: "2026-07-23T00:00:00.000Z",
+    originalByteLength: 0,
     builtIn: true,
     ...(locator ? { locator } : {}),
     status: "ready",

@@ -28,6 +28,7 @@
     "@persimmon/epub-import": "workspace:*",
     "@persimmon/reader-skia": "workspace:*",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-google-signin/google-signin": "^16.1.2",
     "@shopify/react-native-skia": "2.6.2",
     "expo": "^57.0.1",
     "expo-constants": "~57.0.7",

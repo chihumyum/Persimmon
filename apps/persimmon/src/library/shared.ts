@@ -92,6 +92,7 @@ export function summaryFromManifest(
     ...(manifest.author ? { author: manifest.author } : {}),
     sourceName: manifest.sourceName,
     addedAt: manifest.addedAt,
+    originalByteLength: manifest.originalByteLength,
     ...(manifest.coverAssetId
       ? {
           coverAssetId: manifest.coverAssetId,
