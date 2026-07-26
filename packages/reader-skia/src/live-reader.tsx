@@ -1,5 +1,6 @@
 import type { BookIR, BookLocator, BookPosition } from "@persimmon/book-core";
 import {
+  countBookSectionPages,
   paginateBookSection,
   type PageLinkRegion,
   type PaginationResult,
@@ -111,7 +112,13 @@ import {
   createReaderLayoutSpec,
   disposePaginationAfterPaint,
 } from "./reader-pagination";
+import { SectionPageCountCache } from "./section-page-count-cache";
+import {
+  estimateSectionPageCount,
+  shouldResolveExactPublicationPageCounts,
+} from "./section-page-count-estimate";
 import { createSkiaParagraphBackend } from "./skia-paragraph-backend";
+import { releaseSkiaResources } from "./skia-resource-release";
 import {
   createSkiaPageDecoration,
   disposeSkiaPageDecorationAfterPaint,
@@ -416,6 +423,22 @@ function LazyReaderEngine({
     () => new Map<number, PaginationResult<SkParagraph>>(),
     [],
   );
+  const sectionPageCountCache = useMemo(
+    () =>
+      new SectionPageCountCache({
+        retainedPageCountFor: (sectionIndex) =>
+          paginationCache.get(sectionIndex)?.pages.length,
+        countUnretainedSection: (sectionIndex) =>
+          countBookSectionPages(
+            book,
+            sectionIndex,
+            spec,
+            backend,
+            (paragraph) => releaseSkiaResources(Platform.OS, paragraph, null),
+          ),
+      }),
+    [backend, book, paginationCache, spec],
+  );
   const pageDecorationCache = useMemo(
     () => new Map<string, CachedPageDecoration>(),
     [],
@@ -455,16 +478,73 @@ function LazyReaderEngine({
     [backend, book, paginationCache, spec],
   );
   const pageCountForSection = useCallback(
-    (sectionIndex: number) => ensurePagination(sectionIndex).pages.length,
-    [ensurePagination],
+    (sectionIndex: number) => sectionPageCountCache.countFor(sectionIndex),
+    [sectionPageCountCache],
   );
-  const sectionPageCounts = useMemo(
+  const estimatedSectionPageCounts = useMemo(
     () =>
-      book.sections.map((_section, sectionIndex) =>
-        pageCountForSection(sectionIndex),
-      ),
-    [book.sections, pageCountForSection],
+      book.sections.map((section) => estimateSectionPageCount(section, spec)),
+    [book.sections, spec],
   );
+  const [resolvedSectionPageCounts, setResolvedSectionPageCounts] = useState<{
+    readonly cache: SectionPageCountCache;
+    readonly estimates: readonly number[];
+    readonly counts: readonly number[];
+  }>();
+  const sectionPageCounts =
+    resolvedSectionPageCounts?.cache === sectionPageCountCache &&
+    resolvedSectionPageCounts.estimates === estimatedSectionPageCounts
+      ? resolvedSectionPageCounts.counts
+      : estimatedSectionPageCounts;
+  useEffect(() => {
+    if (!shouldResolveExactPublicationPageCounts(Platform.OS, book.sections)) {
+      return;
+    }
+    let cancelled = false;
+    let frame = 0;
+    let sectionIndex = 0;
+    const counts = [...estimatedSectionPageCounts];
+    const countNextSections = () => {
+      if (cancelled) {
+        return;
+      }
+      const startedAt = performanceNow();
+      do {
+        counts[sectionIndex] = pageCountForSection(sectionIndex);
+        sectionIndex += 1;
+      } while (
+        sectionIndex < counts.length &&
+        performanceNow() - startedAt < 4
+      );
+      if (sectionIndex >= counts.length) {
+        setResolvedSectionPageCounts({
+          cache: sectionPageCountCache,
+          estimates: estimatedSectionPageCounts,
+          counts,
+        });
+        return;
+      }
+      frame = requestAnimationFrame(countNextSections);
+    };
+    if (counts.length === 0) {
+      setResolvedSectionPageCounts({
+        cache: sectionPageCountCache,
+        estimates: estimatedSectionPageCounts,
+        counts,
+      });
+    } else {
+      frame = requestAnimationFrame(countNextSections);
+    }
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+    };
+  }, [
+    book.sections,
+    estimatedSectionPageCounts,
+    pageCountForSection,
+    sectionPageCountCache,
+  ]);
   const adjacent = useCallback(
     (address: PageAddress, direction: 1 | -1) =>
       adjacentViewAddress(
@@ -494,13 +574,15 @@ function LazyReaderEngine({
         bookTitle: book.title,
         sectionTitle: section?.title,
         sectionPageCounts,
+        currentSectionPageCount: pageCountForSection(address.sectionIndex),
       });
     },
-    [book.sections, book.title, sectionPageCounts],
+    [book.sections, book.title, pageCountForSection, sectionPageCounts],
   );
   const pageDecorationForAddress = useCallback(
     (address: PageAddress): SkiaPageDecoration => {
-      const key = `${address.sectionIndex}:${address.pageIndex}`;
+      const model = progressDecorationForAddress(address);
+      const key = `${address.sectionIndex}:${address.pageIndex}:${model.pageNumber}:${model.pageCount}`;
       const cached = pageDecorationCache.get(key);
       if (cached) {
         pageDecorationCache.delete(key);
@@ -508,7 +590,7 @@ function LazyReaderEngine({
         return cached.decoration;
       }
       const decoration = createSkiaPageDecoration({
-        model: progressDecorationForAddress(address),
+        model,
         fontProvider,
         fontFamily: appearance.fontFamily,
         width: physicalPageWidth,
@@ -1754,23 +1836,28 @@ function LazyReaderEngine({
 
   const devicePixelRatio = Math.max(1, PixelRatio.get());
   const pageCaptureIdentity = useCallback(
-    (address: PageAddress): PageCaptureIdentity<PageAddress> => ({
-      key: JSON.stringify([
-        book.id,
-        book.revisionId,
-        typographyAppearance,
-        appearance.progressDisplay,
-        theme.name,
-        theme.colorScheme,
-        progressPresentation,
-        layout,
-        address.sectionIndex,
-        address.pageIndex,
-      ]),
-      width: physicalPageWidth,
-      height,
-      metadata: address,
-    }),
+    (address: PageAddress): PageCaptureIdentity<PageAddress> => {
+      const progress = progressDecorationForAddress(address);
+      return {
+        key: JSON.stringify([
+          book.id,
+          book.revisionId,
+          typographyAppearance,
+          appearance.progressDisplay,
+          theme.name,
+          theme.colorScheme,
+          progressPresentation,
+          layout,
+          address.sectionIndex,
+          address.pageIndex,
+          progress.pageNumber,
+          progress.pageCount,
+        ]),
+        width: physicalPageWidth,
+        height,
+        metadata: address,
+      };
+    },
     [
       book.id,
       book.revisionId,
@@ -1778,6 +1865,7 @@ function LazyReaderEngine({
       height,
       layout,
       physicalPageWidth,
+      progressDecorationForAddress,
       theme.colorScheme,
       theme.name,
       progressPresentation,

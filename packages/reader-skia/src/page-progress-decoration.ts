@@ -17,6 +17,7 @@ export interface PageProgressDecorationInput {
   readonly bookTitle: string;
   readonly sectionTitle?: string;
   readonly sectionPageCounts: readonly number[];
+  readonly currentSectionPageCount?: number;
 }
 
 export function createPageProgressDecoration({
@@ -24,6 +25,7 @@ export function createPageProgressDecoration({
   bookTitle,
   sectionTitle,
   sectionPageCounts,
+  currentSectionPageCount,
 }: PageProgressDecorationInput): PageProgressDecoration {
   const normalizedPageCounts =
     sectionPageCounts.length > 0
@@ -34,6 +36,12 @@ export function createPageProgressDecoration({
     0,
     normalizedPageCounts.length - 1,
   );
+  if (currentSectionPageCount !== undefined) {
+    normalizedPageCounts[sectionIndex] = Math.max(
+      1,
+      Math.floor(currentSectionPageCount),
+    );
+  }
   const pageIndex = clampInteger(
     address.pageIndex,
     0,

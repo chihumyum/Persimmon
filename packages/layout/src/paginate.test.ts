@@ -2,6 +2,7 @@ import { BOOK_IR_VERSION, type BookIR } from "@persimmon/book-core";
 import { describe, expect, it } from "vitest";
 
 import {
+  countBookSectionPages,
   paginateBook,
   paginateBookSection,
   type MeasuredParagraph,
@@ -116,6 +117,20 @@ const layoutSpec: PageLayoutSpec = {
 };
 
 describe("paginateBook", () => {
+  it("counts pages without retaining measured paragraphs", () => {
+    const released: FixedHandle[] = [];
+    const pageCount = countBookSectionPages(
+      createBook("柿".repeat(30)),
+      0,
+      layoutSpec,
+      createFixedBackend(3, 20),
+      (handle) => released.push(handle),
+    );
+
+    expect(pageCount).toBe(4);
+    expect(released).toHaveLength(1);
+  });
+
   it("slices a long Chinese paragraph into contiguous source ranges", () => {
     const result = paginateBook(
       createBook("柿".repeat(30)),

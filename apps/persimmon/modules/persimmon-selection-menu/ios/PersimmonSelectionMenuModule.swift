@@ -84,7 +84,7 @@ private final class SelectionMenuAnchorView: UITextView, UIEditMenuInteractionDe
 }
 
 public final class PersimmonSelectionMenuModule: Module {
-  private let anchorView = SelectionMenuAnchorView()
+  private var anchorView: SelectionMenuAnchorView?
 
   public func definition() -> ModuleDefinition {
     Name("PersimmonSelectionMenu")
@@ -97,22 +97,23 @@ public final class PersimmonSelectionMenuModule: Module {
       else {
         return
       }
-      DispatchQueue.main.async {
-        self.anchorView.present(
-          text: text,
-          rectInWindow: CGRect(x: x, y: y, width: width, height: height),
-          from: viewController
-        )
-      }
+      let anchorView = self.anchorView ?? SelectionMenuAnchorView()
+      self.anchorView = anchorView
+      anchorView.present(
+        text: text,
+        rectInWindow: CGRect(x: x, y: y, width: width, height: height),
+        from: viewController
+      )
     }.runOnQueue(.main)
 
     AsyncFunction("hide") {
-      self.anchorView.dismiss()
+      self.anchorView?.dismiss()
     }.runOnQueue(.main)
 
     OnDestroy {
       DispatchQueue.main.async {
-        self.anchorView.dismiss()
+        self.anchorView?.dismiss()
+        self.anchorView = nil
       }
     }
   }

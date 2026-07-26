@@ -9,6 +9,7 @@ import {
   type SkTextStyle,
   type SkTypefaceFontProvider,
 } from "@shopify/react-native-skia";
+import { Platform } from "react-native";
 
 import type { ReaderProgressDisplay } from "./reader-appearance";
 import {
@@ -19,6 +20,7 @@ import {
 } from "./page-progress-decoration";
 import { afterSkiaPaint } from "./skia-lifecycle";
 import { DEFAULT_READER_THEME, type ReaderTheme } from "./reader-theme";
+import { releaseSkiaResources } from "./skia-resource-release";
 
 const DECORATION_FONT_SIZE = 12;
 const DECORATION_HEIGHT_MULTIPLIER = 1.3;
@@ -118,9 +120,8 @@ export function createSkiaPageDecoration({
         return;
       }
       disposed = true;
-      headerTitle.dispose();
-      footerPage.dispose();
-      footerPercentage.dispose();
+      releaseSkiaResources(Platform.OS, headerTitle, footerPage);
+      releaseSkiaResources(Platform.OS, footerPercentage, null);
     },
   };
 }

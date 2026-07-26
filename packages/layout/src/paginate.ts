@@ -38,6 +38,17 @@ interface MutablePage {
   previousBlock: BlockIR | undefined;
 }
 
+interface PaginateSectionsOptions<THandle> {
+  readonly countOnly?: boolean;
+  readonly releaseParagraph?: (paragraph: MeasuredParagraph<THandle>) => void;
+}
+
+interface PaginationComputation<THandle> {
+  readonly pages: readonly PageScene[];
+  readonly paragraphs: ReadonlyMap<string, MeasuredParagraph<THandle>>;
+  readonly pageCount: number;
+}
+
 const validatedBooks = new WeakSet<object>();
 
 function assertValidBookOnce(book: BookIR): void {
@@ -391,7 +402,8 @@ function paginateSections<THandle>(
   sections: readonly SectionIR[],
   spec: PageLayoutSpec,
   backend: ParagraphLayoutBackend<THandle>,
-): PaginationResult<THandle> {
+  options: PaginateSectionsOptions<THandle> = {},
+): PaginationComputation<THandle> {
   const contentRect = validateLayoutSpec(spec);
   const contentBottom = contentRect.y + contentRect.height;
   const flow: FlowBlock[] = sections.flatMap((section) =>
@@ -399,6 +411,7 @@ function paginateSections<THandle>(
   );
   const paragraphs = new Map<string, MeasuredParagraph<THandle>>();
   const pages: PageScene[] = [];
+  let pageCount = 0;
 
   let page: MutablePage = {
     items: [],
@@ -412,25 +425,28 @@ function paginateSections<THandle>(
       return;
     }
 
-    const first = page.items[0]!;
-    const last = page.items.at(-1)!;
-    pages.push({
-      index: pages.length,
-      size: { ...spec.viewport },
-      contentRect: { ...contentRect },
-      items: page.items,
-      ...(page.links.length > 0 ? { links: page.links } : {}),
-      start: {
-        sectionId: first.sectionId,
-        blockId: first.blockId,
-        offset: first.source.startOffset,
-      },
-      end: {
-        sectionId: last.sectionId,
-        blockId: last.blockId,
-        offset: last.source.endOffset,
-      },
-    });
+    if (!options.countOnly) {
+      const first = page.items[0]!;
+      const last = page.items.at(-1)!;
+      pages.push({
+        index: pageCount,
+        size: { ...spec.viewport },
+        contentRect: { ...contentRect },
+        items: page.items,
+        ...(page.links.length > 0 ? { links: page.links } : {}),
+        start: {
+          sectionId: first.sectionId,
+          blockId: first.blockId,
+          offset: first.source.startOffset,
+        },
+        end: {
+          sectionId: last.sectionId,
+          blockId: last.blockId,
+          offset: last.source.endOffset,
+        },
+      });
+    }
+    pageCount += 1;
     page = {
       items: [],
       links: [],
@@ -564,6 +580,10 @@ function paginateSections<THandle>(
           page.previousBlock = block;
         }
       }
+      if (options.releaseParagraph) {
+        paragraphs.delete(measured.key);
+        options.releaseParagraph(measured);
+      }
       continue;
     }
 
@@ -612,7 +632,17 @@ function paginateSections<THandle>(
   return {
     pages,
     paragraphs,
-    locationIndex: createPageLocationIndex(pages),
+    pageCount,
+  };
+}
+
+function paginationResult<THandle>(
+  computation: PaginationComputation<THandle>,
+): PaginationResult<THandle> {
+  return {
+    pages: computation.pages,
+    paragraphs: computation.paragraphs,
+    locationIndex: createPageLocationIndex(computation.pages),
   };
 }
 
@@ -622,7 +652,7 @@ export function paginateBook<THandle>(
   backend: ParagraphLayoutBackend<THandle>,
 ): PaginationResult<THandle> {
   assertValidBookOnce(book);
-  return paginateSections(book, book.sections, spec, backend);
+  return paginationResult(paginateSections(book, book.sections, spec, backend));
 }
 
 export function paginateBookSection<THandle>(
@@ -635,5 +665,24 @@ export function paginateBookSection<THandle>(
   if (!Number.isInteger(sectionIndex) || !book.sections[sectionIndex]) {
     throw new RangeError("sectionIndex must identify an existing book section");
   }
-  return paginateSections(book, [book.sections[sectionIndex]], spec, backend);
+  return paginationResult(
+    paginateSections(book, [book.sections[sectionIndex]], spec, backend),
+  );
+}
+
+export function countBookSectionPages<THandle>(
+  book: BookIR,
+  sectionIndex: number,
+  spec: PageLayoutSpec,
+  backend: ParagraphLayoutBackend<THandle>,
+  releaseHandle: (handle: THandle) => void,
+): number {
+  assertValidBookOnce(book);
+  if (!Number.isInteger(sectionIndex) || !book.sections[sectionIndex]) {
+    throw new RangeError("sectionIndex must identify an existing book section");
+  }
+  return paginateSections(book, [book.sections[sectionIndex]], spec, backend, {
+    countOnly: true,
+    releaseParagraph: (paragraph) => releaseHandle(paragraph.handle),
+  }).pageCount;
 }

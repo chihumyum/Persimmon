@@ -3,6 +3,7 @@ import {
   textOf,
   type BookIR,
   type BookPosition,
+  type TextBlockIR,
 } from "@persimmon/book-core";
 import type {
   MeasuredParagraph,
@@ -68,7 +69,7 @@ export function textSelectionContainsPoint(
 interface TextBlockEntry {
   readonly sectionId: string;
   readonly blockId: string;
-  readonly text: string;
+  readonly block: TextBlockIR;
   readonly ordinal: number;
 }
 
@@ -118,7 +119,7 @@ export function createTextSelectionDocument(
       const entry = {
         sectionId: section.id,
         blockId: block.id,
-        text: textOf(block),
+        block,
         ordinal: entries.length,
       };
       entries.push(entry);
@@ -142,6 +143,10 @@ function entryFor(
     );
   }
   return entry;
+}
+
+function textForEntry(entry: TextBlockEntry): string {
+  return textOf(entry.block);
 }
 
 export function compareTextPositions(
@@ -178,15 +183,16 @@ export function selectedText(
     ordinal += 1
   ) {
     const entry = document.entries[ordinal]!;
+    const text = textForEntry(entry);
     const startOffset =
       ordinal === startEntry.ordinal
-        ? normalizeUtf16Boundary(entry.text, start.offset, "backward")
+        ? normalizeUtf16Boundary(text, start.offset, "backward")
         : 0;
     const endOffset =
       ordinal === endEntry.ordinal
-        ? normalizeUtf16Boundary(entry.text, end.offset, "forward")
-        : entry.text.length;
-    const fragment = entry.text.slice(startOffset, endOffset);
+        ? normalizeUtf16Boundary(text, end.offset, "forward")
+        : text.length;
+    const fragment = text.slice(startOffset, endOffset);
     if (fragment.length > 0) {
       fragments.push(fragment);
     }
@@ -323,7 +329,7 @@ export function wordSelectionAt(
   locale?: string,
 ): TextSelection | undefined {
   const entry = entryFor(document, position);
-  const range = wordRangeAt(entry.text, position.offset, locale);
+  const range = wordRangeAt(textForEntry(entry), position.offset, locale);
   if (!range) {
     return undefined;
   }
@@ -437,7 +443,7 @@ function selectedOffsetsForItem(
     item.source.endOffset,
     itemEntry.ordinal === endEntry.ordinal
       ? selection.end.offset
-      : itemEntry.text.length,
+      : textForEntry(itemEntry).length,
   );
   return startOffset < endOffset ? [startOffset, endOffset] : undefined;
 }

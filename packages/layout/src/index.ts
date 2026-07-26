@@ -19,7 +19,11 @@ export {
   type SceneImage,
   type TypographyPreset,
 } from "./types";
-export { paginateBook, paginateBookSection } from "./paginate";
+export {
+  countBookSectionPages,
+  paginateBook,
+  paginateBookSection,
+} from "./paginate";
 export { createPageLocationIndex } from "./location-index";
 export {
   ReaderSession,

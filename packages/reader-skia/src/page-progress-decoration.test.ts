@@ -44,6 +44,21 @@ describe("page progress decoration", () => {
     });
   });
 
+  it("uses an exact visible-section count with estimated publication counts", () => {
+    expect(
+      createPageProgressDecoration({
+        address: { sectionIndex: 1, pageIndex: 4 },
+        bookTitle: "整本书",
+        sectionPageCounts: [2, 2, 3],
+        currentSectionPageCount: 6,
+      }),
+    ).toMatchObject({
+      pageNumber: 7,
+      pageCount: 11,
+      percentage: 64,
+    });
+  });
+
   it("moves the configured header into the toolbar while preserving the footer", () => {
     expect(progressDisplayForToolbar("header", true)).toBe("hidden");
     expect(progressDisplayForToolbar("both", true)).toBe("footer");

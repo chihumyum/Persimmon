@@ -127,7 +127,10 @@ function FontBackedReaderSurface({
   });
   useEffect(
     () => () => {
-      if (typeof fontProvider?.dispose === "function") {
+      if (
+        Platform.OS === "web" &&
+        typeof fontProvider?.dispose === "function"
+      ) {
         fontProvider.dispose();
       }
     },
