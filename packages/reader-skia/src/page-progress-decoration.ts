@@ -18,6 +18,7 @@ export interface PageProgressDecorationInput {
   readonly sectionTitle?: string;
   readonly sectionPageCounts: readonly number[];
   readonly currentSectionPageCount?: number;
+  readonly pagesPerView?: number;
 }
 
 export function createPageProgressDecoration({
@@ -26,7 +27,9 @@ export function createPageProgressDecoration({
   sectionTitle,
   sectionPageCounts,
   currentSectionPageCount,
+  pagesPerView = 1,
 }: PageProgressDecorationInput): PageProgressDecoration {
+  const normalizedPagesPerView = Math.max(1, Math.floor(pagesPerView));
   const normalizedPageCounts =
     sectionPageCounts.length > 0
       ? sectionPageCounts.map((count) => Math.max(1, Math.floor(count)))
@@ -47,16 +50,18 @@ export function createPageProgressDecoration({
     0,
     normalizedPageCounts[sectionIndex]! - 1,
   );
-  const pageCount = normalizedPageCounts.reduce(
+  const physicalPageCount = normalizedPageCounts.reduce(
     (total, count) => total + count,
     0,
   );
-  const pageNumber =
+  const physicalPageNumber =
     normalizedPageCounts
       .slice(0, sectionIndex)
       .reduce((total, count) => total + count, 0) +
     pageIndex +
     1;
+  const pageCount = Math.ceil(physicalPageCount / normalizedPagesPerView);
+  const pageNumber = Math.ceil(physicalPageNumber / normalizedPagesPerView);
   const percentage = Math.round((pageNumber / pageCount) * 100);
 
   return {
@@ -65,7 +70,7 @@ export function createPageProgressDecoration({
     percentageLabel: `${percentage}%`,
     pageNumber,
     pageCount,
-    pageLabel: `${pageNumber} / ${pageCount}`,
+    pageLabel: `${pageNumber}`,
   };
 }
 

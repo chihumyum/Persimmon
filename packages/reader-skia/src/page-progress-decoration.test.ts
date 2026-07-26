@@ -22,7 +22,7 @@ describe("page progress decoration", () => {
       percentageLabel: "33%",
       pageNumber: 5,
       pageCount: 15,
-      pageLabel: "5 / 15",
+      pageLabel: "5",
     });
   });
 
@@ -40,7 +40,24 @@ describe("page progress decoration", () => {
       percentageLabel: "100%",
       pageNumber: 1,
       pageCount: 1,
-      pageLabel: "1 / 1",
+      pageLabel: "1",
+    });
+  });
+
+  it("treats a two-page spread as one publication page", () => {
+    expect(
+      createPageProgressDecoration({
+        address: { sectionIndex: 1, pageIndex: 2 },
+        bookTitle: "整本书",
+        sectionPageCounts: [2, 10, 3],
+        pagesPerView: 2,
+      }),
+    ).toMatchObject({
+      pageNumber: 3,
+      pageCount: 8,
+      pageLabel: "3",
+      percentage: 38,
+      percentageLabel: "38%",
     });
   });
 

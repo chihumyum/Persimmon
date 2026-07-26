@@ -1,7 +1,14 @@
 import type { BookNavigationItem, BookPosition } from "@persimmon/book-core";
 import type { ReaderLayoutMode, ReaderProgress } from "@persimmon/reader-skia";
 import { resolveReaderTheme } from "@persimmon/reader-skia/theme";
-import React, { Suspense, useCallback, useMemo, useState } from "react";
+import React, {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -104,7 +111,10 @@ export function ReaderScreen({
   const [controlsVisible, setControlsVisible] = useState(true);
   const [styleVisible, setStyleVisible] = useState(false);
   const [layoutVisible, setLayoutVisible] = useState(false);
+  const [layoutTransitioning, setLayoutTransitioning] = useState(false);
   const [tuningVisible, setTuningVisible] = useState(false);
+  const pendingLayoutRef = useRef<ReaderLayoutMode | undefined>(undefined);
+  const layoutFrameRef = useRef(0);
   const [navigationTarget, setNavigationTarget] = useState<
     BookPosition | undefined
   >();
@@ -115,6 +125,43 @@ export function ReaderScreen({
   const navigationRows = useMemo(
     () => flattenNavigation(opened.book.navigation ?? []),
     [opened.book.navigation],
+  );
+
+  const cancelLayoutFrame = useCallback(() => {
+    if (layoutFrameRef.current) {
+      cancelAnimationFrame(layoutFrameRef.current);
+      layoutFrameRef.current = 0;
+    }
+  }, []);
+  useEffect(() => cancelLayoutFrame, [cancelLayoutFrame]);
+  useEffect(() => {
+    if (pendingLayoutRef.current !== layout) {
+      return;
+    }
+    cancelLayoutFrame();
+    layoutFrameRef.current = requestAnimationFrame(() => {
+      layoutFrameRef.current = 0;
+      pendingLayoutRef.current = undefined;
+      setLayoutTransitioning(false);
+    });
+  }, [cancelLayoutFrame, layout]);
+  const handleLayoutChange = useCallback(
+    (nextLayout: ReaderLayoutMode) => {
+      if (nextLayout === layout || layoutTransitioning) {
+        return;
+      }
+      pendingLayoutRef.current = nextLayout;
+      setLayoutVisible(false);
+      setLayoutTransitioning(true);
+      cancelLayoutFrame();
+      layoutFrameRef.current = requestAnimationFrame(() => {
+        layoutFrameRef.current = requestAnimationFrame(() => {
+          layoutFrameRef.current = 0;
+          onLayoutChange(nextLayout);
+        });
+      });
+    },
+    [cancelLayoutFrame, layout, layoutTransitioning, onLayoutChange],
   );
 
   const measureReader = useCallback((event: LayoutChangeEvent) => {
@@ -210,7 +257,13 @@ export function ReaderScreen({
             layout === "spread" && styles.readerSpread,
           ]}
         >
-          {viewport ? (
+          {viewport && layoutTransitioning ? (
+            <View
+              style={[styles.readerLoading, { backgroundColor: theme.paper }]}
+            >
+              <ActivityIndicator color={theme.accent} />
+            </View>
+          ) : viewport ? (
             <Suspense
               fallback={
                 <View
@@ -238,7 +291,11 @@ export function ReaderScreen({
                   toolbarVisible={controlsVisible}
                   automaticPageTurnTuning={pageTurnTuning.click}
                   gesturePageTurnTuning={pageTurnTuning.gesture}
-                  initialPosition={navigationTarget ?? entry.locator?.position}
+                  initialPosition={
+                    currentPosition ??
+                    navigationTarget ??
+                    entry.locator?.position
+                  }
                   loadResource={loadResource}
                   onCenterPress={handleCenterPress}
                   onProgress={handleProgress}
@@ -420,7 +477,7 @@ export function ReaderScreen({
           bottom={insets.bottom + 52}
           onAnimationChange={onPageTurnAnimationChange}
           onClose={() => setLayoutVisible(false)}
-          onLayoutChange={onLayoutChange}
+          onLayoutChange={handleLayoutChange}
         />
       ) : null}
 

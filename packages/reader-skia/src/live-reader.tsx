@@ -97,7 +97,6 @@ import { ReaderPageLayer } from "./reader-page-layer";
 import {
   DEFAULT_LIVE_READER_APPEARANCE,
   type ReaderAppearance,
-  type ReaderProgressDisplay,
 } from "./reader-appearance";
 import {
   createPageProgressDecoration,
@@ -122,7 +121,7 @@ import { releaseSkiaResources } from "./skia-resource-release";
 import {
   createSkiaPageDecoration,
   disposeSkiaPageDecorationAfterPaint,
-  type SkiaPageDecoration,
+  SkiaPageDecorationLayer,
 } from "./skia-page-decoration";
 import {
   useNativePageTurnDriver,
@@ -230,13 +229,6 @@ interface TurnTexture {
   readonly frontImage: CapturedPage["image"] | null;
   readonly backImage: CapturedPage["image"] | null;
 }
-
-interface CachedPageDecoration {
-  readonly address: PageAddress;
-  readonly decoration: SkiaPageDecoration;
-}
-
-const PAGE_DECORATION_CACHE_LIMIT = 32;
 
 interface RunningPageTurn {
   readonly turnId: string;
@@ -439,10 +431,6 @@ function LazyReaderEngine({
       }),
     [backend, book, paginationCache, spec],
   );
-  const pageDecorationCache = useMemo(
-    () => new Map<string, CachedPageDecoration>(),
-    [],
-  );
   const imageCache = useMemo(
     () =>
       new DecodedImageCache(
@@ -568,64 +556,16 @@ function LazyReaderEngine({
   );
   const progressDecorationForAddress = useCallback(
     (address: PageAddress): PageProgressDecoration => {
-      const section = book.sections[address.sectionIndex];
       return createPageProgressDecoration({
         address,
         bookTitle: book.title,
-        sectionTitle: section?.title,
+        sectionTitle: book.title,
         sectionPageCounts,
         currentSectionPageCount: pageCountForSection(address.sectionIndex),
+        pagesPerView,
       });
     },
-    [book.sections, book.title, pageCountForSection, sectionPageCounts],
-  );
-  const pageDecorationForAddress = useCallback(
-    (address: PageAddress): SkiaPageDecoration => {
-      const model = progressDecorationForAddress(address);
-      const key = `${address.sectionIndex}:${address.pageIndex}:${model.pageNumber}:${model.pageCount}`;
-      const cached = pageDecorationCache.get(key);
-      if (cached) {
-        pageDecorationCache.delete(key);
-        pageDecorationCache.set(key, cached);
-        return cached.decoration;
-      }
-      const decoration = createSkiaPageDecoration({
-        model,
-        fontProvider,
-        fontFamily: appearance.fontFamily,
-        width: physicalPageWidth,
-        height,
-        horizontalMargin: appearance.horizontalMargin,
-        topInset,
-        bottomInset,
-        theme,
-      });
-      pageDecorationCache.set(key, { address, decoration });
-      while (pageDecorationCache.size > PAGE_DECORATION_CACHE_LIMIT) {
-        const oldestKey = pageDecorationCache.keys().next().value;
-        if (oldestKey === undefined) {
-          break;
-        }
-        const oldest = pageDecorationCache.get(oldestKey);
-        pageDecorationCache.delete(oldestKey);
-        if (oldest) {
-          disposeSkiaPageDecorationAfterPaint(oldest.decoration);
-        }
-      }
-      return decoration;
-    },
-    [
-      appearance.fontFamily,
-      appearance.horizontalMargin,
-      bottomInset,
-      fontProvider,
-      height,
-      pageDecorationCache,
-      physicalPageWidth,
-      progressDecorationForAddress,
-      topInset,
-      theme,
-    ],
+    [book.title, pageCountForSection, pagesPerView, sectionPageCounts],
   );
 
   const initialAddress = useMemo<PageAddress>(() => {
@@ -791,13 +731,9 @@ function LazyReaderEngine({
         disposePaginationAfterPaint(pagination);
       }
       paginationCache.clear();
-      for (const cached of pageDecorationCache.values()) {
-        disposeSkiaPageDecorationAfterPaint(cached.decoration);
-      }
-      pageDecorationCache.clear();
       imageCache.dispose();
     },
-    [imageCache, pageCaptureCache, pageDecorationCache, paginationCache],
+    [imageCache, pageCaptureCache, paginationCache],
   );
 
   useEffect(() => {
@@ -815,16 +751,9 @@ function LazyReaderEngine({
         paginationCache.delete(sectionIndex);
       }
     }
-    for (const [key, cached] of pageDecorationCache) {
-      if (Math.abs(cached.address.sectionIndex - center) > 1) {
-        disposeSkiaPageDecorationAfterPaint(cached.decoration);
-        pageDecorationCache.delete(key);
-      }
-    }
   }, [
     book.sections.length,
     ensurePagination,
-    pageDecorationCache,
     paginationCache,
     readerState.settled.sectionIndex,
   ]);
@@ -1837,21 +1766,16 @@ function LazyReaderEngine({
   const devicePixelRatio = Math.max(1, PixelRatio.get());
   const pageCaptureIdentity = useCallback(
     (address: PageAddress): PageCaptureIdentity<PageAddress> => {
-      const progress = progressDecorationForAddress(address);
       return {
         key: JSON.stringify([
           book.id,
           book.revisionId,
           typographyAppearance,
-          appearance.progressDisplay,
           theme.name,
           theme.colorScheme,
-          progressPresentation,
           layout,
           address.sectionIndex,
           address.pageIndex,
-          progress.pageNumber,
-          progress.pageCount,
         ]),
         width: physicalPageWidth,
         height,
@@ -1861,14 +1785,11 @@ function LazyReaderEngine({
     [
       book.id,
       book.revisionId,
-      appearance.progressDisplay,
       height,
       layout,
       physicalPageWidth,
-      progressDecorationForAddress,
       theme.colorScheme,
       theme.name,
-      progressPresentation,
       typographyAppearance,
     ],
   );
@@ -1894,11 +1815,9 @@ function LazyReaderEngine({
         height,
         scale,
         loadResource === undefined,
-        visibleProgressDisplay === "hidden"
-          ? undefined
-          : pageDecorationForAddress(address),
-        visibleProgressDisplay,
-        progressPresentation,
+        undefined,
+        "hidden",
+        "reading",
         theme,
       );
     },
@@ -1907,10 +1826,7 @@ function LazyReaderEngine({
       height,
       imageCache,
       loadResource,
-      pageDecorationForAddress,
       physicalPageWidth,
-      progressPresentation,
-      visibleProgressDisplay,
       theme,
     ],
   );
@@ -2424,17 +2340,39 @@ function LazyReaderEngine({
     readerState.settled.sectionIndex,
   ]);
 
-  const settledProgressDecoration = progressDecorationForAddress(
-    readerState.settled,
+  const settledProgressDecoration = useMemo(
+    () => progressDecorationForAddress(readerState.settled),
+    [progressDecorationForAddress, readerState.settled],
   );
-  const settledLastAddress = settledAddresses.at(-1)!;
-  const settledLastProgressDecoration =
-    progressDecorationForAddress(settledLastAddress);
-  const settledPageLabel =
-    settledLastProgressDecoration.pageNumber !==
-    settledProgressDecoration.pageNumber
-      ? `${settledProgressDecoration.pageNumber}–${settledLastProgressDecoration.pageNumber}`
-      : `${settledProgressDecoration.pageNumber}`;
+  const viewportProgressDecoration = useMemo(
+    () =>
+      createSkiaPageDecoration({
+        model: settledProgressDecoration,
+        fontProvider,
+        fontFamily: appearance.fontFamily,
+        width,
+        height,
+        horizontalMargin: appearance.horizontalMargin,
+        topInset,
+        bottomInset,
+        theme,
+      }),
+    [
+      appearance.fontFamily,
+      appearance.horizontalMargin,
+      bottomInset,
+      fontProvider,
+      height,
+      settledProgressDecoration,
+      theme,
+      topInset,
+      width,
+    ],
+  );
+  useEffect(
+    () => () => disposeSkiaPageDecorationAfterPaint(viewportProgressDecoration),
+    [viewportProgressDecoration],
+  );
   const showProgressHeader = progressDisplayHasHeader(visibleProgressDisplay);
   const showProgressFooter = progressDisplayHasFooter(visibleProgressDisplay);
   const oldestRenderableTurn = renderableTurns[0];
@@ -2467,7 +2405,6 @@ function LazyReaderEngine({
   const renderPageSlots = (
     addresses: readonly (PageAddress | undefined)[],
     layer: string,
-    progressDisplay: ReaderProgressDisplay,
   ) =>
     addresses.map((address, slot) => {
       if (!address) {
@@ -2481,18 +2418,11 @@ function LazyReaderEngine({
       return (
         <ReaderPageLayer
           key={`${layer}:${address.sectionIndex}:${address.pageIndex}:${slot}`}
-          decoration={
-            progressDisplay === "hidden"
-              ? undefined
-              : pageDecorationForAddress(address)
-          }
           imageCache={imageCache}
           offsetX={slot * physicalPageWidth}
           page={page}
           pagination={pagination}
-          progressDisplay={progressDisplay}
           theme={theme}
-          progressPresentation={progressPresentation}
         />
       );
     });
@@ -2521,22 +2451,9 @@ function LazyReaderEngine({
     >
       <Canvas style={styles.canvas}>
         <Fill color={theme.paper} />
-        {layout === "spread" ? (
-          <Rect
-            x={physicalPageWidth - 0.5}
-            y={0}
-            width={1}
-            height={height}
-            color={theme.divider}
-          />
-        ) : null}
         {!transitionReady ? (
           <>
-            {renderPageSlots(
-              settledAddresses,
-              "settled",
-              visibleProgressDisplay,
-            )}
+            {renderPageSlots(settledAddresses, "settled")}
             {selectionGeometry?.rects.map((rect, index) => (
               <Rect
                 key={`selection:${rect.sectionId}:${rect.blockId}:${rect.startOffset}:${rect.endOffset}:${index}`}
@@ -2550,11 +2467,7 @@ function LazyReaderEngine({
           </>
         ) : (
           <>
-            {renderPageSlots(
-              turnBackgroundSlots,
-              "background",
-              visibleProgressDisplay,
-            )}
+            {renderPageSlots(turnBackgroundSlots, "background")}
             {Platform.OS === "web"
               ? retainedPaperTurns
                   .filter((turn) => !turn.completed && !turn.interactive)
@@ -2615,6 +2528,11 @@ function LazyReaderEngine({
             })}
           </>
         )}
+        <SkiaPageDecorationLayer
+          decoration={viewportProgressDecoration}
+          display={visibleProgressDisplay}
+          presentation={progressPresentation}
+        />
       </Canvas>
 
       <View
@@ -2698,7 +2616,7 @@ function LazyReaderEngine({
           accessibilityLabel={
             progressPresentation === "toolbar"
               ? `全书 ${settledProgressDecoration.percentageLabel}`
-              : `全书第 ${settledPageLabel} 页，共 ${settledProgressDecoration.pageCount} 页`
+              : `全书第 ${settledProgressDecoration.pageLabel} 页`
           }
           accessibilityLiveRegion="polite"
           style={[
@@ -2709,7 +2627,7 @@ function LazyReaderEngine({
           <Text style={styles.accessibilityProgressText}>
             {progressPresentation === "toolbar"
               ? settledProgressDecoration.percentageLabel
-              : `${settledPageLabel} / ${settledProgressDecoration.pageCount}`}
+              : settledProgressDecoration.pageLabel}
           </Text>
         </View>
       ) : null}
