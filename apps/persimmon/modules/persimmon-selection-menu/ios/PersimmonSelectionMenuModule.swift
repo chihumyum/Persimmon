@@ -33,7 +33,6 @@ private final class SelectionMenuAnchorView: UIView, UIEditMenuInteractionDelega
   }
 
   func present(text: String, rectInWindow: CGRect, from viewController: UIViewController) {
-    dismiss()
     selectedText = text
 
     let container = viewController.view!
@@ -45,7 +44,10 @@ private final class SelectionMenuAnchorView: UIView, UIEditMenuInteractionDelega
         height: max(1, rectInWindow.height)
       )
     )
-    container.addSubview(self)
+    if superview !== container {
+      removeFromSuperview()
+      container.addSubview(self)
+    }
     guard becomeFirstResponder() else {
       removeFromSuperview()
       return
@@ -67,20 +69,23 @@ private final class SelectionMenuAnchorView: UIView, UIEditMenuInteractionDelega
 
   func editMenuInteraction(
     _ interaction: UIEditMenuInteraction,
-    targetRectFor configuration: UIEditMenuConfiguration
-  ) -> CGRect {
-    bounds
+    menuFor configuration: UIEditMenuConfiguration,
+    suggestedActions: [UIMenuElement]
+  ) -> UIMenu? {
+    let copyAction = UIAction(
+      title: "Copy",
+      image: UIImage(systemName: "doc.on.doc")
+    ) { [weak self] _ in
+      self?.copy(nil)
+    }
+    return UIMenu(children: [copyAction])
   }
 
   func editMenuInteraction(
     _ interaction: UIEditMenuInteraction,
-    willDismissMenuFor configuration: UIEditMenuConfiguration,
-    animator: any UIEditMenuInteractionAnimating
-  ) {
-    animator.addCompletion { [weak self] in
-      self?.resignFirstResponder()
-      self?.removeFromSuperview()
-    }
+    targetRectFor configuration: UIEditMenuConfiguration
+  ) -> CGRect {
+    bounds
   }
 }
 
@@ -98,11 +103,13 @@ public final class PersimmonSelectionMenuModule: Module {
       else {
         return
       }
-      self.anchorView.present(
-        text: text,
-        rectInWindow: CGRect(x: x, y: y, width: width, height: height),
-        from: viewController
-      )
+      DispatchQueue.main.async {
+        self.anchorView.present(
+          text: text,
+          rectInWindow: CGRect(x: x, y: y, width: width, height: height),
+          from: viewController
+        )
+      }
     }.runOnQueue(.main)
 
     AsyncFunction("hide") {

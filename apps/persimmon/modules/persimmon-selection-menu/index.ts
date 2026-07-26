@@ -1,4 +1,4 @@
-import { requireOptionalNativeModule } from "expo";
+import { requireNativeModule } from "expo";
 import { Platform } from "react-native";
 
 export interface SelectionMenuRect {
@@ -22,7 +22,7 @@ interface PersimmonSelectionMenuNativeModule {
 const nativeModule =
   Platform.OS === "web"
     ? null
-    : requireOptionalNativeModule<PersimmonSelectionMenuNativeModule>(
+    : requireNativeModule<PersimmonSelectionMenuNativeModule>(
         "PersimmonSelectionMenu",
       );
 

@@ -28,53 +28,56 @@ class PersimmonSelectionMenuModule : Module() {
       height: Double ->
       val activity = appContext.currentActivity ?: return@AsyncFunction
       val decorView = activity.window.decorView
-      actionMode?.finish()
+      decorView.post {
+        actionMode?.finish()
 
-      val anchorInWindow = Rect(
-        x.roundToInt(),
-        y.roundToInt(),
-        (x + max(1.0, width)).roundToInt(),
-        (y + max(1.0, height)).roundToInt()
-      )
-      val callback = object : ActionMode.Callback2() {
-        override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
-          menu
-            .add(Menu.NONE, android.R.id.copy, Menu.NONE, android.R.string.copy)
-            .setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
-          return true
-        }
-
-        override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean = false
-
-        override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
-          if (item.itemId != android.R.id.copy) {
-            return false
+        val density = decorView.resources.displayMetrics.density.toDouble()
+        val anchorInWindow = Rect(
+          (x * density).roundToInt(),
+          (y * density).roundToInt(),
+          ((x + max(1.0, width)) * density).roundToInt(),
+          ((y + max(1.0, height)) * density).roundToInt()
+        )
+        val callback = object : ActionMode.Callback2() {
+          override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+            menu
+              .add(Menu.NONE, android.R.id.copy, Menu.NONE, android.R.string.copy)
+              .setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+            return true
           }
-          val clipboard =
-            activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-          clipboard.setPrimaryClip(ClipData.newPlainText(null, text))
-          mode.finish()
-          return true
-        }
 
-        override fun onDestroyActionMode(mode: ActionMode) {
-          if (actionMode === mode) {
-            actionMode = null
+          override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean = false
+
+          override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
+            if (item.itemId != android.R.id.copy) {
+              return false
+            }
+            val clipboard =
+              activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText(null, text))
+            mode.finish()
+            return true
+          }
+
+          override fun onDestroyActionMode(mode: ActionMode) {
+            if (actionMode === mode) {
+              actionMode = null
+            }
+          }
+
+          override fun onGetContentRect(mode: ActionMode, view: View, outRect: Rect) {
+            val viewLocation = IntArray(2)
+            view.getLocationInWindow(viewLocation)
+            outRect.set(
+              anchorInWindow.left - viewLocation[0],
+              anchorInWindow.top - viewLocation[1],
+              anchorInWindow.right - viewLocation[0],
+              anchorInWindow.bottom - viewLocation[1]
+            )
           }
         }
-
-        override fun onGetContentRect(mode: ActionMode, view: View, outRect: Rect) {
-          val viewLocation = IntArray(2)
-          view.getLocationInWindow(viewLocation)
-          outRect.set(
-            anchorInWindow.left - viewLocation[0],
-            anchorInWindow.top - viewLocation[1],
-            anchorInWindow.right - viewLocation[0],
-            anchorInWindow.bottom - viewLocation[1]
-          )
-        }
+        actionMode = decorView.startActionMode(callback, ActionMode.TYPE_FLOATING)
       }
-      actionMode = decorView.startActionMode(callback, ActionMode.TYPE_FLOATING)
     }.runOnQueue(Queues.MAIN)
 
     AsyncFunction("hide") {

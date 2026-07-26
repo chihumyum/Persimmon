@@ -1276,14 +1276,12 @@ function LazyReaderEngine({
         return;
       }
       commitTextSelection(selection);
-      showTextSelectionMenu(selection);
     },
     [
       book.language,
       clearTextSelection,
       commitTextSelection,
       selectionDocument,
-      showTextSelectionMenu,
       visibleTextPages,
     ],
   );
@@ -1774,8 +1772,14 @@ function LazyReaderEngine({
         .runOnJS(true)
         .onStart((event) => {
           selectWordAtPoint(event.x, event.y, event.absoluteX, event.absoluteY);
+        })
+        .onEnd((_event, success) => {
+          const current = textSelectionRef.current;
+          if (success && current) {
+            showTextSelectionMenu(current);
+          }
         }),
-    [selectWordAtPoint, transitionReady],
+    [selectWordAtPoint, showTextSelectionMenu, transitionReady],
   );
   const selectionTapGesture = useMemo(
     () =>
