@@ -4,24 +4,25 @@ import {
   createPageProgressDecoration,
   progressDisplayHasFooter,
   progressDisplayHasHeader,
-  progressDisplayWithHeaderVisibility,
+  progressDisplayForToolbar,
 } from "./page-progress-decoration";
 
 describe("page progress decoration", () => {
-  it("derives labels from the physical page address instead of settled state", () => {
+  it("derives a continuous publication page across section boundaries", () => {
     expect(
       createPageProgressDecoration({
         address: { sectionIndex: 1, pageIndex: 2 },
         bookTitle: "整本书",
         sectionTitle: " 第二章 ",
-        sectionCount: 4,
-        pageCount: 10,
+        sectionPageCounts: [2, 10, 3],
       }),
     ).toEqual({
       sectionTitle: "第二章",
       percentage: 33,
       percentageLabel: "33%",
-      footerLabel: "3 / 10 · 33%",
+      pageNumber: 5,
+      pageCount: 15,
+      pageLabel: "5 / 15",
     });
   });
 
@@ -31,22 +32,23 @@ describe("page progress decoration", () => {
         address: { sectionIndex: 20, pageIndex: -2 },
         bookTitle: "整本书",
         sectionTitle: " ",
-        sectionCount: 2,
-        pageCount: 0,
+        sectionPageCounts: [],
       }),
     ).toEqual({
       sectionTitle: "整本书",
       percentage: 100,
       percentageLabel: "100%",
-      footerLabel: "1 / 1 · 100%",
+      pageNumber: 1,
+      pageCount: 1,
+      pageLabel: "1 / 1",
     });
   });
 
-  it("temporarily suppresses only the header while reader controls are open", () => {
-    expect(progressDisplayWithHeaderVisibility("header", false)).toBe("hidden");
-    expect(progressDisplayWithHeaderVisibility("both", false)).toBe("footer");
-    expect(progressDisplayWithHeaderVisibility("footer", false)).toBe("footer");
-    expect(progressDisplayWithHeaderVisibility("both", true)).toBe("both");
+  it("moves the configured header into the toolbar while preserving the footer", () => {
+    expect(progressDisplayForToolbar("header", true)).toBe("hidden");
+    expect(progressDisplayForToolbar("both", true)).toBe("footer");
+    expect(progressDisplayForToolbar("footer", true)).toBe("footer");
+    expect(progressDisplayForToolbar("both", false)).toBe("both");
   });
 
   it("reports the visible decoration faces for every display mode", () => {

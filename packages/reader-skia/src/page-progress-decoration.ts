@@ -5,51 +5,67 @@ export interface PageProgressDecoration {
   readonly sectionTitle: string;
   readonly percentage: number;
   readonly percentageLabel: string;
-  readonly footerLabel: string;
+  readonly pageNumber: number;
+  readonly pageCount: number;
+  readonly pageLabel: string;
 }
+
+export type PageProgressPresentation = "reading" | "toolbar";
 
 export interface PageProgressDecorationInput {
   readonly address: PageAddress;
   readonly bookTitle: string;
   readonly sectionTitle?: string;
-  readonly sectionCount: number;
-  readonly pageCount: number;
+  readonly sectionPageCounts: readonly number[];
 }
 
 export function createPageProgressDecoration({
   address,
   bookTitle,
   sectionTitle,
-  sectionCount,
-  pageCount,
+  sectionPageCounts,
 }: PageProgressDecorationInput): PageProgressDecoration {
-  const normalizedSectionCount = Math.max(1, Math.floor(sectionCount));
-  const normalizedPageCount = Math.max(1, Math.floor(pageCount));
+  const normalizedPageCounts =
+    sectionPageCounts.length > 0
+      ? sectionPageCounts.map((count) => Math.max(1, Math.floor(count)))
+      : [1];
   const sectionIndex = clampInteger(
     address.sectionIndex,
     0,
-    normalizedSectionCount - 1,
+    normalizedPageCounts.length - 1,
   );
-  const pageIndex = clampInteger(address.pageIndex, 0, normalizedPageCount - 1);
-  const percentage = Math.round(
-    ((sectionIndex + (pageIndex + 1) / normalizedPageCount) /
-      normalizedSectionCount) *
-      100,
+  const pageIndex = clampInteger(
+    address.pageIndex,
+    0,
+    normalizedPageCounts[sectionIndex]! - 1,
   );
+  const pageCount = normalizedPageCounts.reduce(
+    (total, count) => total + count,
+    0,
+  );
+  const pageNumber =
+    normalizedPageCounts
+      .slice(0, sectionIndex)
+      .reduce((total, count) => total + count, 0) +
+    pageIndex +
+    1;
+  const percentage = Math.round((pageNumber / pageCount) * 100);
 
   return {
     sectionTitle: sectionTitle?.trim() || bookTitle,
     percentage,
     percentageLabel: `${percentage}%`,
-    footerLabel: `${pageIndex + 1} / ${normalizedPageCount} · ${percentage}%`,
+    pageNumber,
+    pageCount,
+    pageLabel: `${pageNumber} / ${pageCount}`,
   };
 }
 
-export function progressDisplayWithHeaderVisibility(
+export function progressDisplayForToolbar(
   display: ReaderProgressDisplay,
-  headerVisible: boolean,
+  toolbarVisible: boolean,
 ): ReaderProgressDisplay {
-  if (headerVisible) {
+  if (!toolbarVisible) {
     return display;
   }
   switch (display) {

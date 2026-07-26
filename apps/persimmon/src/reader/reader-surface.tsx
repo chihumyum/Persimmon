@@ -63,7 +63,7 @@ export interface ReaderSurfaceProps {
   theme: ReaderTheme;
   topInset: number;
   bottomInset: number;
-  progressHeaderVisible: boolean;
+  toolbarVisible: boolean;
   automaticPageTurnTuning: AutomaticPageTurnTuning;
   gesturePageTurnTuning: GesturePageTurnTuning;
   initialPosition?: BookPosition;
@@ -109,7 +109,7 @@ function FontBackedReaderSurface({
   theme,
   topInset,
   bottomInset,
-  progressHeaderVisible,
+  toolbarVisible,
   automaticPageTurnTuning,
   gesturePageTurnTuning,
   initialPosition,
@@ -173,7 +173,7 @@ function FontBackedReaderSurface({
       theme={theme}
       topInset={topInset}
       bottomInset={bottomInset}
-      progressHeaderVisible={progressHeaderVisible}
+      toolbarVisible={toolbarVisible}
       automaticPageTurnTuning={automaticPageTurnTuning}
       gesturePageTurnTuning={gesturePageTurnTuning}
       initialPosition={initialPosition}

@@ -17,6 +17,7 @@ import {
   SkiaPageDecorationLayer,
   type SkiaPageDecoration,
 } from "./skia-page-decoration";
+import type { PageProgressPresentation } from "./page-progress-decoration";
 
 interface ReaderPageLayerProps {
   readonly page: PageScene;
@@ -24,6 +25,7 @@ interface ReaderPageLayerProps {
   readonly imageCache: DecodedImageCache;
   readonly decoration?: SkiaPageDecoration;
   readonly progressDisplay?: ReaderProgressDisplay;
+  readonly progressPresentation?: PageProgressPresentation;
   readonly offsetX?: number;
   readonly translateX?: DerivedValue<Transforms3d>;
   readonly theme?: ReaderTheme;
@@ -35,6 +37,7 @@ export function ReaderPageLayer({
   imageCache,
   decoration,
   progressDisplay = "hidden",
+  progressPresentation = "reading",
   offsetX = 0,
   translateX,
   theme = DEFAULT_READER_THEME,
@@ -102,6 +105,7 @@ export function ReaderPageLayer({
           <SkiaPageDecorationLayer
             decoration={decoration}
             display={progressDisplay}
+            presentation={progressPresentation}
           />
         ) : null}
       </Group>

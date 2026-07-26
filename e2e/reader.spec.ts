@@ -46,7 +46,10 @@ function createTestEpub(): Buffer {
     "EPUB/nav.xhtml": strToU8(`<?xml version="1.0"?>
       <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
         <body><nav epub:type="toc"><ol>
-          <li><a href="one.xhtml#opening">第一章</a></li>
+          <li>
+            <a href="one.xhtml#opening">第一部：这是一个用于验证工具栏长目录轮换效果的非常非常长的章节标题</a>
+            <ol><li><a href="one.xhtml#opening">第一章</a></li></ol>
+          </li>
           <li><a href="two.xhtml#second">第二章</a></li>
         </ol></nav></body>
       </html>`),
@@ -91,14 +94,18 @@ function createTestEpub(): Buffer {
 }
 
 function readerPageStatus(page: Page) {
-  return page.locator('[aria-label^="本章第 "]');
+  return page.locator('[aria-label^="全书第 "]');
+}
+
+function readerProgressStatus(page: Page) {
+  return page.locator('[aria-label^="全书第 "], [aria-label^="全书 "]').first();
 }
 
 async function waitForReaderReady(page: Page): Promise<void> {
   await expect(page.getByRole("button", { name: "下一页" })).toBeVisible({
     timeout: 60_000,
   });
-  await expect(readerPageStatus(page)).toBeVisible({ timeout: 60_000 });
+  await expect(readerProgressStatus(page)).toBeVisible({ timeout: 60_000 });
 }
 
 async function clickPageTurnButton(
@@ -117,6 +124,10 @@ async function turnPageAndWait(
   direction: "上一页" | "下一页",
 ): Promise<void> {
   const status = readerPageStatus(page);
+  if ((await status.count()) === 0) {
+    await page.getByRole("button", { name: "切换阅读工具" }).click();
+    await expect(status).toBeVisible({ timeout: 60_000 });
+  }
   const before = await status.getAttribute("aria-label");
   await clickPageTurnButton(page, direction);
   await expect
@@ -180,17 +191,18 @@ test("imports, reads, navigates, resumes, and deletes a local EPUB", async ({
   });
 
   await waitForReaderReady(page);
-  await expect(page.getByLabel(/本章第 1 页/)).toBeVisible();
+  await expect(page.getByLabel(/^全书 \d+%$/)).toBeVisible();
+  await expect(readerPageStatus(page)).toHaveCount(0);
 
   await turnPageAndWait(page, "下一页");
   await turnPageAndWait(page, "下一页");
-  await expect(page.getByLabel(/本章第 3 页/)).toBeVisible({
+  await expect(page.getByLabel(/全书第 3 页/)).toBeVisible({
     timeout: 60_000,
   });
 
   const pageStatus = readerPageStatus(page);
   await turnPageAndWait(page, "上一页");
-  await expect(page.getByLabel(/本章第 2 页/)).toBeVisible({
+  await expect(page.getByLabel(/全书第 2 页/)).toBeVisible({
     timeout: 60_000,
   });
 
@@ -254,10 +266,12 @@ test("persists a two-page layout and hides floating controls while turning", asy
   });
 
   await waitForReaderReady(page);
-  await page.getByRole("button", { name: "切换到双页布局" }).click();
+  await page.getByRole("button", { name: "打开阅读布局" }).click();
+  await page.getByRole("radio", { name: "双栏，每屏并排显示两页" }).click();
   await expect(
-    page.getByRole("button", { name: "切换到单页布局" }),
-  ).toBeVisible();
+    page.getByRole("radio", { name: "双栏，每屏并排显示两页" }),
+  ).toBeChecked();
+  await page.getByRole("button", { name: "关闭阅读布局" }).click();
 
   await turnPageAndWait(page, "下一页");
   const pageStatus = readerPageStatus(page);
@@ -267,7 +281,7 @@ test("persists a two-page layout and hides floating controls while turning", asy
   await expect
     .poll(() => pageStatus.getAttribute("aria-label"), { timeout: 60_000 })
     .not.toBe(beforeSecondTurn);
-  await expect(page.getByLabel(/本章第 5–6 页/)).toBeVisible({
+  await expect(page.getByLabel(/全书第 5–6 页/)).toBeVisible({
     timeout: 60_000,
   });
   await expect(page.getByRole("button", { name: "返回书架" })).toHaveCount(0);
@@ -277,9 +291,10 @@ test("persists a two-page layout and hides floating controls while turning", asy
   await page.waitForTimeout(400);
   await page.getByRole("button", { name: "返回书架" }).click();
   await page.getByRole("button", { name: "打开 E2E 柿子书" }).click();
+  await page.getByRole("button", { name: "打开阅读布局" }).click();
   await expect(
-    page.getByRole("button", { name: "切换到单页布局" }),
-  ).toBeVisible();
+    page.getByRole("radio", { name: "双栏，每屏并排显示两页" }),
+  ).toBeChecked();
 });
 
 test("opens a footnote and returns to its exact reference", async ({
@@ -294,14 +309,16 @@ test("opens a footnote and returns to its exact reference", async ({
     buffer: createTestEpub(),
   });
 
+  await page.getByRole("button", { name: "切换阅读工具" }).click();
+  await expect(page.getByLabel(/全书第 1 页/)).toBeVisible();
   await page.getByRole("link", { name: "打开脚注 1" }).click();
   await expect(
     page.getByRole("button", { name: "返回脚注引用位置 1" }),
   ).toBeVisible();
-  await expect(page.getByLabel(/全书 100%/)).toBeVisible();
+  await expect(readerPageStatus(page)).toBeVisible();
 
   await page.getByRole("button", { name: "返回脚注引用位置 1" }).click();
-  await expect(page.getByLabel(/本章第 1 页/)).toBeVisible();
+  await expect(page.getByLabel(/全书第 1 页/)).toBeVisible();
   await expect(
     page.getByRole("button", { name: "返回脚注引用位置 1" }),
   ).toHaveCount(0);
@@ -399,7 +416,8 @@ test("customizes typography and persists header progress placement", async ({
   page,
 }) => {
   await page.getByRole("button", { name: "打开 柿子熟了" }).click();
-  await expect(page.getByLabel(/本章第 1 页/)).toBeVisible();
+  await expect(page.getByLabel(/^全书 \d+%$/)).toBeVisible();
+  await expect(readerPageStatus(page)).toHaveCount(0);
 
   await page.getByRole("button", { name: "打开阅读样式" }).click();
   await expect(page.getByText("阅读样式", { exact: true })).toBeVisible();
@@ -427,21 +445,32 @@ test("customizes typography and persists header progress placement", async ({
     page.getByRole("slider", { name: "左右页边距" }),
   ).toHaveAttribute("aria-valuenow", "36");
   await page.getByRole("button", { name: "关闭阅读样式" }).click();
-  await page.getByRole("button", { name: "切换阅读工具" }).click();
-  await expect(page.getByLabel(/页眉：.+，全书 \d+%/)).toBeVisible({
+  await expect(page.getByLabel(/^目录层级：.+$/)).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page.locator('[aria-label^="本章第 "]')).toHaveCount(0);
+  await expect(page.locator('[aria-label^="页眉："]')).toHaveCount(0);
 
   await page.getByRole("button", { name: "切换阅读工具" }).click();
+  await expect(page.getByLabel(/^页眉：[^，]+$/)).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.locator('[aria-label^="全书第 "]')).toHaveCount(0);
+
+  await page.getByRole("button", { name: "切换阅读工具" }).click();
+  await expect(page.getByLabel(/^目录层级：.+$/)).toBeVisible();
   await page.waitForTimeout(400);
   await page.getByRole("button", { name: "返回书架" }).click();
   await page.getByRole("button", { name: "打开 柿子熟了" }).click();
-  await page.getByRole("button", { name: "切换阅读工具" }).click();
-  await expect(page.getByLabel(/页眉：.+，全书 \d+%/)).toBeVisible({
+  await expect(page.getByLabel(/^目录层级：.+$/)).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page.locator('[aria-label^="本章第 "]')).toHaveCount(0);
+  await expect(page.locator('[aria-label^="页眉："]')).toHaveCount(0);
+
+  await page.getByRole("button", { name: "切换阅读工具" }).click();
+  await expect(page.getByLabel(/^页眉：[^，]+$/)).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.locator('[aria-label^="全书第 "]')).toHaveCount(0);
 
   await page.getByRole("button", { name: "切换阅读工具" }).click();
   await page.getByRole("button", { name: "打开阅读样式" }).click();
@@ -450,4 +479,70 @@ test("customizes typography and persists header progress placement", async ({
     "aria-valuenow",
     "21",
   );
+});
+
+test("keeps the TOC path between the corner toolbar controls", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  const fileChooserPromise = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "导入 EPUB" }).click();
+  const fileChooser = await fileChooserPromise;
+  await fileChooser.setFiles({
+    name: "persimmon-toolbar-carousel.epub",
+    mimeType: "application/epub+zip",
+    buffer: createTestEpub(),
+  });
+  await waitForReaderReady(page);
+
+  await page.getByRole("button", { name: "打开阅读样式" }).click();
+  await page.getByRole("radio", { name: "进度显示在页眉" }).click();
+  await page.getByRole("button", { name: "关闭阅读样式" }).click();
+
+  const breadcrumb = page.getByLabel(
+    "目录层级：第一部：这是一个用于验证工具栏长目录轮换效果的非常非常长的章节标题 › 第一章",
+  );
+  await expect(breadcrumb).toBeVisible();
+  const breadcrumbBox = await breadcrumb.boundingBox();
+  const shelfButtonBox = await page
+    .getByRole("button", { name: "返回书架" })
+    .boundingBox();
+  const tocButtonBox = await page
+    .getByRole("button", { name: "打开目录" })
+    .boundingBox();
+  const layoutButtonBox = await page
+    .getByRole("button", { name: "打开阅读布局" })
+    .boundingBox();
+  const curveButtonBox = await page
+    .getByRole("button", { name: "调节翻页常量" })
+    .boundingBox();
+  const styleButtonBox = await page
+    .getByRole("button", { name: "打开阅读样式" })
+    .boundingBox();
+  expect(breadcrumbBox).not.toBeNull();
+  expect(shelfButtonBox).not.toBeNull();
+  expect(tocButtonBox).not.toBeNull();
+  expect(layoutButtonBox).not.toBeNull();
+  expect(curveButtonBox).not.toBeNull();
+  expect(styleButtonBox).not.toBeNull();
+  expect(breadcrumbBox!.y).toBeLessThan(844 / 2);
+  expect(shelfButtonBox!.x).toBeLessThan(390 / 2);
+  expect(shelfButtonBox!.y).toBeLessThan(844 / 2);
+  expect(tocButtonBox!.x).toBeGreaterThan(390 / 2);
+  expect(tocButtonBox!.y).toBeLessThan(844 / 2);
+  for (const buttonBox of [
+    layoutButtonBox!,
+    curveButtonBox!,
+    styleButtonBox!,
+  ]) {
+    expect(buttonBox.x).toBeGreaterThan(390 / 2);
+    expect(buttonBox.y).toBeGreaterThan(844 / 2);
+  }
+  await expect(breadcrumb.getByText("1/2", { exact: true })).toBeVisible({
+    timeout: 5_000,
+  });
+  await expect(breadcrumb.getByText("2/2", { exact: true })).toBeVisible({
+    timeout: 5_000,
+  });
 });

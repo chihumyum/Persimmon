@@ -23,7 +23,7 @@ import {
 interface ReadingStylePanelProps {
   readonly appearance: ReaderAppearanceSettings;
   readonly theme: ReaderTheme;
-  readonly top: number;
+  readonly bottom: number;
   readonly onChange: (appearance: ReaderAppearanceSettings) => void;
   readonly onClose: () => void;
 }
@@ -249,7 +249,7 @@ const COLOR_MODE_OPTIONS: readonly {
 export function ReadingStylePanel({
   appearance,
   theme,
-  top,
+  bottom,
   onChange,
   onClose,
 }: ReadingStylePanelProps) {
@@ -275,7 +275,7 @@ export function ReadingStylePanel({
           backgroundColor: theme.panel,
           borderColor: theme.border,
           shadowColor: theme.shadow,
-          top,
+          bottom,
         },
       ]}
     >

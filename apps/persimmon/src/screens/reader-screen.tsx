@@ -26,6 +26,8 @@ import type {
   ReaderPageTurnAnimation,
   ReaderPageTurnTuning,
 } from "../library/types";
+import { navigationLabelsForPosition } from "../reader/navigation-path";
+import { ToolbarBreadcrumbCarousel } from "../reader/toolbar-breadcrumb-carousel";
 import { PageTurnTuningPanel } from "./page-turn-tuning-panel";
 import { ReadingLayoutPanel } from "./reading-layout-panel";
 import { ReadingStylePanel } from "./reading-style-panel";
@@ -106,6 +108,9 @@ export function ReaderScreen({
   const [navigationTarget, setNavigationTarget] = useState<
     BookPosition | undefined
   >();
+  const [currentPosition, setCurrentPosition] = useState<
+    BookPosition | undefined
+  >(entry.locator?.position);
   const [readerGeneration, setReaderGeneration] = useState(0);
   const navigationRows = useMemo(
     () => flattenNavigation(opened.book.navigation ?? []),
@@ -125,9 +130,32 @@ export function ReaderScreen({
 
   const jumpTo = useCallback((position: BookPosition) => {
     setNavigationTarget(position);
+    setCurrentPosition(position);
     setReaderGeneration((current) => current + 1);
     setTocVisible(false);
   }, []);
+  const handleProgress = useCallback(
+    (progress: ReaderProgress) => {
+      setCurrentPosition(progress.locator.position);
+      onProgress(progress);
+    },
+    [onProgress],
+  );
+  const toolbarNavigationLabels = useMemo(() => {
+    const labels = navigationLabelsForPosition(opened.book, currentPosition);
+    if (labels.length > 0) {
+      return labels;
+    }
+    const sectionTitle = currentPosition
+      ? opened.book.sections
+          .find((section) => section.id === currentPosition.sectionId)
+          ?.title?.trim()
+      : opened.book.sections[0]?.title?.trim();
+    return [sectionTitle || opened.book.title];
+  }, [currentPosition, opened.book]);
+  const toolbarHeaderEnabled =
+    appearance.progressDisplay === "header" ||
+    appearance.progressDisplay === "both";
   const loadResource = useCallback(
     (assetId: string) => opened.source.getResource(assetId),
     [opened.source],
@@ -207,13 +235,13 @@ export function ReaderScreen({
                   theme={theme}
                   topInset={insets.top}
                   bottomInset={insets.bottom}
-                  progressHeaderVisible={!controlsVisible}
+                  toolbarVisible={controlsVisible}
                   automaticPageTurnTuning={pageTurnTuning.click}
                   gesturePageTurnTuning={pageTurnTuning.gesture}
                   initialPosition={navigationTarget ?? entry.locator?.position}
                   loadResource={loadResource}
                   onCenterPress={handleCenterPress}
-                  onProgress={onProgress}
+                  onProgress={handleProgress}
                   onSelectionChange={handleSelectionChange}
                   onTurningChange={handleTurningChange}
                 />
@@ -223,61 +251,73 @@ export function ReaderScreen({
         </View>
       </View>
 
+      {!turning && !selecting && controlsVisible && toolbarHeaderEnabled ? (
+        <View
+          pointerEvents="none"
+          style={[styles.toolbarHeaderRow, { top: insets.top + 8 }]}
+        >
+          <ToolbarBreadcrumbCarousel labels={toolbarNavigationLabels} />
+        </View>
+      ) : null}
+
       {!turning && !selecting && controlsVisible ? (
         <View
           pointerEvents="box-none"
-          style={[styles.floatingControls, { top: insets.top + 8 }]}
+          style={[styles.topControls, { top: insets.top + 8 }]}
         >
-          <View pointerEvents="box-none" style={styles.controlGroup}>
-            <Pressable
-              accessibilityLabel="返回书架"
-              accessibilityRole="button"
-              onPress={onBack}
-              style={[
-                styles.floatingButton,
-                styles.backButton,
-                {
-                  backgroundColor: theme.panel,
-                  borderColor: theme.border,
-                  shadowColor: theme.shadow,
-                },
-              ]}
+          <Pressable
+            accessibilityLabel="返回书架"
+            accessibilityRole="button"
+            onPress={onBack}
+            style={[
+              styles.floatingButton,
+              styles.backButton,
+              {
+                backgroundColor: theme.panel,
+                borderColor: theme.border,
+                shadowColor: theme.shadow,
+              },
+            ]}
+          >
+            <Text
+              style={[styles.accentButtonText, { color: theme.accentStrong }]}
             >
-              <Text
-                style={[styles.accentButtonText, { color: theme.accentStrong }]}
-              >
-                ‹ 书架
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityLabel="打开目录"
-              accessibilityRole="button"
-              disabled={navigationRows.length === 0}
-              onPress={() => {
-                setStyleVisible(false);
-                setLayoutVisible(false);
-                setTuningVisible(false);
-                setTocVisible((visible) => !visible);
-              }}
-              style={[
-                styles.floatingButton,
-                {
-                  backgroundColor: theme.panel,
-                  borderColor: theme.border,
-                  shadowColor: theme.shadow,
-                },
-              ]}
+              ‹ 书架
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityLabel="打开目录"
+            accessibilityRole="button"
+            disabled={navigationRows.length === 0}
+            onPress={() => {
+              setStyleVisible(false);
+              setLayoutVisible(false);
+              setTuningVisible(false);
+              setTocVisible((visible) => !visible);
+            }}
+            style={[
+              styles.floatingButton,
+              {
+                backgroundColor: theme.panel,
+                borderColor: theme.border,
+                shadowColor: theme.shadow,
+              },
+            ]}
+          >
+            <Text
+              style={[styles.floatingButtonText, { color: theme.controlText }]}
             >
-              <Text
-                style={[
-                  styles.floatingButtonText,
-                  { color: theme.controlText },
-                ]}
-              >
-                目录
-              </Text>
-            </Pressable>
-          </View>
+              目录
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {!turning && !selecting && controlsVisible ? (
+        <View
+          pointerEvents="box-none"
+          style={[styles.bottomControls, { bottom: insets.bottom + 8 }]}
+        >
           <View pointerEvents="box-none" style={styles.controlGroup}>
             <Pressable
               accessibilityLabel="打开阅读布局"
@@ -285,6 +325,7 @@ export function ReaderScreen({
               onPress={() => {
                 setStyleVisible(false);
                 setTuningVisible(false);
+                setTocVisible(false);
                 setLayoutVisible((visible) => !visible);
               }}
               style={[
@@ -306,40 +347,40 @@ export function ReaderScreen({
                 布局
               </Text>
             </Pressable>
-            {pageTurnAnimation === "natural" ? (
-              <Pressable
-                accessibilityLabel="调节翻页常量"
-                accessibilityRole="button"
-                onPress={() => {
-                  setStyleVisible(false);
-                  setLayoutVisible(false);
-                  setTuningVisible((visible) => !visible);
-                }}
+            <Pressable
+              accessibilityLabel="调节翻页常量"
+              accessibilityRole="button"
+              onPress={() => {
+                setStyleVisible(false);
+                setLayoutVisible(false);
+                setTocVisible(false);
+                setTuningVisible((visible) => !visible);
+              }}
+              style={[
+                styles.floatingButton,
+                {
+                  backgroundColor: theme.panel,
+                  borderColor: theme.border,
+                  shadowColor: theme.shadow,
+                },
+              ]}
+            >
+              <Text
                 style={[
-                  styles.floatingButton,
-                  {
-                    backgroundColor: theme.panel,
-                    borderColor: theme.border,
-                    shadowColor: theme.shadow,
-                  },
+                  styles.floatingButtonText,
+                  { color: theme.controlText },
                 ]}
               >
-                <Text
-                  style={[
-                    styles.floatingButtonText,
-                    { color: theme.controlText },
-                  ]}
-                >
-                  曲线
-                </Text>
-              </Pressable>
-            ) : null}
+                曲线
+              </Text>
+            </Pressable>
             <Pressable
               accessibilityLabel="打开阅读样式"
               accessibilityRole="button"
               onPress={() => {
                 setTuningVisible(false);
                 setLayoutVisible(false);
+                setTocVisible(false);
                 setStyleVisible((visible) => !visible);
               }}
               style={[
@@ -364,7 +405,7 @@ export function ReaderScreen({
       {!turning && !selecting && controlsVisible && tuningVisible ? (
         <PageTurnTuningPanel
           theme={theme}
-          top={insets.top + 52}
+          bottom={insets.bottom + 52}
           tuning={pageTurnTuning}
           onChange={onPageTurnTuningChange}
           onClose={() => setTuningVisible(false)}
@@ -376,7 +417,7 @@ export function ReaderScreen({
           layout={layout}
           pageTurnAnimation={pageTurnAnimation}
           theme={theme}
-          top={insets.top + 52}
+          bottom={insets.bottom + 52}
           onAnimationChange={onPageTurnAnimationChange}
           onClose={() => setLayoutVisible(false)}
           onLayoutChange={onLayoutChange}
@@ -387,7 +428,7 @@ export function ReaderScreen({
         <ReadingStylePanel
           appearance={appearance}
           theme={theme}
-          top={insets.top + 52}
+          bottom={insets.bottom + 52}
           onChange={onAppearanceChange}
           onClose={() => setStyleVisible(false)}
         />
@@ -473,13 +514,31 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: Platform.OS === "web" ? 18 : 0,
   },
-  floatingControls: {
+  topControls: {
+    alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
     left: Platform.OS === "web" ? 30 : 12,
     pointerEvents: "box-none",
     position: "absolute",
     right: Platform.OS === "web" ? 30 : 12,
+    zIndex: 20,
+  },
+  bottomControls: {
+    alignItems: "center",
+    flexDirection: "row",
+    pointerEvents: "box-none",
+    position: "absolute",
+    right: Platform.OS === "web" ? 30 : 12,
+    zIndex: 20,
+  },
+  toolbarHeaderRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    left: Platform.OS === "web" ? 112 : 92,
+    pointerEvents: "none",
+    position: "absolute",
+    right: Platform.OS === "web" ? 112 : 92,
     zIndex: 20,
   },
   controlGroup: {

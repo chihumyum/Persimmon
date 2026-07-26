@@ -22,7 +22,7 @@ import {
 
 interface PageTurnTuningPanelProps {
   readonly theme: ReaderTheme;
-  readonly top: number;
+  readonly bottom: number;
   readonly tuning: ReaderPageTurnTuning;
   readonly onChange: (tuning: ReaderPageTurnTuning) => void;
   readonly onClose: () => void;
@@ -160,7 +160,7 @@ function TuningSlider({
 
 export function PageTurnTuningPanel({
   theme,
-  top,
+  bottom,
   tuning,
   onChange,
   onClose,
@@ -196,7 +196,7 @@ export function PageTurnTuningPanel({
           backgroundColor: theme.panel,
           borderColor: theme.border,
           shadowColor: theme.shadow,
-          top,
+          bottom,
         },
       ]}
     >

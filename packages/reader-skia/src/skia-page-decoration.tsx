@@ -14,6 +14,7 @@ import type { ReaderProgressDisplay } from "./reader-appearance";
 import {
   progressDisplayHasFooter,
   progressDisplayHasHeader,
+  type PageProgressPresentation,
   type PageProgressDecoration,
 } from "./page-progress-decoration";
 import { afterSkiaPaint } from "./skia-lifecycle";
@@ -21,8 +22,6 @@ import { DEFAULT_READER_THEME, type ReaderTheme } from "./reader-theme";
 
 const DECORATION_FONT_SIZE = 12;
 const DECORATION_HEIGHT_MULTIPLIER = 1.3;
-const HEADER_GAP = 12;
-const HEADER_PROGRESS_WIDTH = 48;
 
 interface PageDecorationText {
   readonly paragraph: SkParagraph;
@@ -33,8 +32,8 @@ interface PageDecorationText {
 
 export interface SkiaPageDecoration {
   readonly headerTitle: PageDecorationText;
-  readonly headerProgress: PageDecorationText;
-  readonly footer: PageDecorationText;
+  readonly footerPage: PageDecorationText;
+  readonly footerPercentage: PageDecorationText;
   dispose(): void;
 }
 
@@ -64,33 +63,28 @@ export function createSkiaPageDecoration({
   const maximumHorizontalMargin = Math.max(8, (width - 96) / 2);
   const margin = Math.min(horizontalMargin, maximumHorizontalMargin);
   const contentWidth = Math.max(1, width - margin * 2);
-  const titleWidth = Math.max(
-    1,
-    contentWidth - HEADER_GAP - HEADER_PROGRESS_WIDTH,
-  );
-  const progressWidth = Math.max(1, contentWidth - titleWidth - HEADER_GAP);
   const headerY = topInset + 12;
 
   const headerTitle = createDecorationParagraph(
     model.sectionTitle,
-    titleWidth,
+    contentWidth,
     TextAlign.Start,
     0.2,
     fontProvider,
     fontFamily,
     theme.decoration,
   );
-  const headerProgress = createDecorationParagraph(
-    model.percentageLabel,
-    progressWidth,
-    TextAlign.End,
+  const footerPage = createDecorationParagraph(
+    model.pageLabel,
+    contentWidth,
+    TextAlign.Center,
     0.5,
     fontProvider,
     fontFamily,
     theme.decoration,
   );
-  const footer = createDecorationParagraph(
-    model.footerLabel,
+  const footerPercentage = createDecorationParagraph(
+    model.percentageLabel,
     contentWidth,
     TextAlign.Center,
     0.5,
@@ -105,18 +99,18 @@ export function createSkiaPageDecoration({
       paragraph: headerTitle,
       x: margin,
       y: headerY,
-      width: titleWidth,
+      width: contentWidth,
     },
-    headerProgress: {
-      paragraph: headerProgress,
-      x: margin + titleWidth + HEADER_GAP,
-      y: headerY,
-      width: progressWidth,
-    },
-    footer: {
-      paragraph: footer,
+    footerPage: {
+      paragraph: footerPage,
       x: margin,
-      y: height - bottomInset - 12 - footer.getHeight(),
+      y: height - bottomInset - 12 - footerPage.getHeight(),
+      width: contentWidth,
+    },
+    footerPercentage: {
+      paragraph: footerPercentage,
+      x: margin,
+      y: height - bottomInset - 12 - footerPercentage.getHeight(),
       width: contentWidth,
     },
     dispose() {
@@ -125,8 +119,8 @@ export function createSkiaPageDecoration({
       }
       disposed = true;
       headerTitle.dispose();
-      headerProgress.dispose();
-      footer.dispose();
+      footerPage.dispose();
+      footerPercentage.dispose();
     },
   };
 }
@@ -141,47 +135,62 @@ export function drawSkiaPageDecoration(
   canvas: SkCanvas,
   decoration: SkiaPageDecoration,
   display: ReaderProgressDisplay,
+  presentation: PageProgressPresentation = "reading",
 ): void {
   if (progressDisplayHasHeader(display)) {
     paintDecorationText(canvas, decoration.headerTitle);
-    paintDecorationText(canvas, decoration.headerProgress);
   }
   if (progressDisplayHasFooter(display)) {
-    paintDecorationText(canvas, decoration.footer);
+    paintDecorationText(
+      canvas,
+      presentation === "toolbar"
+        ? decoration.footerPercentage
+        : decoration.footerPage,
+    );
   }
 }
 
 export function SkiaPageDecorationLayer({
   decoration,
   display,
+  presentation = "reading",
 }: {
   readonly decoration: SkiaPageDecoration;
   readonly display: ReaderProgressDisplay;
+  readonly presentation?: PageProgressPresentation;
 }) {
   return (
     <>
       {progressDisplayHasHeader(display) ? (
-        <>
-          <Paragraph
-            paragraph={decoration.headerTitle.paragraph}
-            x={decoration.headerTitle.x}
-            y={decoration.headerTitle.y}
-            width={decoration.headerTitle.width}
-          />
-          <Paragraph
-            paragraph={decoration.headerProgress.paragraph}
-            x={decoration.headerProgress.x}
-            y={decoration.headerProgress.y}
-            width={decoration.headerProgress.width}
-          />
-        </>
+        <Paragraph
+          paragraph={decoration.headerTitle.paragraph}
+          x={decoration.headerTitle.x}
+          y={decoration.headerTitle.y}
+          width={decoration.headerTitle.width}
+        />
       ) : null}
       {progressDisplayHasFooter(display) ? (
         <Paragraph
-          paragraph={decoration.footer.paragraph}
-          x={decoration.footer.x}
-          y={decoration.footer.y}
-          width={decoration.footer.width}
+          paragraph={
+            presentation === "toolbar"
+              ? decoration.footerPercentage.paragraph
+              : decoration.footerPage.paragraph
+          }
+          x={
+            presentation === "toolbar"
+              ? decoration.footerPercentage.x
+              : decoration.footerPage.x
+          }
+          y={
+            presentation === "toolbar"
+              ? decoration.footerPercentage.y
+              : decoration.footerPage.y
+          }
+          width={
+            presentation === "toolbar"
+              ? decoration.footerPercentage.width
+              : decoration.footerPage.width
+          }
         />
       ) : null}
     </>

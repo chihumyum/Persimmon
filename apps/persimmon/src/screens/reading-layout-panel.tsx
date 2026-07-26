@@ -9,7 +9,7 @@ interface ReadingLayoutPanelProps {
   readonly layout: ReaderLayoutMode;
   readonly pageTurnAnimation: ReaderPageTurnAnimation;
   readonly theme: ReaderTheme;
-  readonly top: number;
+  readonly bottom: number;
   readonly onAnimationChange: (animation: ReaderPageTurnAnimation) => void;
   readonly onClose: () => void;
   readonly onLayoutChange: (layout: ReaderLayoutMode) => void;
@@ -56,7 +56,7 @@ export function ReadingLayoutPanel({
   layout,
   pageTurnAnimation,
   theme,
-  top,
+  bottom,
   onAnimationChange,
   onClose,
   onLayoutChange,
@@ -68,8 +68,8 @@ export function ReadingLayoutPanel({
         {
           backgroundColor: theme.panel,
           borderColor: theme.border,
+          bottom,
           shadowColor: theme.shadow,
-          top,
         },
       ]}
     >

@@ -102,8 +102,9 @@ import {
   createPageProgressDecoration,
   progressDisplayHasFooter,
   progressDisplayHasHeader,
-  progressDisplayWithHeaderVisibility,
+  progressDisplayForToolbar,
   type PageProgressDecoration,
+  type PageProgressPresentation,
 } from "./page-progress-decoration";
 import { DEFAULT_READER_THEME, type ReaderTheme } from "./reader-theme";
 import {
@@ -205,7 +206,7 @@ export interface LiveReaderProps {
   theme?: ReaderTheme;
   topInset?: number;
   bottomInset?: number;
-  progressHeaderVisible?: boolean;
+  toolbarVisible?: boolean;
   initialPosition?: BookPosition;
   loadResource?: ResourceLoader;
   automaticPageTurnTuning?: AutomaticPageTurnTuning;
@@ -350,7 +351,7 @@ function LazyReaderEngine({
   theme = DEFAULT_READER_THEME,
   topInset,
   bottomInset,
-  progressHeaderVisible = true,
+  toolbarVisible = false,
   initialPosition,
   loadResource,
   automaticPageTurnTuning = DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
@@ -372,6 +373,13 @@ function LazyReaderEngine({
   );
   const pagesPerView = layout === "spread" ? 2 : 1;
   const physicalPageWidth = layout === "spread" ? width * 0.5 : width;
+  const progressPresentation: PageProgressPresentation = toolbarVisible
+    ? "toolbar"
+    : "reading";
+  const visibleProgressDisplay = progressDisplayForToolbar(
+    appearance.progressDisplay,
+    toolbarVisible,
+  );
   const backend = useMemo(
     () => createSkiaParagraphBackend(fontProvider, theme),
     [fontProvider, theme],
@@ -450,6 +458,13 @@ function LazyReaderEngine({
     (sectionIndex: number) => ensurePagination(sectionIndex).pages.length,
     [ensurePagination],
   );
+  const sectionPageCounts = useMemo(
+    () =>
+      book.sections.map((_section, sectionIndex) =>
+        pageCountForSection(sectionIndex),
+      ),
+    [book.sections, pageCountForSection],
+  );
   const adjacent = useCallback(
     (address: PageAddress, direction: 1 | -1) =>
       adjacentViewAddress(
@@ -478,11 +493,10 @@ function LazyReaderEngine({
         address,
         bookTitle: book.title,
         sectionTitle: section?.title,
-        sectionCount: book.sections.length,
-        pageCount: pageCountForSection(address.sectionIndex),
+        sectionPageCounts,
       });
     },
-    [book.sections, book.title, pageCountForSection],
+    [book.sections, book.title, sectionPageCounts],
   );
   const pageDecorationForAddress = useCallback(
     (address: PageAddress): SkiaPageDecoration => {
@@ -1481,7 +1495,6 @@ function LazyReaderEngine({
     () => addressesForView(readerState.settled),
     [addressesForView, readerState.settled],
   );
-  const settledPagination = ensurePagination(readerState.settled.sectionIndex);
   const settledLinkHits = useMemo<readonly ReaderLinkHit[]>(
     () =>
       settledAddresses.flatMap((address, slot) => {
@@ -1749,6 +1762,7 @@ function LazyReaderEngine({
         appearance.progressDisplay,
         theme.name,
         theme.colorScheme,
+        progressPresentation,
         layout,
         address.sectionIndex,
         address.pageIndex,
@@ -1766,6 +1780,7 @@ function LazyReaderEngine({
       physicalPageWidth,
       theme.colorScheme,
       theme.name,
+      progressPresentation,
       typographyAppearance,
     ],
   );
@@ -1791,21 +1806,23 @@ function LazyReaderEngine({
         height,
         scale,
         loadResource === undefined,
-        appearance.progressDisplay === "hidden"
+        visibleProgressDisplay === "hidden"
           ? undefined
           : pageDecorationForAddress(address),
-        appearance.progressDisplay,
+        visibleProgressDisplay,
+        progressPresentation,
         theme,
       );
     },
     [
-      appearance.progressDisplay,
       ensurePagination,
       height,
       imageCache,
       loadResource,
       pageDecorationForAddress,
       physicalPageWidth,
+      progressPresentation,
+      visibleProgressDisplay,
       theme,
     ],
   );
@@ -2290,10 +2307,11 @@ function LazyReaderEngine({
     const localPageCount = pageCountForSection(
       readerState.settled.sectionIndex,
     );
+    const publicationDecoration = progressDecorationForAddress(
+      readerState.settled,
+    );
     const publicationProgress =
-      (readerState.settled.sectionIndex +
-        (readerState.settled.pageIndex + 1) / localPageCount) /
-      book.sections.length;
+      publicationDecoration.pageNumber / publicationDecoration.pageCount;
     onProgress?.({
       locator: {
         bookId: book.id,
@@ -2309,33 +2327,28 @@ function LazyReaderEngine({
   }, [
     book.id,
     book.revisionId,
-    book.sections.length,
     ensurePagination,
     onProgress,
     pageCountForSection,
+    progressDecorationForAddress,
     readerState.turns.length,
     readerState.settled.pageIndex,
     readerState.settled.sectionIndex,
   ]);
 
-  const localPageCount = settledPagination.pages.length;
   const settledProgressDecoration = progressDecorationForAddress(
     readerState.settled,
   );
-  const publicationPercentage = settledProgressDecoration.percentage;
   const settledLastAddress = settledAddresses.at(-1)!;
+  const settledLastProgressDecoration =
+    progressDecorationForAddress(settledLastAddress);
   const settledPageLabel =
-    layout === "spread" &&
-    settledLastAddress.sectionIndex === readerState.settled.sectionIndex &&
-    settledLastAddress.pageIndex !== readerState.settled.pageIndex
-      ? `${readerState.settled.pageIndex + 1}–${settledLastAddress.pageIndex + 1}`
-      : `${readerState.settled.pageIndex + 1}`;
-  const settledProgressDisplay = progressDisplayWithHeaderVisibility(
-    appearance.progressDisplay,
-    progressHeaderVisible,
-  );
-  const showProgressHeader = progressDisplayHasHeader(settledProgressDisplay);
-  const showProgressFooter = progressDisplayHasFooter(settledProgressDisplay);
+    settledLastProgressDecoration.pageNumber !==
+    settledProgressDecoration.pageNumber
+      ? `${settledProgressDecoration.pageNumber}–${settledLastProgressDecoration.pageNumber}`
+      : `${settledProgressDecoration.pageNumber}`;
+  const showProgressHeader = progressDisplayHasHeader(visibleProgressDisplay);
+  const showProgressFooter = progressDisplayHasFooter(visibleProgressDisplay);
   const oldestRenderableTurn = renderableTurns[0];
   const newestRenderableTurn = renderableTurns.at(-1);
   const turnBackgroundSlots: readonly (PageAddress | undefined)[] = (() => {
@@ -2391,6 +2404,7 @@ function LazyReaderEngine({
           pagination={pagination}
           progressDisplay={progressDisplay}
           theme={theme}
+          progressPresentation={progressPresentation}
         />
       );
     });
@@ -2433,7 +2447,7 @@ function LazyReaderEngine({
             {renderPageSlots(
               settledAddresses,
               "settled",
-              settledProgressDisplay,
+              visibleProgressDisplay,
             )}
             {selectionGeometry?.rects.map((rect, index) => (
               <Rect
@@ -2451,7 +2465,7 @@ function LazyReaderEngine({
             {renderPageSlots(
               turnBackgroundSlots,
               "background",
-              appearance.progressDisplay,
+              visibleProgressDisplay,
             )}
             {Platform.OS === "web"
               ? retainedPaperTurns
@@ -2577,7 +2591,7 @@ function LazyReaderEngine({
       {showProgressHeader ? (
         <View
           accessible
-          accessibilityLabel={`页眉：${settledProgressDecoration.sectionTitle}，全书 ${publicationPercentage}%`}
+          accessibilityLabel={`页眉：${settledProgressDecoration.sectionTitle}`}
           accessibilityLiveRegion="polite"
           style={[
             styles.accessibilityProgress,
@@ -2585,7 +2599,7 @@ function LazyReaderEngine({
           ]}
         >
           <Text style={styles.accessibilityProgressText}>
-            {settledProgressDecoration.sectionTitle} {publicationPercentage}%
+            {settledProgressDecoration.sectionTitle}
           </Text>
         </View>
       ) : null}
@@ -2593,7 +2607,11 @@ function LazyReaderEngine({
       {showProgressFooter ? (
         <View
           accessible
-          accessibilityLabel={`本章第 ${settledPageLabel} 页，共 ${localPageCount} 页，全书 ${publicationPercentage}%`}
+          accessibilityLabel={
+            progressPresentation === "toolbar"
+              ? `全书 ${settledProgressDecoration.percentageLabel}`
+              : `全书第 ${settledPageLabel} 页，共 ${settledProgressDecoration.pageCount} 页`
+          }
           accessibilityLiveRegion="polite"
           style={[
             styles.accessibilityProgress,
@@ -2601,7 +2619,9 @@ function LazyReaderEngine({
           ]}
         >
           <Text style={styles.accessibilityProgressText}>
-            {settledPageLabel} / {localPageCount} · {publicationPercentage}%
+            {progressPresentation === "toolbar"
+              ? settledProgressDecoration.percentageLabel
+              : `${settledPageLabel} / ${settledProgressDecoration.pageCount}`}
           </Text>
         </View>
       ) : null}
@@ -2937,7 +2957,7 @@ export function LiveReader({
   theme = DEFAULT_READER_THEME,
   topInset = 0,
   bottomInset = 0,
-  progressHeaderVisible = true,
+  toolbarVisible = false,
   initialPosition,
   loadResource,
   automaticPageTurnTuning,
@@ -3002,7 +3022,7 @@ export function LiveReader({
       theme={theme}
       topInset={topInset}
       bottomInset={bottomInset}
-      progressHeaderVisible={progressHeaderVisible}
+      toolbarVisible={toolbarVisible}
       initialPosition={anchorRef.current}
       loadResource={loadResource}
       automaticPageTurnTuning={normalizedAutomaticPageTurnTuning}
