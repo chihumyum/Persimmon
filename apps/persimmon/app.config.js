@@ -30,7 +30,10 @@ module.exports = ({ config }) => {
   const androidClientId =
     process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ??
     DEFAULT_GOOGLE_ANDROID_CLIENT_ID;
-  const plugins = [...(config.plugins ?? [])];
+  const plugins = [
+    ...(config.plugins ?? []),
+    "./plugins/with-google-signin-modular-headers",
+  ];
 
   if (configuredClientId(iosClientId)) {
     plugins.push([
