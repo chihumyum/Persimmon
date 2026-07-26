@@ -1,3 +1,4 @@
+import { NotoSansMath_400Regular } from "@expo-google-fonts/noto-sans-math/400Regular";
 import { NotoSansSC_400Regular } from "@expo-google-fonts/noto-sans-sc/400Regular";
 import { NotoSerifSC_400Regular } from "@expo-google-fonts/noto-serif-sc/400Regular";
 import type { BookIR, BookPosition } from "@persimmon/book-core";
@@ -35,6 +36,13 @@ const READER_SERIF_FONT: DataModule =
         default: NotoSerifSC_400Regular as unknown as string,
       }
     : NotoSerifSC_400Regular;
+const READER_SYMBOL_FONT: DataModule =
+  Platform.OS === "web"
+    ? {
+        __esModule: true,
+        default: NotoSansMath_400Regular as unknown as string,
+      }
+    : NotoSansMath_400Regular;
 
 const READER_SANS_FONT: DataModule =
   Platform.OS === "web"
@@ -108,7 +116,10 @@ function FontBackedReaderSurface({
   font,
   fontFamily,
 }: FontBackedReaderSurfaceProps) {
-  const fontProvider = useFonts({ [fontFamily]: [font] });
+  const fontProvider = useFonts({
+    [fontFamily]: [font],
+    "Noto Sans Math": [READER_SYMBOL_FONT],
+  });
   useEffect(
     () => () => {
       if (typeof fontProvider?.dispose === "function") {

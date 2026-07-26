@@ -19,7 +19,7 @@ export function createReaderLayoutSpec(
     appearance.horizontalMargin,
     maximumHorizontalMargin,
   );
-  const fontFamilies = [appearance.fontFamily];
+  const fontFamilies = [appearance.fontFamily, "Noto Sans Math"];
   return {
     ...spec,
     padding: {
@@ -33,6 +33,11 @@ export function createReaderLayoutSpec(
       fontFamilies,
       fontSize: appearance.fontSize,
       heightMultiplier: appearance.lineHeight,
+    },
+    note: {
+      ...spec.note,
+      fontFamilies,
+      fontSize: spec.note.fontSize * scale,
     },
     headings: {
       1: {

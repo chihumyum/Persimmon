@@ -1,5 +1,9 @@
 import type { BookIR, BookLocator, BookPosition } from "@persimmon/book-core";
-import { paginateBook, type PaginationResult } from "@persimmon/layout";
+import {
+  paginateBookSection,
+  type PageLinkRegion,
+  type PaginationResult,
+} from "@persimmon/layout";
 import {
   MIN_PRESSED_EDGE_X,
   NaturalPageTurnController,
@@ -103,7 +107,6 @@ import {
 } from "./page-progress-decoration";
 import { READER_PAPER_COLOR } from "./reader-theme";
 import {
-  bookForSection,
   createReaderLayoutSpec,
   disposePaginationAfterPaint,
 } from "./reader-pagination";
@@ -152,6 +155,7 @@ import {
   spreadPageTurnPaintPasses,
   type PageTurnFace,
 } from "./page-turn-stack";
+import { reduceNoteReturnAnchor, type NoteReturnAnchor } from "./note-return";
 import {
   compareTextPositions,
   createTextSelectionDocument,
@@ -270,6 +274,66 @@ interface LazyReaderEngineProps
   readonly bottomInset: number;
 }
 
+interface ReaderLinkHit {
+  readonly key: string;
+  readonly region: PageLinkRegion;
+  readonly frame: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
+}
+
+const MINIMUM_LINK_TOUCH_TARGET = 44;
+
+function expandedLinkHitFrame(
+  region: PageLinkRegion,
+  offsetX: number,
+  pageWidth: number,
+  pageHeight: number,
+) {
+  const targetWidth = Math.max(MINIMUM_LINK_TOUCH_TARGET, region.frame.width);
+  const targetHeight = Math.max(MINIMUM_LINK_TOUCH_TARGET, region.frame.height);
+  const pageLeft = offsetX;
+  const pageRight = offsetX + pageWidth;
+  const x = Math.min(
+    pageRight - targetWidth,
+    Math.max(
+      pageLeft,
+      offsetX + region.frame.x - (targetWidth - region.frame.width) * 0.5,
+    ),
+  );
+  const y = Math.min(
+    pageHeight - targetHeight,
+    Math.max(0, region.frame.y - (targetHeight - region.frame.height) * 0.5),
+  );
+  return {
+    x,
+    y,
+    width: targetWidth,
+    height: targetHeight,
+  };
+}
+
+function noteKindLabel(noteKind: PageLinkRegion["link"]["noteKind"]): string {
+  return noteKind === "endnote"
+    ? "尾注"
+    : noteKind === "footnote"
+      ? "脚注"
+      : "注释";
+}
+
+function linkAccessibilityLabel(region: PageLinkRegion): string {
+  if (region.link.kind === "note-reference") {
+    return `打开${noteKindLabel(region.link.noteKind)} ${region.link.label}`;
+  }
+  if (region.link.kind === "note-backlink") {
+    return `返回正文 ${region.link.label}`;
+  }
+  return `跳转到 ${region.link.label}`;
+}
+
 function LazyReaderEngine({
   book,
   fontProvider,
@@ -369,11 +433,7 @@ function LazyReaderEngine({
       if (cached) {
         return cached;
       }
-      const pagination = paginateBook(
-        bookForSection(book, sectionIndex),
-        spec,
-        backend,
-      );
+      const pagination = paginateBookSection(book, sectionIndex, spec, backend);
       paginationCache.set(sectionIndex, pagination);
       return pagination;
     },
@@ -504,6 +564,16 @@ function LazyReaderEngine({
   const [readerState, setReaderState] = useState(() =>
     createPageTurnSchedulerState(initialAddress),
   );
+  const [noteReturnAnchor, setNoteReturnAnchor] = useState<
+    NoteReturnAnchor | undefined
+  >();
+  const clearNoteReturnAnchor = useCallback(
+    () =>
+      setNoteReturnAnchor((current) =>
+        reduceNoteReturnAnchor(current, { type: "cleared" }),
+      ),
+    [],
+  );
   const selectionDocument = useMemo(
     () => createTextSelectionDocument(book),
     [book],
@@ -541,6 +611,65 @@ function LazyReaderEngine({
     },
     [],
   );
+  const pageAddressForPosition = useCallback(
+    (position: BookPosition): PageAddress | undefined => {
+      const sectionIndex = book.sections.findIndex(
+        (section) => section.id === position.sectionId,
+      );
+      if (sectionIndex < 0) {
+        return undefined;
+      }
+      const pageIndex =
+        ensurePagination(sectionIndex).locationIndex.pageFor(position);
+      return pageIndex === undefined ? undefined : { sectionIndex, pageIndex };
+    },
+    [book.sections, ensurePagination],
+  );
+  const jumpToPosition = useCallback(
+    (position: BookPosition): boolean => {
+      if (readerStateRef.current.turns.length > 0) {
+        return false;
+      }
+      const target = pageAddressForPosition(position);
+      if (!target) {
+        return false;
+      }
+      mutateReaderState(() => createPageTurnSchedulerState(target));
+      return true;
+    },
+    [mutateReaderState, pageAddressForPosition],
+  );
+  const handleLinkPress = useCallback(
+    (region: PageLinkRegion) => {
+      if (region.link.kind === "note-backlink" && noteReturnAnchor) {
+        if (jumpToPosition(noteReturnAnchor.position)) {
+          clearNoteReturnAnchor();
+        }
+        return;
+      }
+      if (!jumpToPosition(region.link.target)) {
+        return;
+      }
+      if (region.link.kind === "note-reference") {
+        setNoteReturnAnchor((current) =>
+          reduceNoteReturnAnchor(current, {
+            type: "note-opened",
+            position: region.source,
+            label: region.link.label,
+            ...(region.link.noteKind ? { noteKind: region.link.noteKind } : {}),
+          }),
+        );
+      } else {
+        clearNoteReturnAnchor();
+      }
+    },
+    [clearNoteReturnAnchor, jumpToPosition, noteReturnAnchor],
+  );
+  const returnToNoteReference = useCallback(() => {
+    if (noteReturnAnchor && jumpToPosition(noteReturnAnchor.position)) {
+      clearNoteReturnAnchor();
+    }
+  }, [clearNoteReturnAnchor, jumpToPosition, noteReturnAnchor]);
 
   useEffect(() => {
     if (Platform.OS === "web") {
@@ -599,6 +728,9 @@ function LazyReaderEngine({
     (turnId: string) => {
       mutateReaderState((current) =>
         resolveScheduledPageTurn(current, turnId, true),
+      );
+      setNoteReturnAnchor((current) =>
+        reduceNoteReturnAnchor(current, { type: "page-turned" }),
       );
     },
     [mutateReaderState],
@@ -1310,6 +1442,31 @@ function LazyReaderEngine({
     [addressesForView, readerState.settled],
   );
   const settledPagination = ensurePagination(readerState.settled.sectionIndex);
+  const settledLinkHits = useMemo<readonly ReaderLinkHit[]>(
+    () =>
+      settledAddresses.flatMap((address, slot) => {
+        const page = ensurePagination(address.sectionIndex).pages[
+          address.pageIndex
+        ];
+        return (page?.links ?? []).map((region, regionIndex) => ({
+          key: [
+            address.sectionIndex,
+            address.pageIndex,
+            region.source.blockId,
+            region.source.offset,
+            regionIndex,
+          ].join(":"),
+          region,
+          frame: expandedLinkHitFrame(
+            region,
+            slot * physicalPageWidth,
+            physicalPageWidth,
+            height,
+          ),
+        }));
+      }),
+    [ensurePagination, height, physicalPageWidth, settledAddresses],
+  );
   const visibleTextPages = useMemo(
     () =>
       settledAddresses.flatMap((address, slot) => {
@@ -2401,12 +2558,98 @@ function LazyReaderEngine({
       ) : null}
     </View>
   );
-  return Platform.OS === "web" ? (
-    readerContent
-  ) : (
-    <GestureDetector gesture={nativeReaderGesture}>
-      {readerContent}
-    </GestureDetector>
+  const linkOverlay =
+    readerState.turns.length === 0 && !selectingText ? (
+      <View pointerEvents="box-none" style={styles.linkOverlay}>
+        {settledLinkHits.map(({ frame, key, region }) => (
+          <Pressable
+            key={key}
+            accessibilityHint={
+              region.link.kind === "note-reference"
+                ? "跳到注释内容，并提供返回正文的按钮"
+                : undefined
+            }
+            accessibilityLabel={linkAccessibilityLabel(region)}
+            accessibilityRole="link"
+            onPress={() => handleLinkPress(region)}
+            style={({ pressed }) => [
+              styles.linkHit,
+              {
+                height: frame.height,
+                left: frame.x,
+                top: frame.y,
+                width: frame.width,
+              },
+              pressed && styles.linkHitPressed,
+            ]}
+          />
+        ))}
+        {noteReturnAnchor ? (
+          <View
+            style={[
+              styles.noteReturnControls,
+              noteReturnAnchor.presentation === "compact"
+                ? styles.noteReturnControlsCompact
+                : styles.noteReturnControlsExpanded,
+            ]}
+          >
+            <Pressable
+              accessibilityLabel={`返回${noteKindLabel(noteReturnAnchor.noteKind)}引用位置 ${noteReturnAnchor.label}`}
+              accessibilityRole="button"
+              hitSlop={6}
+              onPress={returnToNoteReference}
+              style={({ pressed }) => [
+                styles.noteReturnButton,
+                noteReturnAnchor.presentation === "compact"
+                  ? styles.noteReturnButtonCompact
+                  : styles.noteReturnButtonExpanded,
+                pressed && styles.noteReturnButtonPressed,
+              ]}
+            >
+              <Text
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+                style={styles.noteReturnText}
+              >
+                {noteReturnAnchor.presentation === "compact"
+                  ? "↩"
+                  : "↩ 返回正文"}
+              </Text>
+            </Pressable>
+            <View style={styles.noteReturnDivider} />
+            <Pressable
+              accessibilityLabel={`关闭返回${noteKindLabel(noteReturnAnchor.noteKind)}引用位置的按钮`}
+              accessibilityRole="button"
+              hitSlop={6}
+              onPress={clearNoteReturnAnchor}
+              style={({ pressed }) => [
+                styles.noteReturnDismissButton,
+                pressed && styles.noteReturnButtonPressed,
+              ]}
+            >
+              <Text
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+                style={styles.noteReturnDismissText}
+              >
+                ×
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
+    ) : null;
+  return (
+    <View style={styles.container}>
+      {Platform.OS === "web" ? (
+        readerContent
+      ) : (
+        <GestureDetector gesture={nativeReaderGesture}>
+          {readerContent}
+        </GestureDetector>
+      )}
+      {linkOverlay}
+    </View>
   );
 }
 
@@ -2825,8 +3068,90 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
   },
+  linkHit: {
+    backgroundColor: "transparent",
+    borderRadius: 12,
+    position: "absolute",
+  },
+  linkHitPressed: {
+    backgroundColor: "rgba(201, 122, 82, 0.16)",
+  },
+  linkOverlay: {
+    bottom: 0,
+    left: 0,
+    pointerEvents: "box-none",
+    position: "absolute",
+    right: 0,
+    top: 0,
+    zIndex: 12,
+  },
   leftEdge: {
     left: 0,
+  },
+  noteReturnButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 44,
+  },
+  noteReturnButtonCompact: {
+    width: 44,
+  },
+  noteReturnButtonExpanded: {
+    flex: 1,
+    paddingHorizontal: 14,
+  },
+  noteReturnControls: {
+    alignItems: "stretch",
+    backgroundColor: "rgba(251, 247, 240, 0.96)",
+    borderColor: "rgba(166, 79, 45, 0.28)",
+    borderRadius: 22,
+    borderWidth: StyleSheet.hairlineWidth,
+    bottom: 52,
+    flexDirection: "row",
+    overflow: "hidden",
+    position: "absolute",
+    ...(Platform.OS === "web"
+      ? { boxShadow: "0 3px 12px rgba(61, 48, 38, 0.14)" }
+      : {
+          elevation: 3,
+          shadowColor: "#3d3026",
+          shadowOffset: { width: 0, height: 3 },
+          shadowOpacity: 0.14,
+          shadowRadius: 6,
+        }),
+  },
+  noteReturnControlsCompact: {
+    right: 16,
+    width: 88,
+  },
+  noteReturnControlsExpanded: {
+    right: 16,
+    width: 180,
+  },
+  noteReturnDismissButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 44,
+    width: 44,
+  },
+  noteReturnDismissText: {
+    color: "#8b6f62",
+    fontSize: 18,
+    fontWeight: "500",
+    lineHeight: 20,
+  },
+  noteReturnDivider: {
+    alignSelf: "stretch",
+    backgroundColor: "rgba(166, 79, 45, 0.18)",
+    width: StyleSheet.hairlineWidth,
+  },
+  noteReturnButtonPressed: {
+    backgroundColor: "rgba(244, 229, 216, 0.98)",
+  },
+  noteReturnText: {
+    color: "#9d4728",
+    fontSize: 13,
+    fontWeight: "600",
   },
   accessibilityProgress: {
     height: 1,

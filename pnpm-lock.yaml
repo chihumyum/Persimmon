@@ -47,6 +47,9 @@ importers:
 
   apps/persimmon:
     dependencies:
+      '@expo-google-fonts/noto-sans-math':
+        specifier: 0.4.2
+        version: 0.4.2
       '@expo-google-fonts/noto-sans-sc':
         specifier: 0.4.3
         version: 0.4.3
@@ -947,6 +950,9 @@ packages:
 
   '@expo-google-fonts/material-symbols@0.4.41':
     resolution: {integrity: sha512-BKNSJ6oFGWi+aXu6PF+1EdI43J8Ag+Sm7Ste1SXYmC2eYOJasyjXHkKjgkIieBB1eDZQJSPWuPv421Vg6N5tCQ==}
+
+  '@expo-google-fonts/noto-sans-math@0.4.2':
+    resolution: {integrity: sha512-Kgj0kKibznTLYcbpR8Tk2ybr76uMOyrlyoP5F9G+0UiJzAMA4zG/XIlrgXKzfFGERhA0Rc3vbwDeeTxwXPlaYg==}
 
   '@expo-google-fonts/noto-sans-sc@0.4.3':
     resolution: {integrity: sha512-9rAwdFTFHbO/u6Cs0gj2jZbW74TGIiaFNQnXYH2s5wA1bzVkwbaviL4t8YUV642eGYjg86eH6DkAEQmfNHDncQ==}
@@ -4955,6 +4961,8 @@ snapshots:
       levn: 0.4.1
 
   '@expo-google-fonts/material-symbols@0.4.41': {}
+
+  '@expo-google-fonts/noto-sans-math@0.4.2': {}
 
   '@expo-google-fonts/noto-sans-sc@0.4.3': {}
 

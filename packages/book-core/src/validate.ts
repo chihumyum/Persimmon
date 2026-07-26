@@ -19,6 +19,9 @@ export type BookValidationIssueCode =
   | "empty-text-run"
   | "invalid-heading-level"
   | "invalid-block-style"
+  | "invalid-inline-run"
+  | "invalid-link-target"
+  | "invalid-note-kind"
   | "missing-image-asset"
   | "missing-cover-asset"
   | "invalid-image-size"
@@ -78,6 +81,7 @@ function validateBlock(
   block: BlockIR,
   path: string,
   book: BookIR,
+  blocksBySection: ReadonlyMap<string, ReadonlyMap<string, BlockIR>>,
   issues: BookValidationIssue[],
 ): void {
   if (!hasText(block.id)) {
@@ -116,6 +120,18 @@ function validateBlock(
   }
 
   if (isTextBlock(block)) {
+    if (
+      block.noteKind !== undefined &&
+      block.noteKind !== "footnote" &&
+      block.noteKind !== "endnote"
+    ) {
+      issues.push({
+        code: "invalid-note-kind",
+        path: `${path}.noteKind`,
+        message: 'noteKind must be "footnote" or "endnote"',
+      });
+    }
+
     if (logicalLength(block) === 0) {
       issues.push({
         code: "empty-text-block",
@@ -125,12 +141,52 @@ function validateBlock(
     }
 
     block.runs.forEach((run, runIndex) => {
+      const runPath = `${path}.runs[${runIndex}]`;
       if (run.text.length === 0) {
         issues.push({
           code: "empty-text-run",
-          path: `${path}.runs[${runIndex}]`,
+          path: runPath,
           message: "text runs must not be empty",
         });
+      }
+      if (
+        run.marks?.some((mark) => mark !== "strong" && mark !== "emphasis") ||
+        (run.verticalAlign !== undefined &&
+          run.verticalAlign !== "superscript" &&
+          run.verticalAlign !== "subscript")
+      ) {
+        issues.push({
+          code: "invalid-inline-run",
+          path: runPath,
+          message: "inline run contains an unsupported mark or alignment",
+        });
+      }
+
+      if (run.link) {
+        const targetBlock = blocksBySection
+          .get(run.link.target.sectionId)
+          ?.get(run.link.target.blockId);
+        if (
+          !["internal", "note-reference", "note-backlink"].includes(
+            run.link.kind,
+          ) ||
+          !hasText(run.link.label) ||
+          (run.link.noteKind !== undefined &&
+            run.link.noteKind !== "footnote" &&
+            run.link.noteKind !== "endnote") ||
+          !targetBlock ||
+          !Number.isInteger(run.link.target.offset) ||
+          run.link.target.offset < 0 ||
+          run.link.target.offset >
+            (targetBlock ? logicalLength(targetBlock) : 0)
+        ) {
+          issues.push({
+            code: "invalid-link-target",
+            path: `${runPath}.link`,
+            message:
+              "internal links must have a label and target an existing block position",
+          });
+        }
       }
     });
 
@@ -199,6 +255,12 @@ export function validateBookIR(book: BookIR): readonly BookValidationIssue[] {
 
   const sectionIds = new Set<string>();
   const blockIds = new Set<string>();
+  const blocksBySection = new Map(
+    book.sections.map((section) => [
+      section.id,
+      new Map(section.blocks.map((block) => [block.id, block])),
+    ]),
+  );
 
   book.sections.forEach((section, sectionIndex) => {
     const sectionPath = `sections[${sectionIndex}]`;
@@ -236,7 +298,7 @@ export function validateBookIR(book: BookIR): readonly BookValidationIssue[] {
         });
       }
       blockIds.add(block.id);
-      validateBlock(block, blockPath, book, issues);
+      validateBlock(block, blockPath, book, blocksBySection, issues);
     });
   });
 
@@ -265,12 +327,6 @@ export function validateBookIR(book: BookIR): readonly BookValidationIssue[] {
     });
   }
 
-  const blocksBySection = new Map(
-    book.sections.map((section) => [
-      section.id,
-      new Map(section.blocks.map((block) => [block.id, block])),
-    ]),
-  );
   const navigationIds = new Set<string>();
   const validateNavigation = (
     items: NonNullable<BookIR["navigation"]>,

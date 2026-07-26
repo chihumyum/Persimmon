@@ -21,6 +21,7 @@
     "deploy": "npx expo export -p web && npx eas-cli@latest deploy"
   },
   "dependencies": {
+    "@expo-google-fonts/noto-sans-math": "0.4.2",
     "@expo-google-fonts/noto-sans-sc": "0.4.3",
     "@expo-google-fonts/noto-serif-sc": "0.4.3",
     "@persimmon/book-core": "workspace:*",

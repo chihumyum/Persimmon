@@ -5,6 +5,7 @@ import {
   type BlockIR,
   type BookIR,
   type ImageBlockIR,
+  type SectionIR,
   type TextBlockIR,
 } from "@persimmon/book-core";
 
@@ -13,6 +14,7 @@ import type {
   MeasuredLine,
   MeasuredParagraph,
   PageLayoutSpec,
+  PageLinkRegion,
   PageScene,
   PageSceneItem,
   PaginationResult,
@@ -31,8 +33,19 @@ interface FlowBlock {
 
 interface MutablePage {
   items: PageSceneItem[];
+  links: PageLinkRegion[];
   cursorY: number;
   previousBlock: BlockIR | undefined;
+}
+
+const validatedBooks = new WeakSet<object>();
+
+function assertValidBookOnce(book: BookIR): void {
+  if (validatedBooks.has(book)) {
+    return;
+  }
+  assertValidBookIR(book);
+  validatedBooks.add(book);
 }
 
 function assertFinitePositive(value: number, name: string): void {
@@ -94,7 +107,11 @@ function styleForBlock(
   spec: PageLayoutSpec,
 ): TypographyPreset {
   const base =
-    block.kind === "heading" ? spec.headings[block.level] : spec.body;
+    block.kind === "heading"
+      ? spec.headings[block.level]
+      : block.noteKind
+        ? spec.note
+        : spec.body;
   return {
     ...base,
     ...(block.style?.textAlign ? { align: block.style.textAlign } : {}),
@@ -113,8 +130,68 @@ function resolveRuns(block: TextBlockIR): readonly ResolvedRun[] {
       startOffset,
       endOffset: offset,
       marks: run.marks ?? [],
+      ...(run.verticalAlign ? { verticalAlign: run.verticalAlign } : {}),
+      ...(run.link ? { link: run.link } : {}),
     };
   });
+}
+
+function intersectRect(left: Rect, right: Rect): Rect | undefined {
+  const x = Math.max(left.x, right.x);
+  const y = Math.max(left.y, right.y);
+  const rightEdge = Math.min(left.x + left.width, right.x + right.width);
+  const bottomEdge = Math.min(left.y + left.height, right.y + right.height);
+  if (rightEdge <= x || bottomEdge <= y) {
+    return undefined;
+  }
+  return {
+    x,
+    y,
+    width: rightEdge - x,
+    height: bottomEdge - y,
+  };
+}
+
+function linkRegionsForSlice<THandle>(
+  item: Extract<PageSceneItem, { kind: "paragraph-slice" }>,
+  measured: MeasuredParagraph<THandle>,
+  runs: readonly ResolvedRun[],
+): PageLinkRegion[] {
+  const regions: PageLinkRegion[] = [];
+  for (const run of runs) {
+    if (!run.link) {
+      continue;
+    }
+    const startOffset = Math.max(run.startOffset, item.source.startOffset);
+    const endOffset = Math.min(run.endOffset, item.source.endOffset);
+    if (endOffset <= startOffset) {
+      continue;
+    }
+    for (const rect of measured.rectsForRange(startOffset, endOffset)) {
+      const clipped = intersectRect(
+        {
+          x: item.frame.x + rect.x,
+          y: item.frame.y - item.sourceTop + rect.y,
+          width: rect.width,
+          height: rect.height,
+        },
+        item.frame,
+      );
+      if (!clipped) {
+        continue;
+      }
+      regions.push({
+        source: {
+          sectionId: item.sectionId,
+          blockId: item.blockId,
+          offset: startOffset,
+        },
+        link: run.link,
+        frame: clipped,
+      });
+    }
+  }
+  return regions;
 }
 
 function paragraphKey(
@@ -309,15 +386,15 @@ function imageFrame(
   };
 }
 
-export function paginateBook<THandle>(
+function paginateSections<THandle>(
   book: BookIR,
+  sections: readonly SectionIR[],
   spec: PageLayoutSpec,
   backend: ParagraphLayoutBackend<THandle>,
 ): PaginationResult<THandle> {
-  assertValidBookIR(book);
   const contentRect = validateLayoutSpec(spec);
   const contentBottom = contentRect.y + contentRect.height;
-  const flow: FlowBlock[] = book.sections.flatMap((section) =>
+  const flow: FlowBlock[] = sections.flatMap((section) =>
     section.blocks.map((block) => ({ sectionId: section.id, block })),
   );
   const paragraphs = new Map<string, MeasuredParagraph<THandle>>();
@@ -325,6 +402,7 @@ export function paginateBook<THandle>(
 
   let page: MutablePage = {
     items: [],
+    links: [],
     cursorY: contentRect.y,
     previousBlock: undefined,
   };
@@ -341,6 +419,7 @@ export function paginateBook<THandle>(
       size: { ...spec.viewport },
       contentRect: { ...contentRect },
       items: page.items,
+      ...(page.links.length > 0 ? { links: page.links } : {}),
       start: {
         sectionId: first.sectionId,
         blockId: first.blockId,
@@ -354,6 +433,7 @@ export function paginateBook<THandle>(
     });
     page = {
       items: [],
+      links: [],
       cursorY: contentRect.y,
       previousBlock: undefined,
     };
@@ -450,7 +530,7 @@ export function paginateBook<THandle>(
           ? Math.min(naturalHeight, contentRect.height)
           : naturalHeight;
 
-        page.items.push({
+        const item = {
           kind: "paragraph-slice",
           paragraphKey: measured.key,
           sectionId,
@@ -468,7 +548,12 @@ export function paginateBook<THandle>(
             height: frameHeight,
           },
           sourceTop: firstLine.top,
-        });
+          ...(block.noteKind ? { noteKind: block.noteKind } : {}),
+        } as const;
+        page.items.push(item);
+        page.links.push(
+          ...linkRegionsForSlice(item, measured, resolveRuns(block)),
+        );
         page.cursorY = targetY + frameHeight;
         lineCursor = endLine + 1;
 
@@ -529,4 +614,26 @@ export function paginateBook<THandle>(
     paragraphs,
     locationIndex: createPageLocationIndex(pages),
   };
+}
+
+export function paginateBook<THandle>(
+  book: BookIR,
+  spec: PageLayoutSpec,
+  backend: ParagraphLayoutBackend<THandle>,
+): PaginationResult<THandle> {
+  assertValidBookOnce(book);
+  return paginateSections(book, book.sections, spec, backend);
+}
+
+export function paginateBookSection<THandle>(
+  book: BookIR,
+  sectionIndex: number,
+  spec: PageLayoutSpec,
+  backend: ParagraphLayoutBackend<THandle>,
+): PaginationResult<THandle> {
+  assertValidBookOnce(book);
+  if (!Number.isInteger(sectionIndex) || !book.sections[sectionIndex]) {
+    throw new RangeError("sectionIndex must identify an existing book section");
+  }
+  return paginateSections(book, [book.sections[sectionIndex]], spec, backend);
 }

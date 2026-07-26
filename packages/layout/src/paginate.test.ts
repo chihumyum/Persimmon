@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   paginateBook,
+  paginateBookSection,
   type MeasuredParagraph,
   type PageLayoutSpec,
   type ParagraphLayoutBackend,
@@ -82,6 +83,11 @@ const layoutSpec: PageLayoutSpec = {
   body: {
     fontFamilies: ["Test"],
     fontSize: 20,
+    heightMultiplier: 1,
+  },
+  note: {
+    fontFamilies: ["Test"],
+    fontSize: 17,
     heightMultiplier: 1,
   },
   headings: {
@@ -228,6 +234,106 @@ describe("paginateBook", () => {
     expect(result.pages).toHaveLength(2);
     expect(result.pages[0]!.items[0]!.frame.y).toBe(0);
     expect(result.pages[1]!.items[0]!.frame.y).toBe(0);
+  });
+
+  it("creates precise link hit regions while paginating one linked section", () => {
+    const inputs: ParagraphLayoutInput[] = [];
+    const backend: ParagraphLayoutBackend<FixedHandle> = {
+      layout(input) {
+        inputs.push(input);
+        return {
+          key: input.key,
+          handle: { key: input.key },
+          width: input.width,
+          height: 20,
+          lines: [
+            {
+              startOffset: 0,
+              endOffset: input.text.length,
+              visibleEndOffset: input.text.length,
+              top: 0,
+              bottom: 20,
+              baseline: 16,
+            },
+          ],
+          hitTest: (x) => Math.floor(x / 10),
+          rectsForRange: (startOffset, endOffset) => [
+            {
+              x: startOffset * 10,
+              y: 0,
+              width: (endOffset - startOffset) * 10,
+              height: 20,
+            },
+          ],
+        };
+      },
+    };
+    const book: BookIR = {
+      schemaVersion: BOOK_IR_VERSION,
+      id: "linked-pagination-test",
+      revisionId: "v1",
+      title: "注释分页测试",
+      assets: {},
+      sections: [
+        {
+          id: "body",
+          blocks: [
+            {
+              kind: "paragraph",
+              id: "body-text",
+              runs: [
+                { text: "正文" },
+                {
+                  text: "¹",
+                  verticalAlign: "superscript",
+                  link: {
+                    kind: "note-reference",
+                    noteKind: "footnote",
+                    label: "1",
+                    target: {
+                      sectionId: "notes",
+                      blockId: "note-one",
+                      offset: 0,
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        {
+          id: "notes",
+          blocks: [
+            {
+              kind: "paragraph",
+              id: "note-one",
+              noteKind: "footnote",
+              runs: [{ text: "脚注正文" }],
+            },
+          ],
+        },
+      ],
+    };
+
+    const body = paginateBookSection(book, 0, layoutSpec, backend);
+    const note = paginateBookSection(book, 1, layoutSpec, backend);
+
+    expect(body.pages[0]?.links).toEqual([
+      {
+        source: { sectionId: "body", blockId: "body-text", offset: 2 },
+        link: {
+          kind: "note-reference",
+          noteKind: "footnote",
+          label: "1",
+          target: { sectionId: "notes", blockId: "note-one", offset: 0 },
+        },
+        frame: { x: 20, y: 0, width: 10, height: 20 },
+      },
+    ]);
+    expect(note.pages[0]?.items[0]).toMatchObject({
+      noteKind: "footnote",
+    });
+    expect(inputs.at(-1)?.style.fontSize).toBe(layoutSpec.note.fontSize);
   });
 
   it("lets reader paragraph spacing override adjacent publisher margins", () => {

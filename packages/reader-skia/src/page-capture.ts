@@ -72,7 +72,9 @@ export function capturePage(
   const canvas = surface.getCanvas();
   const imagePaint = Skia.Paint();
   const placeholderPaint = Skia.Paint();
+  const notePaint = Skia.Paint();
   placeholderPaint.setColor(Skia.Color("#eed9c8"));
+  notePaint.setColor(Skia.Color("#c97a52"));
   let returnedCapture = false;
   let surfaceDisposed = false;
 
@@ -109,6 +111,12 @@ export function capturePage(
       const measured = pagination.paragraphs.get(item.paragraphKey);
       if (!measured) {
         continue;
+      }
+      if (item.noteKind) {
+        canvas.drawRect(
+          Skia.XYWHRect(item.frame.x - 10, item.frame.y, 2, item.frame.height),
+          notePaint,
+        );
       }
       canvas.save();
       canvas.clipRect(item.frame, ClipOp.Intersect, true);
@@ -175,6 +183,7 @@ export function capturePage(
   } finally {
     imagePaint.dispose();
     placeholderPaint.dispose();
+    notePaint.dispose();
     if (!returnedCapture && !surfaceDisposed) {
       surface.dispose();
     }

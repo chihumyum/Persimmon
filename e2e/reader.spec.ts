@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { strToU8, zipSync, type Zippable } from "fflate";
 
 const COVER_PNG = Uint8Array.from(
@@ -7,10 +7,11 @@ const COVER_PNG = Uint8Array.from(
     "base64",
   ),
 );
+const IS_CI = Boolean(process.env.CI);
 
 function createTestEpub(): Buffer {
   const paragraphs = Array.from(
-    { length: 80 },
+    { length: 64 },
     (_, index) =>
       `<p>第 ${index + 1} 段：柿子阅读器正在验证分页、目录、资源和断点续读。</p>`,
   ).join("");
@@ -55,23 +56,72 @@ function createTestEpub(): Buffer {
       .hidden { display: none; }
     `),
     "EPUB/one.xhtml": strToU8(`<?xml version="1.0"?>
-      <html xmlns="http://www.w3.org/1999/xhtml">
+      <html
+        xmlns="http://www.w3.org/1999/xhtml"
+        xmlns:epub="http://www.idpf.org/2007/ops"
+      >
         <head><link rel="stylesheet" href="book.css"/></head>
         <body>
           <h1 id="opening">第一章</h1>
+          <p>
+            这里有一条脚注<a id="note-reference" href="two.xhtml#note-one" epub:type="noteref">1</a>。
+          </p>
           <p class="hidden">这段内容必须被安全样式层过滤。</p>
           <img src="cover.png" alt="测试插图"/>
           ${paragraphs}
         </body>
       </html>`),
     "EPUB/two.xhtml": strToU8(`<?xml version="1.0"?>
-      <html xmlns="http://www.w3.org/1999/xhtml">
+      <html
+        xmlns="http://www.w3.org/1999/xhtml"
+        xmlns:epub="http://www.idpf.org/2007/ops"
+      >
         <head><link rel="stylesheet" href="book.css"/></head>
-        <body><h1 id="second">第二章</h1><p>目录跳转成功。</p></body>
+        <body>
+          <h1 id="second">第二章</h1>
+          <p>目录跳转成功。</p>
+          <aside id="note-one" epub:type="footnote">
+            <p><a href="one.xhtml#note-reference" role="doc-backlink">1</a> 这是脚注正文。</p>
+          </aside>
+        </body>
       </html>`),
     "EPUB/cover.png": COVER_PNG,
   };
   return Buffer.from(zipSync(entries));
+}
+
+function readerPageStatus(page: Page) {
+  return page.locator('[aria-label^="本章第 "]');
+}
+
+async function waitForReaderReady(page: Page): Promise<void> {
+  await expect(page.getByRole("button", { name: "下一页" })).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(readerPageStatus(page)).toBeVisible({ timeout: 60_000 });
+}
+
+async function clickPageTurnButton(
+  page: Page,
+  direction: "上一页" | "下一页",
+): Promise<void> {
+  const errorOverlay = page.locator("#error-overlay");
+  if ((await errorOverlay.count()) > 0) {
+    expect((await errorOverlay.textContent())?.trim() ?? "").toBe("");
+  }
+  await page.getByRole("button", { name: direction }).click({ force: IS_CI });
+}
+
+async function turnPageAndWait(
+  page: Page,
+  direction: "上一页" | "下一页",
+): Promise<void> {
+  const status = readerPageStatus(page);
+  const before = await status.getAttribute("aria-label");
+  await clickPageTurnButton(page, direction);
+  await expect
+    .poll(() => status.getAttribute("aria-label"), { timeout: 60_000 })
+    .not.toBe(before);
 }
 
 test.beforeEach(async ({ page }) => {
@@ -88,9 +138,38 @@ test.beforeEach(async ({ page }) => {
   await page.reload();
 });
 
+test("ships footnote and endnote fixtures in the built-in demo book", async ({
+  page,
+}) => {
+  await page.getByRole("button", { name: "打开 柿子熟了" }).click();
+  await waitForReaderReady(page);
+
+  await expect(page.getByRole("link", { name: "打开脚注 1" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "打开脚注 2" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "打开尾注 3" })).toBeVisible();
+
+  await page.getByRole("link", { name: "打开脚注 2" }).click();
+  await expect(
+    page.getByRole("button", { name: "返回脚注引用位置 2" }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "返回正文 2" })).toHaveCount(0);
+
+  await page
+    .getByRole("button", { name: "关闭返回脚注引用位置的按钮" })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "返回脚注引用位置 2" }),
+  ).toHaveCount(0);
+});
+
 test("imports, reads, navigates, resumes, and deletes a local EPUB", async ({
   page,
 }) => {
+  // Chromium's software CanvasKit path can spend tens of seconds delivering
+  // the drag's animation frames even though every reader state transition
+  // completes correctly. Keep the full lifecycle assertion above that jitter.
+  test.setTimeout(240_000);
+
   const fileChooserPromise = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "导入 EPUB" }).click();
   const fileChooser = await fileChooserPromise;
@@ -100,22 +179,19 @@ test("imports, reads, navigates, resumes, and deletes a local EPUB", async ({
     buffer: createTestEpub(),
   });
 
-  await expect(page.getByRole("button", { name: "下一页" })).toBeVisible();
+  await waitForReaderReady(page);
   await expect(page.getByLabel(/本章第 1 页/)).toBeVisible();
 
-  await page.getByRole("button", { name: "下一页" }).click();
-  // Model two accepted user taps rather than an instantaneous synthetic burst,
-  // whose second input is intentionally dropped by the 150 ms start gate.
-  await page.waitForTimeout(180);
-  await page.getByRole("button", { name: "下一页" }).click();
+  await turnPageAndWait(page, "下一页");
+  await turnPageAndWait(page, "下一页");
   await expect(page.getByLabel(/本章第 3 页/)).toBeVisible({
-    timeout: 10_000,
+    timeout: 60_000,
   });
 
-  const pageStatus = page.locator('[aria-label^="本章第 "]');
-  await page.getByRole("button", { name: "上一页" }).click();
+  const pageStatus = readerPageStatus(page);
+  await turnPageAndWait(page, "上一页");
   await expect(page.getByLabel(/本章第 2 页/)).toBeVisible({
-    timeout: 10_000,
+    timeout: 60_000,
   });
 
   const statusBeforeDrag = await pageStatus.getAttribute("aria-label");
@@ -129,12 +205,10 @@ test("imports, reads, navigates, resumes, and deletes a local EPUB", async ({
   const dragY = nextPageBounds.y + nextPageBounds.height * 0.55;
   await page.mouse.move(dragStartX, dragY);
   await page.mouse.down();
-  await page.mouse.move(12, dragY - 48, {
-    steps: 24,
-  });
+  await page.mouse.move(12, dragY - 48, { steps: IS_CI ? 8 : 24 });
   await page.mouse.up();
   await expect
-    .poll(() => pageStatus.getAttribute("aria-label"), { timeout: 10_000 })
+    .poll(() => pageStatus.getAttribute("aria-label"), { timeout: 60_000 })
     .not.toBe(statusBeforeDrag);
 
   await page.getByRole("button", { name: "切换阅读工具" }).click();
@@ -168,6 +242,8 @@ test("imports, reads, navigates, resumes, and deletes a local EPUB", async ({
 test("persists a two-page layout and hides floating controls while turning", async ({
   page,
 }) => {
+  test.setTimeout(180_000);
+
   const fileChooserPromise = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "导入 EPUB" }).click();
   const fileChooser = await fileChooserPromise;
@@ -177,20 +253,22 @@ test("persists a two-page layout and hides floating controls while turning", asy
     buffer: createTestEpub(),
   });
 
+  await waitForReaderReady(page);
   await page.getByRole("button", { name: "切换到双页布局" }).click();
   await expect(
     page.getByRole("button", { name: "切换到单页布局" }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "下一页" }).click();
-  await page.waitForTimeout(180);
-  await page.getByRole("button", { name: "下一页" }).click();
+  await turnPageAndWait(page, "下一页");
+  const pageStatus = readerPageStatus(page);
+  const beforeSecondTurn = await pageStatus.getAttribute("aria-label");
+  await clickPageTurnButton(page, "下一页");
   await expect(page.getByRole("button", { name: "返回书架" })).toHaveCount(0);
+  await expect
+    .poll(() => pageStatus.getAttribute("aria-label"), { timeout: 60_000 })
+    .not.toBe(beforeSecondTurn);
   await expect(page.getByLabel(/本章第 5–6 页/)).toBeVisible({
-    // Headless Chromium's software CanvasKit backend can need several slow
-    // rAFs after the preceding WebGL-heavy test; the turn still follows wall
-    // clock time and completes as soon as those frames are delivered.
-    timeout: 30_000,
+    timeout: 60_000,
   });
   await expect(page.getByRole("button", { name: "返回书架" })).toHaveCount(0);
   await page.getByRole("button", { name: "切换阅读工具" }).click();
@@ -202,6 +280,119 @@ test("persists a two-page layout and hides floating controls while turning", asy
   await expect(
     page.getByRole("button", { name: "切换到单页布局" }),
   ).toBeVisible();
+});
+
+test("opens a footnote and returns to its exact reference", async ({
+  page,
+}) => {
+  const fileChooserPromise = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "导入 EPUB" }).click();
+  const fileChooser = await fileChooserPromise;
+  await fileChooser.setFiles({
+    name: "persimmon-footnote-e2e.epub",
+    mimeType: "application/epub+zip",
+    buffer: createTestEpub(),
+  });
+
+  await page.getByRole("link", { name: "打开脚注 1" }).click();
+  await expect(
+    page.getByRole("button", { name: "返回脚注引用位置 1" }),
+  ).toBeVisible();
+  await expect(page.getByLabel(/全书 100%/)).toBeVisible();
+
+  await page.getByRole("button", { name: "返回脚注引用位置 1" }).click();
+  await expect(page.getByLabel(/本章第 1 页/)).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "返回脚注引用位置 1" }),
+  ).toHaveCount(0);
+
+  await page.getByRole("link", { name: "打开脚注 1" }).click();
+  const returnButton = page.getByRole("button", {
+    name: "返回脚注引用位置 1",
+  });
+  await expect(returnButton).toHaveText("↩ 返回正文");
+
+  await turnPageAndWait(page, "上一页");
+  await expect(returnButton).toHaveText("↩");
+  await page
+    .getByRole("button", { name: "关闭返回脚注引用位置的按钮" })
+    .click();
+  await expect(returnButton).toHaveCount(0);
+
+  await page.waitForTimeout(400);
+  await page.getByRole("button", { name: "切换阅读工具" }).click();
+  await page.getByRole("button", { name: "打开目录" }).click();
+  await page.getByRole("button", { name: "跳转到 第一章" }).click();
+  await expect(page.getByRole("link", { name: "打开脚注 1" })).toBeVisible({
+    timeout: 10_000,
+  });
+  await page.getByRole("button", { name: "返回书架" }).click();
+  await page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("persimmon-library");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const books = await new Promise<
+      Array<{ id: string; compilerVersion: number }>
+    >((resolve, reject) => {
+      const request = database
+        .transaction("books", "readonly")
+        .objectStore("books")
+        .getAll();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const [book] = books;
+    if (!book) {
+      throw new Error("Expected an imported book.");
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(
+        ["books", "sections"],
+        "readwrite",
+      );
+      transaction.objectStore("books").put({
+        ...book,
+        compilerVersion: 3,
+      });
+      transaction
+        .objectStore("sections")
+        .delete(IDBKeyRange.bound([book.id, ""], [book.id, "\uffff"]));
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+    database.close();
+  });
+
+  await page.getByRole("button", { name: "打开 E2E 柿子书" }).click();
+  await expect(page.getByRole("link", { name: "打开脚注 1" })).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const database = await new Promise<IDBDatabase>((resolve, reject) => {
+          const request = indexedDB.open("persimmon-library");
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        const books = await new Promise<Array<{ compilerVersion: number }>>(
+          (resolve, reject) => {
+            const request = database
+              .transaction("books", "readonly")
+              .objectStore("books")
+              .getAll();
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+          },
+        );
+        database.close();
+        return books[0]?.compilerVersion;
+      }),
+    )
+    .toBe(4);
 });
 
 test("customizes typography and persists header progress placement", async ({

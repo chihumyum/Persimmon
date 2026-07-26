@@ -3,6 +3,7 @@ import {
   Group,
   Image as SkiaImage,
   Paragraph,
+  Rect,
   RoundedRect,
   type SkParagraph,
   type Transforms3d,
@@ -73,16 +74,24 @@ export function ReaderPageLayer({
           }
 
           return (
-            <Group
-              key={`${item.blockId}:${item.source.startOffset}`}
-              clip={item.frame}
-            >
-              <Paragraph
-                paragraph={measured.handle}
-                x={item.frame.x}
-                y={item.frame.y - item.sourceTop}
-                width={item.frame.width}
-              />
+            <Group key={`${item.blockId}:${item.source.startOffset}`}>
+              {item.noteKind ? (
+                <Rect
+                  x={item.frame.x - 10}
+                  y={item.frame.y}
+                  width={2}
+                  height={item.frame.height}
+                  color="#c97a52"
+                />
+              ) : null}
+              <Group clip={item.frame}>
+                <Paragraph
+                  paragraph={measured.handle}
+                  x={item.frame.x}
+                  y={item.frame.y - item.sourceTop}
+                  width={item.frame.width}
+                />
+              </Group>
             </Group>
           );
         })}
