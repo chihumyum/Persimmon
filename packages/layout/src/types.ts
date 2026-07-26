@@ -35,6 +35,11 @@ export interface PageLayoutSpec {
   note: TypographyPreset;
   headings: Readonly<Record<1 | 2 | 3, TypographyPreset>>;
   paragraphGap: number;
+  /**
+   * `reader` makes the reader's paragraph gap authoritative for adjacent body
+   * paragraphs while preserving publisher spacing around headings and images.
+   */
+  paragraphGapMode?: "publisher" | "reader";
   headingBefore: number;
   headingAfter: number;
   imageGap: number;
@@ -176,6 +181,7 @@ export function createDefaultPageLayoutSpec(viewport: Size): PageLayoutSpec {
       },
     },
     paragraphGap: 18,
+    paragraphGapMode: "publisher",
     headingBefore: 28,
     headingAfter: 22,
     imageGap: 22,

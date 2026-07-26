@@ -11,11 +11,18 @@ import {
 import type { DerivedValue } from "react-native-reanimated";
 
 import type { DecodedImageCache } from "./image-cache";
+import type { ReaderProgressDisplay } from "./reader-appearance";
+import {
+  SkiaPageDecorationLayer,
+  type SkiaPageDecoration,
+} from "./skia-page-decoration";
 
 interface ReaderPageLayerProps {
   readonly page: PageScene;
   readonly pagination: PaginationResult<SkParagraph>;
   readonly imageCache: DecodedImageCache;
+  readonly decoration?: SkiaPageDecoration;
+  readonly progressDisplay?: ReaderProgressDisplay;
   readonly offsetX?: number;
   readonly translateX?: DerivedValue<Transforms3d>;
 }
@@ -24,6 +31,8 @@ export function ReaderPageLayer({
   page,
   pagination,
   imageCache,
+  decoration,
+  progressDisplay = "hidden",
   offsetX = 0,
   translateX,
 }: ReaderPageLayerProps) {
@@ -86,6 +95,12 @@ export function ReaderPageLayer({
             </Group>
           );
         })}
+        {decoration ? (
+          <SkiaPageDecorationLayer
+            decoration={decoration}
+            display={progressDisplay}
+          />
+        ) : null}
       </Group>
     </Group>
   );

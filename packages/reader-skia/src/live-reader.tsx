@@ -23,7 +23,11 @@ import {
   type SkTypefaceFontProvider,
 } from "@shopify/react-native-skia";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { GestureDetector } from "react-native-gesture-handler";
+import {
+  Gesture,
+  GestureDetector,
+  type GestureType,
+} from "react-native-gesture-handler";
 import {
   PanResponder,
   PixelRatio,
@@ -89,12 +93,29 @@ import {
   type PageTurnCaptureAddresses,
 } from "./page-turn-textures";
 import { ReaderPageLayer } from "./reader-page-layer";
+import {
+  DEFAULT_LIVE_READER_APPEARANCE,
+  type ReaderAppearance,
+  type ReaderProgressDisplay,
+} from "./reader-appearance";
+import {
+  createPageProgressDecoration,
+  progressDisplayHasFooter,
+  progressDisplayHasHeader,
+  progressDisplayWithHeaderVisibility,
+  type PageProgressDecoration,
+} from "./page-progress-decoration";
 import { READER_PAPER_COLOR } from "./reader-theme";
 import {
   createReaderLayoutSpec,
   disposePaginationAfterPaint,
 } from "./reader-pagination";
 import { createSkiaParagraphBackend } from "./skia-paragraph-backend";
+import {
+  createSkiaPageDecoration,
+  disposeSkiaPageDecorationAfterPaint,
+  type SkiaPageDecoration,
+} from "./skia-page-decoration";
 import {
   useNativePageTurnDriver,
   type PageGestureReleaseInput,
@@ -135,6 +156,18 @@ import {
   type PageTurnFace,
 } from "./page-turn-stack";
 import { reduceNoteReturnAnchor, type NoteReturnAnchor } from "./note-return";
+import {
+  compareTextPositions,
+  createTextSelectionDocument,
+  hitTestVisibleText,
+  selectedText,
+  textSelectionContainsPoint,
+  textSelectionGeometry,
+  wordSelectionAt,
+  type TextSelection,
+  type TextSelectionGeometry,
+  type TextSelectionHandle,
+} from "./text-selection";
 
 export interface ReaderProgress {
   locator: BookLocator;
@@ -146,19 +179,37 @@ export interface ReaderProgress {
 
 export type ReaderLayoutMode = "single" | "spread";
 
+export interface ReaderSelectionMenuRequest {
+  readonly text: string;
+  readonly rectInWindow: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
+}
+
 export interface LiveReaderProps {
   book: BookIR;
   fontProvider: SkTypefaceFontProvider;
   width: number;
   height: number;
+  appearance?: ReaderAppearance;
+  /** @deprecated Pass `appearance.fontSize` instead. */
   fontSize?: number;
   layout?: ReaderLayoutMode;
+  topInset?: number;
+  bottomInset?: number;
+  progressHeaderVisible?: boolean;
   initialPosition?: BookPosition;
   loadResource?: ResourceLoader;
   automaticPageTurnTuning?: AutomaticPageTurnTuning;
   gesturePageTurnTuning?: GesturePageTurnTuning;
   onCenterPress?: () => void;
   onProgress?: (progress: ReaderProgress) => void;
+  onSelectionChange?: (selecting: boolean) => void;
+  onSelectionMenuDismiss?: () => void;
+  onSelectionMenuRequest?: (request: ReaderSelectionMenuRequest) => void;
   onTurningChange?: (turning: boolean) => void;
 }
 
@@ -166,6 +217,13 @@ interface TurnTexture {
   readonly frontImage: CapturedPage["image"] | null;
   readonly backImage: CapturedPage["image"] | null;
 }
+
+interface CachedPageDecoration {
+  readonly address: PageAddress;
+  readonly decoration: SkiaPageDecoration;
+}
+
+const PAGE_DECORATION_CACHE_LIMIT = 32;
 
 interface RunningPageTurn {
   readonly turnId: string;
@@ -193,8 +251,27 @@ interface QueuedPageGestureMove {
   readonly dx: number;
 }
 
-interface LazyReaderEngineProps extends LiveReaderProps {
-  readonly fontSize: number;
+type TextSelectionEndpoint = "anchor" | "focus";
+
+interface PendingSelectionHandleDrag {
+  readonly endpoint: TextSelectionEndpoint;
+  readonly offsetX: number;
+  readonly offsetY: number;
+}
+
+interface QueuedSelectionHandleMove {
+  readonly x: number;
+  readonly y: number;
+}
+
+interface LazyReaderEngineProps
+  extends Omit<
+    LiveReaderProps,
+    "appearance" | "bottomInset" | "fontSize" | "topInset"
+  > {
+  readonly appearance: ReaderAppearance;
+  readonly topInset: number;
+  readonly bottomInset: number;
 }
 
 interface ReaderLinkHit {
@@ -262,14 +339,20 @@ function LazyReaderEngine({
   fontProvider,
   width,
   height,
-  fontSize,
+  appearance,
   layout = "single",
+  topInset,
+  bottomInset,
+  progressHeaderVisible = true,
   initialPosition,
   loadResource,
   automaticPageTurnTuning = DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
   gesturePageTurnTuning = DEFAULT_GESTURE_PAGE_TURN_TUNING,
   onCenterPress,
   onProgress,
+  onSelectionChange,
+  onSelectionMenuDismiss,
+  onSelectionMenuRequest,
   onTurningChange,
 }: LazyReaderEngineProps) {
   const turnConcurrency = useMemo(
@@ -286,12 +369,40 @@ function LazyReaderEngine({
     () => createSkiaParagraphBackend(fontProvider),
     [fontProvider],
   );
+  const typographyAppearance = useMemo<ReaderAppearance>(
+    () => ({
+      fontFamily: appearance.fontFamily,
+      fontSize: appearance.fontSize,
+      lineHeight: appearance.lineHeight,
+      paragraphSpacing: appearance.paragraphSpacing,
+      horizontalMargin: appearance.horizontalMargin,
+      progressDisplay: "hidden",
+    }),
+    [
+      appearance.fontFamily,
+      appearance.fontSize,
+      appearance.horizontalMargin,
+      appearance.lineHeight,
+      appearance.paragraphSpacing,
+    ],
+  );
   const spec = useMemo(
-    () => createReaderLayoutSpec(physicalPageWidth, height, fontSize),
-    [fontSize, height, physicalPageWidth],
+    () =>
+      createReaderLayoutSpec(
+        physicalPageWidth,
+        height,
+        typographyAppearance,
+        topInset,
+        bottomInset,
+      ),
+    [bottomInset, height, physicalPageWidth, topInset, typographyAppearance],
   );
   const paginationCache = useMemo(
     () => new Map<number, PaginationResult<SkParagraph>>(),
+    [],
+  );
+  const pageDecorationCache = useMemo(
+    () => new Map<string, CachedPageDecoration>(),
     [],
   );
   const imageCache = useMemo(
@@ -353,6 +464,64 @@ function LazyReaderEngine({
       ),
     [book.sections.length, pageCountForSection, pagesPerView],
   );
+  const progressDecorationForAddress = useCallback(
+    (address: PageAddress): PageProgressDecoration => {
+      const section = book.sections[address.sectionIndex];
+      return createPageProgressDecoration({
+        address,
+        bookTitle: book.title,
+        sectionTitle: section?.title,
+        sectionCount: book.sections.length,
+        pageCount: pageCountForSection(address.sectionIndex),
+      });
+    },
+    [book.sections, book.title, pageCountForSection],
+  );
+  const pageDecorationForAddress = useCallback(
+    (address: PageAddress): SkiaPageDecoration => {
+      const key = `${address.sectionIndex}:${address.pageIndex}`;
+      const cached = pageDecorationCache.get(key);
+      if (cached) {
+        pageDecorationCache.delete(key);
+        pageDecorationCache.set(key, cached);
+        return cached.decoration;
+      }
+      const decoration = createSkiaPageDecoration({
+        model: progressDecorationForAddress(address),
+        fontProvider,
+        fontFamily: appearance.fontFamily,
+        width: physicalPageWidth,
+        height,
+        horizontalMargin: appearance.horizontalMargin,
+        topInset,
+        bottomInset,
+      });
+      pageDecorationCache.set(key, { address, decoration });
+      while (pageDecorationCache.size > PAGE_DECORATION_CACHE_LIMIT) {
+        const oldestKey = pageDecorationCache.keys().next().value;
+        if (oldestKey === undefined) {
+          break;
+        }
+        const oldest = pageDecorationCache.get(oldestKey);
+        pageDecorationCache.delete(oldestKey);
+        if (oldest) {
+          disposeSkiaPageDecorationAfterPaint(oldest.decoration);
+        }
+      }
+      return decoration;
+    },
+    [
+      appearance.fontFamily,
+      appearance.horizontalMargin,
+      bottomInset,
+      fontProvider,
+      height,
+      pageDecorationCache,
+      physicalPageWidth,
+      progressDecorationForAddress,
+      topInset,
+    ],
+  );
 
   const initialAddress = useMemo<PageAddress>(() => {
     const sectionIndex = initialPosition
@@ -405,6 +574,24 @@ function LazyReaderEngine({
       ),
     [],
   );
+  const selectionDocument = useMemo(
+    () => createTextSelectionDocument(book),
+    [book],
+  );
+  const [textSelection, setTextSelection] = useState<TextSelection | undefined>(
+    undefined,
+  );
+  const selectingText = textSelection !== undefined;
+  const textSelectionRef = useRef(textSelection);
+  const commitTextSelection = useCallback((selection: TextSelection) => {
+    textSelectionRef.current = selection;
+    setTextSelection(selection);
+  }, []);
+  const clearTextSelection = useCallback(() => {
+    textSelectionRef.current = undefined;
+    setTextSelection(undefined);
+    onSelectionMenuDismiss?.();
+  }, [onSelectionMenuDismiss]);
   // Native Gesture Handler can deliver begin and release to the RN thread
   // inside one React render interval. Keep scheduling ownership synchronous
   // so a short flick can release the exact turn it just claimed instead of
@@ -499,9 +686,13 @@ function LazyReaderEngine({
         disposePaginationAfterPaint(pagination);
       }
       paginationCache.clear();
+      for (const cached of pageDecorationCache.values()) {
+        disposeSkiaPageDecorationAfterPaint(cached.decoration);
+      }
+      pageDecorationCache.clear();
       imageCache.dispose();
     },
-    [imageCache, pageCaptureCache, paginationCache],
+    [imageCache, pageCaptureCache, pageDecorationCache, paginationCache],
   );
 
   useEffect(() => {
@@ -519,9 +710,16 @@ function LazyReaderEngine({
         paginationCache.delete(sectionIndex);
       }
     }
+    for (const [key, cached] of pageDecorationCache) {
+      if (Math.abs(cached.address.sectionIndex - center) > 1) {
+        disposeSkiaPageDecorationAfterPaint(cached.decoration);
+        pageDecorationCache.delete(key);
+      }
+    }
   }, [
     book.sections.length,
     ensurePagination,
+    pageDecorationCache,
     paginationCache,
     readerState.settled.sectionIndex,
   ]);
@@ -557,11 +755,21 @@ function LazyReaderEngine({
   useEffect(() => {
     onTurningChange?.(hasRunningPageTurns(readerState));
   }, [onTurningChange, readerState]);
+  useEffect(() => {
+    onSelectionChange?.(selectingText);
+  }, [onSelectionChange, selectingText]);
+  useEffect(() => {
+    if (activeTurns.length > 0 && textSelectionRef.current) {
+      clearTextSelection();
+    }
+  }, [activeTurns.length, clearTextSelection]);
   useEffect(
     () => () => {
       onTurningChange?.(false);
+      onSelectionChange?.(false);
+      onSelectionMenuDismiss?.();
     },
-    [onTurningChange],
+    [onSelectionChange, onSelectionMenuDismiss, onTurningChange],
   );
   const runningTurnRef = useRef<RunningPageTurn | undefined>(undefined);
   const pendingGestureRef = useRef<PendingPageGesture | undefined>(undefined);
@@ -1259,13 +1467,246 @@ function LazyReaderEngine({
       }),
     [ensurePagination, height, physicalPageWidth, settledAddresses],
   );
+  const visibleTextPages = useMemo(
+    () =>
+      settledAddresses.flatMap((address, slot) => {
+        const pagination = ensurePagination(address.sectionIndex);
+        const page = pagination.pages[address.pageIndex];
+        return page
+          ? [
+              {
+                page,
+                pagination,
+                offsetX: slot * physicalPageWidth,
+              },
+            ]
+          : [];
+      }),
+    [ensurePagination, physicalPageWidth, settledAddresses],
+  );
+  const selectionGeometry = useMemo(
+    () =>
+      textSelection
+        ? textSelectionGeometry(
+            selectionDocument,
+            textSelection,
+            visibleTextPages,
+          )
+        : undefined,
+    [selectionDocument, textSelection, visibleTextPages],
+  );
+  const showTextSelectionMenu = useCallback(
+    (selection: TextSelection) => {
+      const geometry = textSelectionGeometry(
+        selectionDocument,
+        selection,
+        visibleTextPages,
+      );
+      const text = selectedText(selectionDocument, selection);
+      if (!geometry || text.length === 0) {
+        return;
+      }
+      const origin = readerOriginRef.current;
+      onSelectionMenuRequest?.({
+        text,
+        rectInWindow: {
+          x: origin.x + geometry.bounds.x,
+          y: origin.y + geometry.bounds.y,
+          width: geometry.bounds.width,
+          height: geometry.bounds.height,
+        },
+      });
+    },
+    [onSelectionMenuRequest, selectionDocument, visibleTextPages],
+  );
+  const handleTextSelectionTap = useCallback(
+    (localX: number, localY: number, absoluteX: number, absoluteY: number) => {
+      const current = textSelectionRef.current;
+      if (!current) {
+        return;
+      }
+      readerOriginRef.current = {
+        x: absoluteX - localX,
+        y: absoluteY - localY,
+      };
+      const geometry = textSelectionGeometry(
+        selectionDocument,
+        current,
+        visibleTextPages,
+      );
+      if (geometry && textSelectionContainsPoint(geometry, localX, localY, 2)) {
+        showTextSelectionMenu(current);
+        return;
+      }
+      clearTextSelection();
+    },
+    [
+      clearTextSelection,
+      selectionDocument,
+      showTextSelectionMenu,
+      visibleTextPages,
+    ],
+  );
+  const selectWordAtPoint = useCallback(
+    (localX: number, localY: number, absoluteX: number, absoluteY: number) => {
+      readerOriginRef.current = {
+        x: absoluteX - localX,
+        y: absoluteY - localY,
+      };
+      const position = hitTestVisibleText(visibleTextPages, localX, localY);
+      if (!position) {
+        clearTextSelection();
+        return;
+      }
+      const selection = wordSelectionAt(
+        selectionDocument,
+        position,
+        book.language,
+      );
+      if (!selection) {
+        clearTextSelection();
+        return;
+      }
+      commitTextSelection(selection);
+    },
+    [
+      book.language,
+      clearTextSelection,
+      commitTextSelection,
+      selectionDocument,
+      visibleTextPages,
+    ],
+  );
+  const handleForSelectionEndpoint = useCallback(
+    (
+      endpoint: TextSelectionEndpoint,
+      selection: TextSelection,
+      geometry: TextSelectionGeometry,
+    ): TextSelectionHandle => {
+      const anchorIsStart =
+        compareTextPositions(
+          selectionDocument,
+          selection.anchor,
+          selection.focus,
+        ) <= 0;
+      if (endpoint === "anchor") {
+        return anchorIsStart ? geometry.startHandle : geometry.endHandle;
+      }
+      return anchorIsStart ? geometry.endHandle : geometry.startHandle;
+    },
+    [selectionDocument],
+  );
+  const pendingSelectionHandleDragRef = useRef<
+    PendingSelectionHandleDrag | undefined
+  >(undefined);
+  const queuedSelectionHandleMoveRef = useRef<
+    QueuedSelectionHandleMove | undefined
+  >(undefined);
+  const selectionHandleFrameRef = useRef(0);
+  const flushSelectionHandleMove = useCallback(() => {
+    if (selectionHandleFrameRef.current) {
+      cancelAnimationFrame(selectionHandleFrameRef.current);
+      selectionHandleFrameRef.current = 0;
+    }
+    const move = queuedSelectionHandleMoveRef.current;
+    const pending = pendingSelectionHandleDragRef.current;
+    const current = textSelectionRef.current;
+    queuedSelectionHandleMoveRef.current = undefined;
+    if (!move || !pending || !current) {
+      return;
+    }
+    const position = hitTestVisibleText(visibleTextPages, move.x, move.y, true);
+    if (!position) {
+      return;
+    }
+    const opposite =
+      pending.endpoint === "anchor" ? current.focus : current.anchor;
+    if (compareTextPositions(selectionDocument, position, opposite) === 0) {
+      return;
+    }
+    commitTextSelection({
+      ...current,
+      [pending.endpoint]: position,
+    });
+  }, [commitTextSelection, selectionDocument, visibleTextPages]);
+  const queueSelectionHandleMove = useCallback(
+    (absoluteX: number, absoluteY: number) => {
+      const pending = pendingSelectionHandleDragRef.current;
+      if (!pending) {
+        return;
+      }
+      const origin = readerOriginRef.current;
+      queuedSelectionHandleMoveRef.current = {
+        x: absoluteX - origin.x + pending.offsetX,
+        y: absoluteY - origin.y + pending.offsetY,
+      };
+      if (!selectionHandleFrameRef.current) {
+        selectionHandleFrameRef.current = requestAnimationFrame(
+          flushSelectionHandleMove,
+        );
+      }
+    },
+    [flushSelectionHandleMove],
+  );
+  const beginSelectionHandleDrag = useCallback(
+    (endpoint: TextSelectionEndpoint, absoluteX: number, absoluteY: number) => {
+      const current = textSelectionRef.current;
+      if (!current) {
+        return;
+      }
+      const geometry = textSelectionGeometry(
+        selectionDocument,
+        current,
+        visibleTextPages,
+      );
+      if (!geometry) {
+        return;
+      }
+      const handle = handleForSelectionEndpoint(endpoint, current, geometry);
+      const origin = readerOriginRef.current;
+      pendingSelectionHandleDragRef.current = {
+        endpoint,
+        offsetX: handle.x - (absoluteX - origin.x),
+        offsetY: (handle.top + handle.bottom) * 0.5 - (absoluteY - origin.y),
+      };
+      onSelectionMenuDismiss?.();
+    },
+    [
+      handleForSelectionEndpoint,
+      onSelectionMenuDismiss,
+      selectionDocument,
+      visibleTextPages,
+    ],
+  );
+  const finishSelectionHandleDrag = useCallback(() => {
+    flushSelectionHandleMove();
+    pendingSelectionHandleDragRef.current = undefined;
+    const current = textSelectionRef.current;
+    if (current) {
+      showTextSelectionMenu(current);
+    }
+  }, [flushSelectionHandleMove, showTextSelectionMenu]);
+  const cancelQueuedSelectionHandleMove = useCallback(() => {
+    if (selectionHandleFrameRef.current) {
+      cancelAnimationFrame(selectionHandleFrameRef.current);
+      selectionHandleFrameRef.current = 0;
+    }
+    pendingSelectionHandleDragRef.current = undefined;
+    queuedSelectionHandleMoveRef.current = undefined;
+  }, []);
+  useEffect(
+    () => cancelQueuedSelectionHandleMove,
+    [cancelQueuedSelectionHandleMove],
+  );
+
   const devicePixelRatio = Math.max(1, PixelRatio.get());
   const pageCaptureIdentity = useCallback(
     (address: PageAddress): PageCaptureIdentity<PageAddress> => ({
       key: JSON.stringify([
         book.id,
         book.revisionId,
-        fontSize,
+        typographyAppearance,
+        appearance.progressDisplay,
         layout,
         address.sectionIndex,
         address.pageIndex,
@@ -1274,7 +1715,15 @@ function LazyReaderEngine({
       height,
       metadata: address,
     }),
-    [book.id, book.revisionId, fontSize, height, layout, physicalPageWidth],
+    [
+      book.id,
+      book.revisionId,
+      appearance.progressDisplay,
+      height,
+      layout,
+      physicalPageWidth,
+      typographyAppearance,
+    ],
   );
   const createPageCapture = useCallback(
     (
@@ -1298,9 +1747,21 @@ function LazyReaderEngine({
         height,
         scale,
         loadResource === undefined,
+        appearance.progressDisplay === "hidden"
+          ? undefined
+          : pageDecorationForAddress(address),
+        appearance.progressDisplay,
       );
     },
-    [ensurePagination, height, imageCache, loadResource, physicalPageWidth],
+    [
+      appearance.progressDisplay,
+      ensurePagination,
+      height,
+      imageCache,
+      loadResource,
+      pageDecorationForAddress,
+      physicalPageWidth,
+    ],
   );
   const pageReadyForCapture = useCallback(
     (address: PageAddress): boolean => {
@@ -1562,6 +2023,23 @@ function LazyReaderEngine({
     adjacent(readerState.desired, 1),
     readerState.desired,
   );
+  const handleNativeCenterTap = useCallback(() => {
+    if (textSelectionRef.current) {
+      clearTextSelection();
+      return;
+    }
+    onCenterPress?.();
+  }, [clearTextSelection, onCenterPress]);
+  const handleNativePageTap = useCallback(
+    (direction: 1 | -1) => {
+      if (textSelectionRef.current) {
+        clearTextSelection();
+        return;
+      }
+      requestTurn(direction);
+    },
+    [clearTextSelection, requestTurn],
+  );
   const nativeCommand = useMemo(
     () =>
       driverTurn
@@ -1579,23 +2057,105 @@ function LazyReaderEngine({
     [driverMeshReady, driverTurn, layout],
   );
   const nativePageTurn = useNativePageTurnDriver({
+    gesturesEnabled: !selectingText,
     width,
     height,
     physicalPageWidth,
     spread: layout === "spread",
-    canTurnBackward: !previousDisabled,
-    canTurnForward: !nextDisabled,
+    canTurnBackward: !textSelection && !previousDisabled,
+    canTurnForward: !textSelection && !nextDisabled,
     canStartInteractive:
+      !textSelection &&
       driverTurn === undefined &&
       activeTurns.length < turnConcurrency.maximumConcurrentTurns,
     tuning: gesturePageTurnTuning,
     command: nativeCommand,
-    onCenterTap: onCenterPress ?? noop,
+    onCenterTap: handleNativeCenterTap,
     onGestureBegin: beginNativeInteractiveTurn,
     onGestureRelease: requestGestureTurn,
-    onTapTurn: requestTurn,
+    onTapTurn: handleNativePageTap,
     onOutcome: completeNativeTurn,
   });
+  const selectionLongPressGesture = useMemo(
+    () =>
+      Gesture.LongPress()
+        .enabled(Platform.OS !== "web" && !transitionReady)
+        .minDuration(420)
+        .maxDistance(12)
+        .runOnJS(true)
+        .onStart((event) => {
+          selectWordAtPoint(event.x, event.y, event.absoluteX, event.absoluteY);
+        })
+        .onEnd((_event, success) => {
+          const current = textSelectionRef.current;
+          if (success && current) {
+            showTextSelectionMenu(current);
+          }
+        }),
+    [selectWordAtPoint, showTextSelectionMenu, transitionReady],
+  );
+  const selectionTapGesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .enabled(Platform.OS !== "web" && selectingText && !transitionReady)
+        .maxDistance(8)
+        .runOnJS(true)
+        .onEnd((event, success) => {
+          if (success) {
+            handleTextSelectionTap(
+              event.x,
+              event.y,
+              event.absoluteX,
+              event.absoluteY,
+            );
+          }
+        }),
+    [handleTextSelectionTap, selectingText, transitionReady],
+  );
+  const createSelectionHandleGesture = useCallback(
+    (endpoint: TextSelectionEndpoint) =>
+      Gesture.Pan()
+        .enabled(Platform.OS !== "web" && textSelection !== undefined)
+        .minDistance(1)
+        .runOnJS(true)
+        .onBegin((event) => {
+          beginSelectionHandleDrag(endpoint, event.absoluteX, event.absoluteY);
+        })
+        .onUpdate((event) => {
+          queueSelectionHandleMove(event.absoluteX, event.absoluteY);
+        })
+        .onEnd(() => {
+          finishSelectionHandleDrag();
+        })
+        .onFinalize((_event, success) => {
+          if (!success) {
+            finishSelectionHandleDrag();
+          }
+        }),
+    [
+      beginSelectionHandleDrag,
+      finishSelectionHandleDrag,
+      queueSelectionHandleMove,
+      textSelection,
+    ],
+  );
+  const anchorSelectionHandleGesture = useMemo(
+    () => createSelectionHandleGesture("anchor"),
+    [createSelectionHandleGesture],
+  );
+  const focusSelectionHandleGesture = useMemo(
+    () => createSelectionHandleGesture("focus"),
+    [createSelectionHandleGesture],
+  );
+  const nativeReaderGesture = useMemo(
+    () =>
+      Gesture.Race(
+        selectionLongPressGesture,
+        selectionTapGesture,
+        nativePageTurn.gesture,
+      ),
+    [nativePageTurn.gesture, selectionLongPressGesture, selectionTapGesture],
+  );
   const nativePoolCommands = useMemo(() => {
     const commands: (NativeProgrammaticPageTurnCommand | undefined)[] =
       new Array(PAGE_TURN_LANE_HARD_LIMIT).fill(undefined);
@@ -1711,12 +2271,10 @@ function LazyReaderEngine({
   ]);
 
   const localPageCount = settledPagination.pages.length;
-  const publicationPercentage = Math.round(
-    ((readerState.settled.sectionIndex +
-      (readerState.settled.pageIndex + 1) / localPageCount) /
-      book.sections.length) *
-      100,
+  const settledProgressDecoration = progressDecorationForAddress(
+    readerState.settled,
   );
+  const publicationPercentage = settledProgressDecoration.percentage;
   const settledLastAddress = settledAddresses.at(-1)!;
   const settledPageLabel =
     layout === "spread" &&
@@ -1724,6 +2282,12 @@ function LazyReaderEngine({
     settledLastAddress.pageIndex !== readerState.settled.pageIndex
       ? `${readerState.settled.pageIndex + 1}–${settledLastAddress.pageIndex + 1}`
       : `${readerState.settled.pageIndex + 1}`;
+  const settledProgressDisplay = progressDisplayWithHeaderVisibility(
+    appearance.progressDisplay,
+    progressHeaderVisible,
+  );
+  const showProgressHeader = progressDisplayHasHeader(settledProgressDisplay);
+  const showProgressFooter = progressDisplayHasFooter(settledProgressDisplay);
   const oldestRenderableTurn = renderableTurns[0];
   const newestRenderableTurn = renderableTurns.at(-1);
   const turnBackgroundSlots: readonly (PageAddress | undefined)[] = (() => {
@@ -1754,6 +2318,7 @@ function LazyReaderEngine({
   const renderPageSlots = (
     addresses: readonly (PageAddress | undefined)[],
     layer: string,
+    progressDisplay: ReaderProgressDisplay,
   ) =>
     addresses.map((address, slot) => {
       if (!address) {
@@ -1767,13 +2332,34 @@ function LazyReaderEngine({
       return (
         <ReaderPageLayer
           key={`${layer}:${address.sectionIndex}:${address.pageIndex}:${slot}`}
+          decoration={
+            progressDisplay === "hidden"
+              ? undefined
+              : pageDecorationForAddress(address)
+          }
           imageCache={imageCache}
           offsetX={slot * physicalPageWidth}
           page={page}
           pagination={pagination}
+          progressDisplay={progressDisplay}
         />
       );
     });
+  const anchorIsSelectionStart =
+    textSelection !== undefined &&
+    compareTextPositions(
+      selectionDocument,
+      textSelection.anchor,
+      textSelection.focus,
+    ) <= 0;
+  const anchorSelectionHandle =
+    textSelection && selectionGeometry
+      ? handleForSelectionEndpoint("anchor", textSelection, selectionGeometry)
+      : undefined;
+  const focusSelectionHandle =
+    textSelection && selectionGeometry
+      ? handleForSelectionEndpoint("focus", textSelection, selectionGeometry)
+      : undefined;
 
   const readerContent = (
     <View
@@ -1794,10 +2380,30 @@ function LazyReaderEngine({
           />
         ) : null}
         {!transitionReady ? (
-          renderPageSlots(settledAddresses, "settled")
+          <>
+            {renderPageSlots(
+              settledAddresses,
+              "settled",
+              settledProgressDisplay,
+            )}
+            {selectionGeometry?.rects.map((rect, index) => (
+              <Rect
+                key={`selection:${rect.sectionId}:${rect.blockId}:${rect.startOffset}:${rect.endOffset}:${index}`}
+                x={rect.x}
+                y={rect.y}
+                width={rect.width}
+                height={rect.height}
+                color="rgba(34, 119, 230, 0.28)"
+              />
+            ))}
+          </>
         ) : (
           <>
-            {renderPageSlots(turnBackgroundSlots, "background")}
+            {renderPageSlots(
+              turnBackgroundSlots,
+              "background",
+              appearance.progressDisplay,
+            )}
             {Platform.OS === "web"
               ? retainedPaperTurns
                   .filter((turn) => !turn.completed && !turn.interactive)
@@ -1902,19 +2508,58 @@ function LazyReaderEngine({
         </View>
       ) : null}
 
-      <View
-        accessibilityLabel={`本章第 ${settledPageLabel} 页，共 ${localPageCount} 页，全书 ${publicationPercentage}%`}
-        accessibilityLiveRegion="polite"
-        style={styles.pageBadge}
-      >
-        <Text style={styles.pageText}>
-          {settledPageLabel} / {localPageCount} · {publicationPercentage}%
-        </Text>
-      </View>
+      {!transitionReady && anchorSelectionHandle && focusSelectionHandle ? (
+        <>
+          <TextSelectionHandleView
+            accessibilityLabel="拖动文本选择起点"
+            gesture={anchorSelectionHandleGesture}
+            handle={anchorSelectionHandle}
+            start={anchorIsSelectionStart}
+          />
+          <TextSelectionHandleView
+            accessibilityLabel="拖动文本选择终点"
+            gesture={focusSelectionHandleGesture}
+            handle={focusSelectionHandle}
+            start={!anchorIsSelectionStart}
+          />
+        </>
+      ) : null}
+
+      {showProgressHeader ? (
+        <View
+          accessible
+          accessibilityLabel={`页眉：${settledProgressDecoration.sectionTitle}，全书 ${publicationPercentage}%`}
+          accessibilityLiveRegion="polite"
+          style={[
+            styles.accessibilityProgress,
+            styles.accessibilityProgressTop,
+          ]}
+        >
+          <Text style={styles.accessibilityProgressText}>
+            {settledProgressDecoration.sectionTitle} {publicationPercentage}%
+          </Text>
+        </View>
+      ) : null}
+
+      {showProgressFooter ? (
+        <View
+          accessible
+          accessibilityLabel={`本章第 ${settledPageLabel} 页，共 ${localPageCount} 页，全书 ${publicationPercentage}%`}
+          accessibilityLiveRegion="polite"
+          style={[
+            styles.accessibilityProgress,
+            styles.accessibilityProgressBottom,
+          ]}
+        >
+          <Text style={styles.accessibilityProgressText}>
+            {settledPageLabel} / {localPageCount} · {publicationPercentage}%
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
   const linkOverlay =
-    readerState.turns.length === 0 ? (
+    readerState.turns.length === 0 && !selectingText ? (
       <View pointerEvents="box-none" style={styles.linkOverlay}>
         {settledLinkHits.map(({ frame, key, region }) => (
           <Pressable
@@ -1999,12 +2644,57 @@ function LazyReaderEngine({
       {Platform.OS === "web" ? (
         readerContent
       ) : (
-        <GestureDetector gesture={nativePageTurn.gesture}>
+        <GestureDetector gesture={nativeReaderGesture}>
           {readerContent}
         </GestureDetector>
       )}
       {linkOverlay}
     </View>
+  );
+}
+
+interface TextSelectionHandleViewProps {
+  readonly accessibilityLabel: string;
+  readonly gesture: GestureType;
+  readonly handle: TextSelectionHandle;
+  readonly start: boolean;
+}
+
+function TextSelectionHandleView({
+  accessibilityLabel,
+  gesture,
+  handle,
+  start,
+}: TextSelectionHandleViewProps) {
+  const lineHeight = Math.max(1, handle.bottom - handle.top);
+  return (
+    <GestureDetector gesture={gesture}>
+      <View
+        accessibilityLabel={accessibilityLabel}
+        accessibilityRole="adjustable"
+        collapsable={false}
+        style={[
+          styles.selectionHandleTouchTarget,
+          {
+            height: lineHeight + 24,
+            left: handle.x - 22,
+            top: handle.top - 12,
+          },
+        ]}
+      >
+        <View
+          pointerEvents="none"
+          style={[styles.selectionHandleStem, { height: lineHeight }]}
+        />
+        <View
+          pointerEvents="none"
+          style={[
+            styles.selectionHandleKnob,
+            { top: start ? 7 : lineHeight + 7 },
+          ]}
+        />
+      </View>
+    </GestureDetector>
   );
 }
 
@@ -2178,14 +2868,21 @@ export function LiveReader({
   fontProvider,
   width,
   height,
-  fontSize = 20,
+  appearance,
+  fontSize,
   layout = "single",
+  topInset = 0,
+  bottomInset = 0,
+  progressHeaderVisible = true,
   initialPosition,
   loadResource,
   automaticPageTurnTuning,
   gesturePageTurnTuning,
   onCenterPress,
   onProgress,
+  onSelectionChange,
+  onSelectionMenuDismiss,
+  onSelectionMenuRequest,
   onTurningChange,
 }: LiveReaderProps) {
   const anchorRef = useRef(initialPosition);
@@ -2196,12 +2893,26 @@ export function LiveReader({
     },
     [onProgress],
   );
+  const resolvedAppearance = useMemo<ReaderAppearance>(
+    () =>
+      appearance ?? {
+        ...DEFAULT_LIVE_READER_APPEARANCE,
+        fontSize: fontSize ?? DEFAULT_LIVE_READER_APPEARANCE.fontSize,
+      },
+    [appearance, fontSize],
+  );
   const layoutKey = JSON.stringify([
     book.revisionId,
     width,
     height,
-    fontSize,
+    resolvedAppearance.fontFamily,
+    resolvedAppearance.fontSize,
+    resolvedAppearance.lineHeight,
+    resolvedAppearance.paragraphSpacing,
+    resolvedAppearance.horizontalMargin,
     layout,
+    topInset,
+    bottomInset,
   ]);
   const normalizedAutomaticPageTurnTuning = useMemo(
     () => normalizeAutomaticPageTurnTuning(automaticPageTurnTuning),
@@ -2219,14 +2930,20 @@ export function LiveReader({
       fontProvider={fontProvider}
       width={width}
       height={height}
-      fontSize={fontSize}
+      appearance={resolvedAppearance}
       layout={layout}
+      topInset={topInset}
+      bottomInset={bottomInset}
+      progressHeaderVisible={progressHeaderVisible}
       initialPosition={anchorRef.current}
       loadResource={loadResource}
       automaticPageTurnTuning={normalizedAutomaticPageTurnTuning}
       gesturePageTurnTuning={normalizedGesturePageTurnTuning}
       onCenterPress={onCenterPress}
       onProgress={handleProgress}
+      onSelectionChange={onSelectionChange}
+      onSelectionMenuDismiss={onSelectionMenuDismiss}
+      onSelectionMenuRequest={onSelectionMenuRequest}
       onTurningChange={onTurningChange}
     />
   );
@@ -2239,8 +2956,6 @@ function eventTimeSeconds(event: GestureResponderEvent): number {
 function performanceNow(): number {
   return globalThis.performance?.now() ?? Date.now();
 }
-
-function noop(): void {}
 
 function clampUnit(value: number): number {
   return Math.min(1, Math.max(0, value));
@@ -2438,21 +3153,46 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
   },
-  pageBadge: {
-    alignItems: "center",
-    bottom: 14,
+  accessibilityProgress: {
+    height: 1,
     left: 0,
+    overflow: "hidden",
     pointerEvents: "none",
     position: "absolute",
-    right: 0,
+    width: 1,
   },
-  pageText: {
-    color: "#8b8177",
-    fontSize: 12,
-    fontVariant: ["tabular-nums"],
-    letterSpacing: 0.5,
+  accessibilityProgressBottom: {
+    bottom: 0,
+  },
+  accessibilityProgressText: {
+    color: "transparent",
+    fontSize: 1,
+    lineHeight: 1,
+  },
+  accessibilityProgressTop: {
+    top: 0,
   },
   rightEdge: {
     right: 0,
+  },
+  selectionHandleKnob: {
+    backgroundColor: "#2277e6",
+    borderRadius: 5,
+    height: 10,
+    left: 17,
+    position: "absolute",
+    width: 10,
+  },
+  selectionHandleStem: {
+    backgroundColor: "#2277e6",
+    left: 21,
+    position: "absolute",
+    top: 12,
+    width: 2,
+  },
+  selectionHandleTouchTarget: {
+    position: "absolute",
+    width: 44,
+    zIndex: 10,
   },
 });

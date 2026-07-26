@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { normalizeSettings } from "./reader-settings";
 import {
+  DEFAULT_READER_APPEARANCE,
   DEFAULT_READER_CLICK_PAGE_TURN_TUNING,
   DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
   DEFAULT_READER_PAGE_TURN_TUNING,
@@ -11,16 +12,26 @@ import {
 describe("reader settings", () => {
   it("migrates old settings with default page-turn tuning", () => {
     expect(normalizeSettings({ fontSize: 22, layout: "spread" })).toEqual({
-      fontSize: 22,
+      appearance: {
+        ...DEFAULT_READER_APPEARANCE,
+        fontSize: 22,
+      },
       layout: "spread",
       pageTurnTuning: DEFAULT_READER_PAGE_TURN_TUNING,
     });
   });
 
-  it("normalizes persisted tuning values", () => {
+  it("normalizes persisted appearance and tuning values", () => {
     expect(
       normalizeSettings({
-        fontSize: 100,
+        appearance: {
+          fontFamily: "sans",
+          fontSize: 100,
+          lineHeight: 1.83,
+          paragraphSpacing: -1,
+          horizontalMargin: 70,
+          progressDisplay: "both",
+        },
         layout: "unknown",
         pageTurnTuning: {
           releaseX: 0,
@@ -31,7 +42,14 @@ describe("reader settings", () => {
         },
       }),
     ).toEqual({
-      fontSize: 30,
+      appearance: {
+        fontFamily: "sans",
+        fontSize: 32,
+        lineHeight: 1.85,
+        paragraphSpacing: 0,
+        horizontalMargin: 72,
+        progressDisplay: "both",
+      },
       layout: "single",
       pageTurnTuning: {
         click: {
@@ -49,7 +67,7 @@ describe("reader settings", () => {
   it("stores raw gesture constants and keeps speed bounds ordered", () => {
     expect(
       normalizeSettings({
-        fontSize: 20,
+        appearance: DEFAULT_READER_APPEARANCE,
         pageTurnTuning: {
           click: DEFAULT_READER_CLICK_PAGE_TURN_TUNING,
           gesture: {

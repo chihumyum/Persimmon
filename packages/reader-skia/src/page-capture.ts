@@ -9,8 +9,13 @@ import { Platform } from "react-native";
 
 import type { DecodedImageCache } from "./image-cache";
 import { pageCapturePixelSize } from "./page-capture-budget";
+import type { ReaderProgressDisplay } from "./reader-appearance";
 import { READER_PAPER_COLOR } from "./reader-theme";
 import { afterSkiaPaint } from "./skia-lifecycle";
+import {
+  drawSkiaPageDecoration,
+  type SkiaPageDecoration,
+} from "./skia-page-decoration";
 import { releaseSkiaResources } from "./skia-resource-release";
 
 export interface CapturedPage {
@@ -39,6 +44,8 @@ export function capturePage(
   height: number,
   scale: number,
   allowUnrequestedImages = false,
+  decoration?: SkiaPageDecoration,
+  progressDisplay: ReaderProgressDisplay = "hidden",
 ): CapturedPage | null {
   if (!pageImagesSettledForCapture(page, imageCache, allowUnrequestedImages)) {
     return null;
@@ -119,6 +126,9 @@ export function capturePage(
         item.frame.y - item.sourceTop,
       );
       canvas.restore();
+    }
+    if (decoration) {
+      drawSkiaPageDecoration(canvas, decoration, progressDisplay);
     }
 
     surface.flush();

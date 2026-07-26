@@ -1,0 +1,11 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["PersimmonSelectionMenuModule"]
+  },
+  "android": {
+    "modules": [
+      "dev.chihum.persimmon.selectionmenu.PersimmonSelectionMenuModule"
+    ]
+  }
+}

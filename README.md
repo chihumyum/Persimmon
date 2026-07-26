@@ -45,7 +45,7 @@ pnpm test:epubs
 ```
 
 - `pnpm verify`：格式、lint、全量类型、单测、Expo Doctor、iOS / Android
-  bundle、Web 生产导出和 30 MiB 体积预算；
+  bundle、Web 生产导出和 42 MiB 体积预算（包含两套离线中文阅读字体）；
 - `pnpm test:e2e`：Chromium 与 WebKit 的生成 EPUB 全阅读闭环；
 - `pnpm test:epubs`：解析本地忽略目录 `epubs-for-test/` 中的私有测试书。
 

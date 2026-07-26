@@ -1,0 +1,15 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <queries>
+    <intent>
+      <action android:name="android.intent.action.SEND" />
+      <data android:mimeType="text/plain" />
+    </intent>
+    <intent>
+      <action android:name="android.intent.action.WEB_SEARCH" />
+    </intent>
+    <intent>
+      <action android:name="android.intent.action.PROCESS_TEXT" />
+      <data android:mimeType="text/plain" />
+    </intent>
+  </queries>
+</manifest>

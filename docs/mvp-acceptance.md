@@ -12,19 +12,19 @@ pnpm test:epubs
 
 当前基线：
 
-| 门禁                           | 当前结果                |
-| ------------------------------ | ----------------------- |
-| Prettier / ESLint / TypeScript | 通过                    |
-| Unit tests                     | 14 files，50 tests 通过 |
-| Expo Doctor                    | 20 / 20 通过            |
-| iOS JS/Hermes bundle           | 通过（无模拟器）        |
-| Android JS/Hermes bundle       | 通过（无模拟器）        |
-| Web production export          | 通过                    |
-| Web raw export budget          | 25.09 MiB / 30 MiB      |
-| Chromium E2E                   | 通过                    |
-| WebKit E2E                     | 通过                    |
+| 门禁                           | 当前结果                 |
+| ------------------------------ | ------------------------ |
+| Prettier / ESLint / TypeScript | 通过                     |
+| Unit tests                     | 36 files，195 tests 通过 |
+| Expo Doctor                    | 20 / 20 通过             |
+| iOS JS/Hermes bundle           | 通过（无模拟器）         |
+| Android JS/Hermes bundle       | 通过（无模拟器）         |
+| Web production export          | 通过                     |
+| Web raw export budget          | 35.56 MiB / 42 MiB       |
+| Chromium E2E                   | 通过                     |
+| WebKit E2E                     | 通过                     |
 
-E2E 每次动态生成一个 EPUB，真实验证：
+E2E 通过动态生成的 EPUB 与内置长文书真实验证：
 
 1. 文件选择与 Worker 导入；
 2. 封面 / 图片资源落库和读取；
@@ -34,6 +34,7 @@ E2E 每次动态生成一个 EPUB，真实验证：
 6. 进度防抖保存；
 7. 页面刷新、重新打开和断点续读；
 8. 删除书籍及关联本地数据。
+9. 字体、字号、行距、段距、页边距与页眉进度的修改和持久化。
 
 ## 私有 EPUB 验收
 
