@@ -1,52 +1,66 @@
-import { useEffect, useMemo, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Animated, Easing, StyleSheet, Text, View } from "react-native";
 
-const CAROUSEL_INTERVAL_MS = 2800;
+import {
+  estimatedToolbarBreadcrumbWidth,
+  toolbarBreadcrumbLabel,
+} from "./toolbar-breadcrumb";
+
 const HORIZONTAL_PADDING = 24;
-
-function estimatedTextWidth(label: string): number {
-  return [...label].reduce((width, character) => {
-    if (character.trim().length === 0) {
-      return width + 4;
-    }
-    return width + (character.charCodeAt(0) <= 0x7f ? 7 : 12);
-  }, 0);
-}
+const CAROUSEL_EDGE_PAUSE_MS = 1200;
+const CAROUSEL_PIXELS_PER_SECOND = 28;
 
 export interface ToolbarBreadcrumbCarouselProps {
+  readonly color?: string;
   readonly labels: readonly string[];
 }
 
 export function ToolbarBreadcrumbCarousel({
+  color = "#6e6259",
   labels,
 }: ToolbarBreadcrumbCarouselProps) {
-  const normalizedLabels = useMemo(
-    () => labels.map((label) => label.trim()).filter(Boolean),
-    [labels],
-  );
-  const fullLabel = normalizedLabels.join(" › ");
+  const fullLabel = useMemo(() => toolbarBreadcrumbLabel(labels), [labels]);
   const estimatedFullLabelWidth = useMemo(
-    () => estimatedTextWidth(fullLabel),
+    () => estimatedToolbarBreadcrumbWidth(fullLabel),
     [fullLabel],
   );
   const [availableWidth, setAvailableWidth] = useState(0);
-  const [activeIndex, setActiveIndex] = useState(0);
+  const translateX = useRef(new Animated.Value(0)).current;
   const overflowing =
     availableWidth > 0 && estimatedFullLabelWidth > availableWidth;
+  const travel = Math.max(0, estimatedFullLabelWidth - availableWidth);
 
   useEffect(() => {
-    setActiveIndex(0);
-  }, [fullLabel]);
-
-  useEffect(() => {
-    if (!overflowing || normalizedLabels.length < 2) {
+    translateX.stopAnimation();
+    translateX.setValue(0);
+    if (!overflowing || travel <= 0) {
       return;
     }
-    const interval = setInterval(() => {
-      setActiveIndex((current) => (current + 1) % normalizedLabels.length);
-    }, CAROUSEL_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [normalizedLabels.length, overflowing]);
+    const travelDuration = Math.max(
+      1600,
+      (travel / CAROUSEL_PIXELS_PER_SECOND) * 1000,
+    );
+    const carousel = Animated.loop(
+      Animated.sequence([
+        Animated.delay(CAROUSEL_EDGE_PAUSE_MS),
+        Animated.timing(translateX, {
+          duration: travelDuration,
+          easing: Easing.inOut(Easing.cubic),
+          toValue: -travel,
+          useNativeDriver: true,
+        }),
+        Animated.delay(CAROUSEL_EDGE_PAUSE_MS),
+        Animated.timing(translateX, {
+          duration: travelDuration,
+          easing: Easing.inOut(Easing.cubic),
+          toValue: 0,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    carousel.start();
+    return () => carousel.stop();
+  }, [overflowing, translateX, travel]);
 
   if (!fullLabel) {
     return null;
@@ -65,17 +79,24 @@ export function ToolbarBreadcrumbCarousel({
       pointerEvents="none"
       style={styles.container}
     >
-      {overflowing && normalizedLabels.length > 1 ? (
-        <View style={styles.slide}>
-          <Text style={styles.counter}>
-            {activeIndex + 1}/{normalizedLabels.length}
-          </Text>
-          <Text numberOfLines={1} style={styles.label}>
-            {normalizedLabels[activeIndex]}
-          </Text>
+      {overflowing ? (
+        <View style={styles.carouselViewport}>
+          <Animated.Text
+            numberOfLines={1}
+            style={[
+              styles.carouselLabel,
+              {
+                color,
+                transform: [{ translateX }],
+                width: estimatedFullLabelWidth,
+              },
+            ]}
+          >
+            {fullLabel}
+          </Animated.Text>
         </View>
       ) : (
-        <Text numberOfLines={1} style={styles.label}>
+        <Text numberOfLines={1} style={[styles.label, { color }]}>
           {fullLabel}
         </Text>
       )}
@@ -84,6 +105,17 @@ export function ToolbarBreadcrumbCarousel({
 }
 
 const styles = StyleSheet.create({
+  carouselLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    lineHeight: 17,
+    textAlign: "left",
+  },
+  carouselViewport: {
+    alignSelf: "stretch",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
   container: {
     alignItems: "center",
     flex: 1,
@@ -94,25 +126,11 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     paddingHorizontal: 12,
   },
-  counter: {
-    color: "#a09388",
-    flexShrink: 0,
-    fontSize: 10,
-    fontVariant: ["tabular-nums"],
-  },
   label: {
-    color: "#6e6259",
     flexShrink: 1,
     fontSize: 12,
     fontWeight: "600",
     lineHeight: 17,
     textAlign: "center",
-  },
-  slide: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 7,
-    justifyContent: "center",
-    minWidth: 0,
   },
 });

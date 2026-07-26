@@ -313,7 +313,10 @@ export function ReaderScreen({
           pointerEvents="none"
           style={[styles.toolbarHeaderRow, { top: insets.top + 8 }]}
         >
-          <ToolbarBreadcrumbCarousel labels={toolbarNavigationLabels} />
+          <ToolbarBreadcrumbCarousel
+            color={theme.controlText}
+            labels={toolbarNavigationLabels}
+          />
         </View>
       ) : null}
 

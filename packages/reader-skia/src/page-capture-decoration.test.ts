@@ -72,6 +72,8 @@ describe("transition page decoration capture", () => {
       decoration,
       "both",
       "toolbar",
+      undefined,
+      -400,
     );
 
     expect(capture).not.toBeNull();
@@ -81,6 +83,7 @@ describe("transition page decoration capture", () => {
       decoration,
       "both",
       "toolbar",
+      -400,
     );
     capture?.dispose();
   });

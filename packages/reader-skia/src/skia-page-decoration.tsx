@@ -46,6 +46,7 @@ export interface CreateSkiaPageDecorationInput {
   readonly width: number;
   readonly height: number;
   readonly horizontalMargin: number;
+  readonly pagesPerView?: number;
   readonly topInset: number;
   readonly bottomInset: number;
   readonly theme?: ReaderTheme;
@@ -58,14 +59,18 @@ export function createSkiaPageDecoration({
   width,
   height,
   horizontalMargin,
+  pagesPerView = 1,
   topInset,
   bottomInset,
   theme = DEFAULT_READER_THEME,
 }: CreateSkiaPageDecorationInput): SkiaPageDecoration {
-  const maximumHorizontalMargin = Math.max(8, (width - 96) / 2);
+  const normalizedPagesPerView = Math.max(1, Math.floor(pagesPerView));
+  const pageWidth = width / normalizedPagesPerView;
+  const maximumHorizontalMargin = Math.max(8, (pageWidth - 96) / 2);
   const margin = Math.min(horizontalMargin, maximumHorizontalMargin);
-  const contentWidth = Math.max(1, width - margin * 2);
+  const contentWidth = Math.max(1, pageWidth - margin * 2);
   const headerY = topInset + 12;
+  const footerX = width - pageWidth + margin;
 
   const headerTitle = createDecorationParagraph(
     model.sectionTitle,
@@ -105,13 +110,13 @@ export function createSkiaPageDecoration({
     },
     footerPage: {
       paragraph: footerPage,
-      x: margin,
+      x: footerX,
       y: height - bottomInset - 12 - footerPage.getHeight(),
       width: contentWidth,
     },
     footerPercentage: {
       paragraph: footerPercentage,
-      x: margin,
+      x: footerX,
       y: height - bottomInset - 12 - footerPercentage.getHeight(),
       width: contentWidth,
     },
@@ -137,9 +142,10 @@ export function drawSkiaPageDecoration(
   decoration: SkiaPageDecoration,
   display: ReaderProgressDisplay,
   presentation: PageProgressPresentation = "reading",
+  offsetX = 0,
 ): void {
   if (progressDisplayHasHeader(display)) {
-    paintDecorationText(canvas, decoration.headerTitle);
+    paintDecorationText(canvas, decoration.headerTitle, offsetX);
   }
   if (progressDisplayHasFooter(display)) {
     paintDecorationText(
@@ -147,6 +153,7 @@ export function drawSkiaPageDecoration(
       presentation === "toolbar"
         ? decoration.footerPercentage
         : decoration.footerPage,
+      offsetX,
     );
   }
 }
@@ -155,17 +162,19 @@ export function SkiaPageDecorationLayer({
   decoration,
   display,
   presentation = "reading",
+  offsetX = 0,
 }: {
   readonly decoration: SkiaPageDecoration;
   readonly display: ReaderProgressDisplay;
   readonly presentation?: PageProgressPresentation;
+  readonly offsetX?: number;
 }) {
   return (
     <>
       {progressDisplayHasHeader(display) ? (
         <Paragraph
           paragraph={decoration.headerTitle.paragraph}
-          x={decoration.headerTitle.x}
+          x={decoration.headerTitle.x + offsetX}
           y={decoration.headerTitle.y}
           width={decoration.headerTitle.width}
         />
@@ -179,8 +188,8 @@ export function SkiaPageDecorationLayer({
           }
           x={
             presentation === "toolbar"
-              ? decoration.footerPercentage.x
-              : decoration.footerPage.x
+              ? decoration.footerPercentage.x + offsetX
+              : decoration.footerPage.x + offsetX
           }
           y={
             presentation === "toolbar"
@@ -237,6 +246,7 @@ function createDecorationParagraph(
 function paintDecorationText(
   canvas: SkCanvas,
   decoration: PageDecorationText,
+  offsetX: number,
 ): void {
-  decoration.paragraph.paint(canvas, decoration.x, decoration.y);
+  decoration.paragraph.paint(canvas, decoration.x + offsetX, decoration.y);
 }

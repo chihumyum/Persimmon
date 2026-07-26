@@ -49,6 +49,7 @@ export function capturePage(
   progressDisplay: ReaderProgressDisplay = "hidden",
   progressPresentation: PageProgressPresentation = "reading",
   theme: ReaderTheme = DEFAULT_READER_THEME,
+  decorationOffsetX = 0,
 ): CapturedPage | null {
   if (!pageImagesSettledForCapture(page, imageCache, allowUnrequestedImages)) {
     return null;
@@ -136,6 +137,7 @@ export function capturePage(
         decoration,
         progressDisplay,
         progressPresentation,
+        decorationOffsetX,
       );
     }
 

@@ -5,9 +5,9 @@ import {
 } from "./page-turn-direction";
 import type { PageAddress } from "./section-navigation";
 
-export interface PageTurnCaptureAddresses {
-  readonly front?: PageAddress;
-  readonly back?: PageAddress;
+export interface PageTurnCaptureAddresses<T = PageAddress> {
+  readonly front?: T;
+  readonly back?: T;
 }
 
 /**
@@ -17,12 +17,12 @@ export interface PageTurnCaptureAddresses {
  * left with its back visible. A backward turn is the inverse: it starts on the
  * left with its back visible and lands on the right with its front visible.
  */
-export function pageTurnCaptureAddresses(
+export function pageTurnCaptureAddresses<T = PageAddress>(
   layout: "single" | "spread",
   direction: PageTurnDirection,
-  current: readonly (PageAddress | undefined)[],
-  target: readonly (PageAddress | undefined)[],
-): PageTurnCaptureAddresses {
+  current: readonly (T | undefined)[],
+  target: readonly (T | undefined)[],
+): PageTurnCaptureAddresses<T> {
   const model = pageTurnDirectionModel(direction);
   if (layout === "single") {
     const faces = pageTurnFaceValues(direction, current[0], target[0]);

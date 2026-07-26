@@ -17,11 +17,41 @@ describe("page capture plan", () => {
     });
 
     expect(plan).toEqual([
-      { address: page(2), role: "current", tier: "prefetch" },
-      { address: page(1), role: "neighbor", tier: "prefetch" },
-      { address: page(3), role: "neighbor", tier: "prefetch" },
-      { address: page(0), role: "background", tier: "background" },
-      { address: page(4), role: "background", tier: "background" },
+      {
+        address: page(2),
+        viewStart: page(2),
+        slot: 0,
+        role: "current",
+        tier: "prefetch",
+      },
+      {
+        address: page(1),
+        viewStart: page(1),
+        slot: 0,
+        role: "neighbor",
+        tier: "prefetch",
+      },
+      {
+        address: page(3),
+        viewStart: page(3),
+        slot: 0,
+        role: "neighbor",
+        tier: "prefetch",
+      },
+      {
+        address: page(0),
+        viewStart: page(0),
+        slot: 0,
+        role: "background",
+        tier: "background",
+      },
+      {
+        address: page(4),
+        viewStart: page(4),
+        slot: 0,
+        role: "background",
+        tier: "background",
+      },
     ]);
   });
 
@@ -37,16 +67,76 @@ describe("page capture plan", () => {
     });
 
     expect(plan).toEqual([
-      { address: page(4), role: "current", tier: "prefetch" },
-      { address: page(5), role: "current", tier: "prefetch" },
-      { address: page(2), role: "neighbor", tier: "prefetch" },
-      { address: page(3), role: "neighbor", tier: "prefetch" },
-      { address: page(6), role: "neighbor", tier: "prefetch" },
-      { address: page(7), role: "neighbor", tier: "prefetch" },
-      { address: page(0), role: "background", tier: "background" },
-      { address: page(1), role: "background", tier: "background" },
-      { address: page(8), role: "background", tier: "background" },
-      { address: page(9), role: "background", tier: "background" },
+      {
+        address: page(4),
+        viewStart: page(4),
+        slot: 0,
+        role: "current",
+        tier: "prefetch",
+      },
+      {
+        address: page(5),
+        viewStart: page(4),
+        slot: 1,
+        role: "current",
+        tier: "prefetch",
+      },
+      {
+        address: page(2),
+        viewStart: page(2),
+        slot: 0,
+        role: "neighbor",
+        tier: "prefetch",
+      },
+      {
+        address: page(3),
+        viewStart: page(2),
+        slot: 1,
+        role: "neighbor",
+        tier: "prefetch",
+      },
+      {
+        address: page(6),
+        viewStart: page(6),
+        slot: 0,
+        role: "neighbor",
+        tier: "prefetch",
+      },
+      {
+        address: page(7),
+        viewStart: page(6),
+        slot: 1,
+        role: "neighbor",
+        tier: "prefetch",
+      },
+      {
+        address: page(0),
+        viewStart: page(0),
+        slot: 0,
+        role: "background",
+        tier: "background",
+      },
+      {
+        address: page(1),
+        viewStart: page(0),
+        slot: 1,
+        role: "background",
+        tier: "background",
+      },
+      {
+        address: page(8),
+        viewStart: page(8),
+        slot: 0,
+        role: "background",
+        tier: "background",
+      },
+      {
+        address: page(9),
+        viewStart: page(8),
+        slot: 1,
+        role: "background",
+        tier: "background",
+      },
     ]);
   });
 
@@ -59,9 +149,27 @@ describe("page capture plan", () => {
     });
 
     expect(plan).toEqual([
-      { address: page(0), role: "current", tier: "prefetch" },
-      { address: page(1), role: "neighbor", tier: "prefetch" },
-      { address: page(2), role: "background", tier: "background" },
+      {
+        address: page(0),
+        viewStart: page(0),
+        slot: 0,
+        role: "current",
+        tier: "prefetch",
+      },
+      {
+        address: page(1),
+        viewStart: page(1),
+        slot: 0,
+        role: "neighbor",
+        tier: "prefetch",
+      },
+      {
+        address: page(2),
+        viewStart: page(2),
+        slot: 0,
+        role: "background",
+        tier: "background",
+      },
     ]);
   });
 

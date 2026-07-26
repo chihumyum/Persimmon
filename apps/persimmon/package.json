@@ -39,6 +39,7 @@
     "expo-linking": "~57.0.1",
     "expo-router": "~57.0.2",
     "expo-splash-screen": "~57.0.5",
+    "expo-system-ui": "~57.0.1",
     "idb": "8.0.3",
     "react": "19.2.3",
     "react-dom": "19.2.3",

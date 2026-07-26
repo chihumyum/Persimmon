@@ -24,6 +24,9 @@ interface ReaderPageLayerProps {
   readonly pagination: PaginationResult<SkParagraph>;
   readonly imageCache: DecodedImageCache;
   readonly decoration?: SkiaPageDecoration;
+  readonly decorationClipHeight?: number;
+  readonly decorationClipWidth?: number;
+  readonly decorationOffsetX?: number;
   readonly progressDisplay?: ReaderProgressDisplay;
   readonly progressPresentation?: PageProgressPresentation;
   readonly offsetX?: number;
@@ -36,6 +39,9 @@ export function ReaderPageLayer({
   pagination,
   imageCache,
   decoration,
+  decorationClipHeight,
+  decorationClipWidth,
+  decorationOffsetX = 0,
   progressDisplay = "hidden",
   progressPresentation = "reading",
   offsetX = 0,
@@ -102,11 +108,26 @@ export function ReaderPageLayer({
           );
         })}
         {decoration ? (
-          <SkiaPageDecorationLayer
-            decoration={decoration}
-            display={progressDisplay}
-            presentation={progressPresentation}
-          />
+          <Group
+            clip={
+              decorationClipWidth !== undefined &&
+              decorationClipHeight !== undefined
+                ? {
+                    x: 0,
+                    y: 0,
+                    width: decorationClipWidth,
+                    height: decorationClipHeight,
+                  }
+                : undefined
+            }
+          >
+            <SkiaPageDecorationLayer
+              decoration={decoration}
+              display={progressDisplay}
+              offsetX={decorationOffsetX}
+              presentation={progressPresentation}
+            />
+          </Group>
         ) : null}
       </Group>
     </Group>

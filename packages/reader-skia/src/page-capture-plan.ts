@@ -5,6 +5,8 @@ export type PageCapturePlanTier = "prefetch" | "background";
 
 export interface PageCapturePlanEntry {
   readonly address: PageAddress;
+  readonly viewStart: PageAddress;
+  readonly slot: number;
   readonly role: PageCapturePlanRole;
   readonly tier: PageCapturePlanTier;
 }
@@ -62,7 +64,7 @@ export function buildPageCapturePlan({
   const entries = new Map<string, PageCapturePlanEntry>();
 
   for (const view of viewPlans) {
-    for (const address of addressesForView(view.start)) {
+    for (const [slot, address] of addressesForView(view.start).entries()) {
       if (!address) {
         continue;
       }
@@ -74,6 +76,8 @@ export function buildPageCapturePlan({
       ) {
         entries.set(key, {
           address,
+          viewStart: view.start,
+          slot,
           role: view.role,
           tier: view.tier,
         });

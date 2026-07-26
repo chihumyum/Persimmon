@@ -73,4 +73,29 @@ describe("native page-decoration ownership", () => {
       expect(paragraph.dispose).not.toHaveBeenCalled();
     }
   });
+
+  it("places one spread header on the left page and one footer on the right", () => {
+    const decoration = createSkiaPageDecoration({
+      model: {
+        sectionTitle: "章节",
+        pageLabel: "5",
+        percentageLabel: "42%",
+        pageNumber: 5,
+        pageCount: 12,
+        percentage: 42,
+      },
+      fontProvider: {} as SkTypefaceFontProvider,
+      fontFamily: "Noto Serif SC",
+      width: 800,
+      height: 800,
+      horizontalMargin: 24,
+      pagesPerView: 2,
+      topInset: 0,
+      bottomInset: 0,
+    });
+
+    expect(decoration.headerTitle).toMatchObject({ x: 24, width: 352 });
+    expect(decoration.footerPage).toMatchObject({ x: 424, width: 352 });
+    expect(decoration.footerPercentage).toMatchObject({ x: 424, width: 352 });
+  });
 });

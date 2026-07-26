@@ -43,12 +43,12 @@ export function pageTurnsReadyForPaint<T extends PaintReadyPageTurn>(
  * Keeps the oldest active sheet's current spread on the landing side while
  * the source side reveals the newest requested spread.
  */
-export function pageTurnBackgroundSlots(
+export function pageTurnBackgroundSlots<T = PageAddress>(
   layout: "single" | "spread",
   direction: PageTurnDirection,
-  oldestFrom: readonly (PageAddress | undefined)[],
-  newestTarget: readonly (PageAddress | undefined)[],
-): readonly (PageAddress | undefined)[] {
+  oldestFrom: readonly (T | undefined)[],
+  newestTarget: readonly (T | undefined)[],
+): readonly (T | undefined)[] {
   const model = pageTurnDirectionModel(direction);
   if (layout === "single") {
     return [model.sourceFace === "front" ? newestTarget[0] : oldestFrom[0]];
