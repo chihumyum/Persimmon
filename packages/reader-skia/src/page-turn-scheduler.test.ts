@@ -96,9 +96,27 @@ describe("page-turn scheduler", () => {
         lane: 0,
         interactive: false,
         handoffPending: false,
+        laneReady: false,
         completed: false,
       },
     ]);
+  });
+
+  it("waits for a programmatic lane to install its first frame", () => {
+    const scheduler = createHarness();
+    let state = requestScheduledPageTurn(
+      createPageTurnSchedulerState(page(0)),
+      1,
+      scheduler,
+      0,
+    );
+
+    expect(state.turns[0]?.laneReady).toBe(false);
+    state = markScheduledPageTurnLaneReady(state, "turn:1");
+    expect(state.turns[0]).toMatchObject({
+      handoffPending: false,
+      laneReady: true,
+    });
   });
 
   it("uniformly throttles tap starts to one every 150 ms", () => {
@@ -350,8 +368,18 @@ describe("page-turn scheduler", () => {
     state = markScheduledPageTurnLaneReady(state, "turn:1");
     state = beginScheduledInteractivePageTurn(state, 1, scheduler, 250);
     expect(state.turns).toMatchObject([
-      { lane: 0, interactive: false, handoffPending: false },
-      { lane: 1, interactive: true, handoffPending: false },
+      {
+        lane: 0,
+        interactive: false,
+        handoffPending: false,
+        laneReady: true,
+      },
+      {
+        lane: 1,
+        interactive: true,
+        handoffPending: false,
+        laneReady: false,
+      },
     ]);
   });
 

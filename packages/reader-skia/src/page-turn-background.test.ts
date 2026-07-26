@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { pageTurnBackgroundSlots } from "./page-turn-background";
+import {
+  pageTurnBackgroundSlots,
+  pageTurnsReadyForPaint,
+} from "./page-turn-background";
 import type { PageAddress } from "./section-navigation";
 
 function page(pageIndex: number): PageAddress {
@@ -8,6 +11,51 @@ function page(pageIndex: number): PageAddress {
 }
 
 describe("page-turn burst background", () => {
+  it("keeps the live page until the native lane installs its first frame", () => {
+    const waiting = {
+      completed: false,
+      handoffPending: false,
+      interactive: false,
+      laneReady: false,
+    };
+    const ready = { ...waiting, laneReady: true };
+
+    expect(pageTurnsReadyForPaint([waiting], true)).toEqual([]);
+    expect(pageTurnsReadyForPaint([ready], true)).toEqual([ready]);
+    expect(pageTurnsReadyForPaint([waiting], false)).toEqual([waiting]);
+  });
+
+  it("does not paint a later lane before an earlier native lane", () => {
+    const waiting = {
+      completed: false,
+      handoffPending: false,
+      interactive: false,
+      laneReady: false,
+    };
+    const ready = { ...waiting, laneReady: true };
+
+    expect(pageTurnsReadyForPaint([waiting, ready], true)).toEqual([]);
+  });
+
+  it("keeps an interactive frame visible while it hands off", () => {
+    const interactive = {
+      completed: false,
+      handoffPending: false,
+      interactive: true,
+      laneReady: false,
+    };
+    const handoff = {
+      ...interactive,
+      handoffPending: true,
+      interactive: false,
+    };
+
+    expect(pageTurnsReadyForPaint([interactive, handoff], true)).toEqual([
+      interactive,
+      handoff,
+    ]);
+  });
+
   it("reveals the newest target under a forward single-page turn", () => {
     expect(pageTurnBackgroundSlots("single", 1, [page(6)], [page(9)])).toEqual([
       page(9),

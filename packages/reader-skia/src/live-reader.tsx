@@ -84,7 +84,10 @@ import {
   PAGE_TURN_LANE_HARD_LIMIT,
   calculatePageTurnConcurrency,
 } from "./page-turn-concurrency";
-import { pageTurnBackgroundSlots } from "./page-turn-background";
+import {
+  pageTurnBackgroundSlots,
+  pageTurnsReadyForPaint,
+} from "./page-turn-background";
 import {
   pageTurnXScale,
   shouldDrawPageTurnShadow,
@@ -2070,7 +2073,7 @@ function LazyReaderEngine({
     },
     [layout, turnTextures],
   );
-  const renderableTurns = useMemo(() => {
+  const texturePreparedTurns = useMemo(() => {
     const prefix: ScheduledPageTurn[] = [];
     for (const turn of activeTurns) {
       if (!turn.completed && !textureReadyForTurn(turn)) {
@@ -2080,6 +2083,10 @@ function LazyReaderEngine({
     }
     return prefix;
   }, [activeTurns, textureReadyForTurn]);
+  const renderableTurns = useMemo(
+    () => pageTurnsReadyForPaint(texturePreparedTurns, Platform.OS !== "web"),
+    [texturePreparedTurns],
+  );
   const transitionReady = renderableTurns.length > 0;
   const driverMeshReady =
     driverTurn !== undefined && textureReadyForTurn(driverTurn);
@@ -2228,7 +2235,7 @@ function LazyReaderEngine({
   const nativePoolCommands = useMemo(() => {
     const commands: (NativeProgrammaticPageTurnCommand | undefined)[] =
       new Array(PAGE_TURN_LANE_HARD_LIMIT).fill(undefined);
-    for (const turn of renderableTurns) {
+    for (const turn of texturePreparedTurns) {
       if (turn.interactive || !textureReadyForTurn(turn)) {
         continue;
       }
@@ -2242,7 +2249,7 @@ function LazyReaderEngine({
       };
     }
     return commands;
-  }, [layout, renderableTurns, textureReadyForTurn]);
+  }, [layout, texturePreparedTurns, textureReadyForTurn]);
   const nativePageTurnPool = useNativePageTurnPool({
     width,
     height,

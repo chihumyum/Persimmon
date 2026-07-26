@@ -21,6 +21,12 @@ export interface ScheduledPageTurn {
    * confirms that it has installed the released-gesture state.
    */
   readonly handoffPending: boolean;
+  /**
+   * Native sets this only after the lane has installed its first valid shared
+   * frame. Until then the live source page must remain visible, otherwise the
+   * target background can leak through for one frame.
+   */
+  readonly laneReady: boolean;
   readonly motion: "tap" | "gesture";
   readonly gestureRelease?: ReleasedPageTurnGesture;
   readonly completed: boolean;
@@ -149,11 +155,15 @@ export function markScheduledPageTurnLaneReady(
 ): PageTurnSchedulerState {
   let found = false;
   const turns = state.turns.map((turn) => {
-    if (turn.id !== turnId || !turn.handoffPending || turn.completed) {
+    if (
+      turn.id !== turnId ||
+      turn.completed ||
+      (turn.laneReady && !turn.handoffPending)
+    ) {
       return turn;
     }
     found = true;
-    return { ...turn, handoffPending: false };
+    return { ...turn, handoffPending: false, laneReady: true };
   });
   return found ? { ...state, turns } : state;
 }
@@ -330,6 +340,7 @@ function createTurn(
     lane,
     interactive,
     handoffPending: false,
+    laneReady: false,
     motion,
     gestureRelease,
     completed: false,
