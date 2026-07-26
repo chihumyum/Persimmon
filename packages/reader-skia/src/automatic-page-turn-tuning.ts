@@ -13,11 +13,11 @@ export interface AutomaticPageTurnTuning {
 }
 
 export const DEFAULT_AUTOMATIC_PAGE_TURN_TUNING: AutomaticPageTurnTuning = {
-  releaseX: DEFAULT_PAGE_TURN_TUNING.releaseX,
-  liftVelocity: DEFAULT_PAGE_TURN_TUNING.liftVelocity,
-  liftToLeft: DEFAULT_PAGE_TURN_TUNING.liftToLeft,
-  curvatureRelaxation: DEFAULT_PAGE_TURN_TUNING.curvatureRelaxation,
-  playbackSpeed: 1,
+  releaseX: 0.72,
+  liftVelocity: 1.5,
+  liftToLeft: 2.2,
+  curvatureRelaxation: 6.75,
+  playbackSpeed: 1.3,
 };
 
 export function normalizeAutomaticPageTurnTuning(

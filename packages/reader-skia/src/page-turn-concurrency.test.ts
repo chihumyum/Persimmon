@@ -8,14 +8,14 @@ import {
 } from "./page-turn-concurrency";
 
 describe("page turn concurrency", () => {
-  it("adds two completion-headroom lanes to the five default overlaps", () => {
+  it("adds two completion-headroom lanes to the three default overlaps", () => {
     expect(
       calculatePageTurnConcurrency(DEFAULT_AUTOMATIC_PAGE_TURN_TUNING, 150),
     ).toEqual({
-      estimatedTapDurationMs: 674,
+      estimatedTapDurationMs: 441,
       minimumTurnIntervalMs: 150,
-      maximumConcurrentTapTurns: 7,
-      maximumConcurrentTurns: 8,
+      maximumConcurrentTapTurns: 5,
+      maximumConcurrentTurns: 6,
     });
   });
 
@@ -26,10 +26,10 @@ describe("page turn concurrency", () => {
         150,
       ),
     ).toMatchObject({
-      estimatedTapDurationMs: 337,
+      estimatedTapDurationMs: 287,
       minimumTurnIntervalMs: 150,
-      maximumConcurrentTapTurns: 5,
-      maximumConcurrentTurns: 6,
+      maximumConcurrentTapTurns: 4,
+      maximumConcurrentTurns: 5,
     });
     expect(
       calculatePageTurnConcurrency(
@@ -37,8 +37,8 @@ describe("page turn concurrency", () => {
         150,
       ),
     ).toMatchObject({
-      estimatedTapDurationMs: 1348,
-      minimumTurnIntervalMs: 270,
+      estimatedTapDurationMs: 1147,
+      minimumTurnIntervalMs: 230,
       maximumConcurrentTapTurns: 7,
       maximumConcurrentTurns: 8,
     });
@@ -72,7 +72,7 @@ describe("page turn concurrency", () => {
     expect(
       calculatePageTurnConcurrency(DEFAULT_AUTOMATIC_PAGE_TURN_TUNING, 0),
     ).toMatchObject({
-      minimumTurnIntervalMs: 135,
+      minimumTurnIntervalMs: 89,
       maximumConcurrentTapTurns: PAGE_TURN_LANE_HARD_LIMIT - 1,
       maximumConcurrentTurns: PAGE_TURN_LANE_HARD_LIMIT,
     });

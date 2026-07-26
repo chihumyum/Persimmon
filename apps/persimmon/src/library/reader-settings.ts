@@ -1,11 +1,9 @@
 import {
   DEFAULT_READER_APPEARANCE,
-  DEFAULT_READER_CLICK_PAGE_TURN_TUNING,
   DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
   DEFAULT_READER_PAGE_TURN_TUNING,
   DEFAULT_READER_SETTINGS,
   type ReaderAppearanceSettings,
-  type ReaderClickPageTurnTuning,
   type ReaderColorMode,
   type ReaderFontFamily,
   type ReaderGesturePageTurnTuning,
@@ -118,10 +116,6 @@ function normalizePageTurnTuning(value: unknown): ReaderPageTurnTuning {
   if (typeof value !== "object" || value === null) {
     return DEFAULT_READER_PAGE_TURN_TUNING;
   }
-  const clickSource =
-    "click" in value && typeof value.click === "object" && value.click !== null
-      ? value.click
-      : value;
   const gestureSource =
     "gesture" in value &&
     typeof value.gesture === "object" &&
@@ -129,51 +123,7 @@ function normalizePageTurnTuning(value: unknown): ReaderPageTurnTuning {
       ? value.gesture
       : undefined;
   return {
-    click: normalizeClickPageTurnTuning(clickSource),
     gesture: normalizeGesturePageTurnTuning(gestureSource),
-  };
-}
-
-function normalizeClickPageTurnTuning(
-  value: object,
-): ReaderClickPageTurnTuning {
-  const legacyFlattenSpeed = boundedNumber(value, "flattenSpeed", 0.5, 2, 1);
-  return {
-    releaseX: boundedNumber(
-      value,
-      "releaseX",
-      0.58,
-      0.8,
-      DEFAULT_READER_CLICK_PAGE_TURN_TUNING.releaseX,
-    ),
-    liftVelocity: boundedNumber(
-      value,
-      "liftVelocity",
-      0.7,
-      1.8,
-      DEFAULT_READER_CLICK_PAGE_TURN_TUNING.liftVelocity,
-    ),
-    liftToLeft: boundedNumber(
-      value,
-      "liftToLeft",
-      1.4,
-      2.6,
-      DEFAULT_READER_CLICK_PAGE_TURN_TUNING.liftToLeft,
-    ),
-    curvatureRelaxation: boundedNumber(
-      value,
-      "curvatureRelaxation",
-      3.5,
-      14,
-      7 * legacyFlattenSpeed,
-    ),
-    playbackSpeed: boundedNumber(
-      value,
-      "playbackSpeed",
-      0.5,
-      2,
-      DEFAULT_READER_CLICK_PAGE_TURN_TUNING.playbackSpeed,
-    ),
   };
 }
 

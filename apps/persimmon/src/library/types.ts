@@ -84,16 +84,7 @@ export interface ReaderAppearanceSettings {
 }
 
 export interface ReaderPageTurnTuning {
-  readonly click: ReaderClickPageTurnTuning;
   readonly gesture: ReaderGesturePageTurnTuning;
-}
-
-export interface ReaderClickPageTurnTuning {
-  readonly releaseX: number;
-  readonly liftVelocity: number;
-  readonly liftToLeft: number;
-  readonly curvatureRelaxation: number;
-  readonly playbackSpeed: number;
 }
 
 export interface ReaderGesturePageTurnTuning {
@@ -108,15 +99,6 @@ export interface ReaderGesturePageTurnTuning {
   readonly velocityGain: number;
   readonly idleDecaySeconds: number;
 }
-
-export const DEFAULT_READER_CLICK_PAGE_TURN_TUNING: ReaderClickPageTurnTuning =
-  {
-    releaseX: 0.72,
-    liftVelocity: 1.35,
-    liftToLeft: 2,
-    curvatureRelaxation: 7,
-    playbackSpeed: 1,
-  };
 
 export const DEFAULT_READER_GESTURE_PAGE_TURN_TUNING: ReaderGesturePageTurnTuning =
   {
@@ -133,7 +115,6 @@ export const DEFAULT_READER_GESTURE_PAGE_TURN_TUNING: ReaderGesturePageTurnTunin
   };
 
 export const DEFAULT_READER_PAGE_TURN_TUNING: ReaderPageTurnTuning = {
-  click: DEFAULT_READER_CLICK_PAGE_TURN_TUNING,
   gesture: DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
 };
 

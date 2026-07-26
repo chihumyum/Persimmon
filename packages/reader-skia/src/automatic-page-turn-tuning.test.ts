@@ -7,9 +7,17 @@ import {
 
 describe("automatic page turn tuning", () => {
   it("uses stable defaults", () => {
-    expect(normalizeAutomaticPageTurnTuning(undefined)).toEqual(
-      DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
-    );
+    expect(normalizeAutomaticPageTurnTuning(undefined)).toEqual({
+      releaseX: 0.72,
+      liftVelocity: 1.5,
+      liftToLeft: 2.2,
+      curvatureRelaxation: 6.75,
+      playbackSpeed: 1.3,
+    });
+    expect(
+      DEFAULT_AUTOMATIC_PAGE_TURN_TUNING.liftVelocity *
+        DEFAULT_AUTOMATIC_PAGE_TURN_TUNING.liftToLeft,
+    ).toBeCloseTo(3.3);
   });
 
   it("clamps every live control to the supported solver range", () => {

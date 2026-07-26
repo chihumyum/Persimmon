@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import type { ReaderTheme } from "@persimmon/reader-skia/theme";
 import {
   PanResponder,
@@ -13,9 +13,7 @@ import {
 } from "react-native";
 
 import {
-  DEFAULT_READER_CLICK_PAGE_TURN_TUNING,
   DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
-  type ReaderClickPageTurnTuning,
   type ReaderGesturePageTurnTuning,
   type ReaderPageTurnTuning,
 } from "../library/types";
@@ -165,13 +163,6 @@ export function PageTurnTuningPanel({
   onChange,
   onClose,
 }: PageTurnTuningPanelProps) {
-  const [mode, setMode] = useState<"click" | "gesture">("click");
-  const updateClick = useCallback(
-    (key: keyof ReaderClickPageTurnTuning, value: number) => {
-      onChange({ ...tuning, click: { ...tuning.click, [key]: value } });
-    },
-    [onChange, tuning],
-  );
   const updateGesture = useCallback(
     (key: keyof ReaderGesturePageTurnTuning, value: number) => {
       const gesture = { ...tuning.gesture, [key]: value };
@@ -206,7 +197,7 @@ export function PageTurnTuningPanel({
             NATURAL PAGE TURN
           </Text>
           <Text style={[styles.title, { color: theme.text }]}>
-            翻页原始常量
+            手势翻页常量
           </Text>
         </View>
         <Pressable
@@ -221,240 +212,130 @@ export function PageTurnTuningPanel({
         </Pressable>
       </View>
 
-      <View style={[styles.modeTabs, { backgroundColor: theme.panelMuted }]}>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => setMode("click")}
-          style={[
-            styles.modeTab,
-            mode === "click" && { backgroundColor: theme.panelRaised },
-          ]}
-        >
-          <Text
-            style={[
-              styles.modeTabText,
-              {
-                color:
-                  mode === "click" ? theme.accentStrong : theme.secondaryText,
-              },
-            ]}
-          >
-            点击翻页
-          </Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => setMode("gesture")}
-          style={[
-            styles.modeTab,
-            mode === "gesture" && { backgroundColor: theme.panelRaised },
-          ]}
-        >
-          <Text
-            style={[
-              styles.modeTabText,
-              {
-                color:
-                  mode === "gesture" ? theme.accentStrong : theme.secondaryText,
-              },
-            ]}
-          >
-            手势翻页
-          </Text>
-        </Pressable>
-      </View>
-
       <ScrollView
         contentContainerStyle={styles.sliderList}
         showsVerticalScrollIndicator
         style={styles.sliderScroller}
       >
-        {mode === "click" ? (
-          <>
-            <TuningSlider
-              label="隆起起点 · releaseX"
-              maximum={0.8}
-              minimum={0.58}
-              step={0.01}
-              theme={theme}
-              value={tuning.click.releaseX}
-              valueLabel={tuning.click.releaseX.toFixed(2)}
-              onChange={(value) => updateClick("releaseX", value)}
-            />
-            <TuningSlider
-              label="向上速度 · liftVelocity"
-              maximum={1.8}
-              minimum={0.7}
-              step={0.05}
-              theme={theme}
-              value={tuning.click.liftVelocity}
-              valueLabel={tuning.click.liftVelocity.toFixed(2)}
-              onChange={(value) => updateClick("liftVelocity", value)}
-            />
-            <TuningSlider
-              label="横向展开 · liftToLeft"
-              maximum={2.6}
-              minimum={1.4}
-              step={0.05}
-              theme={theme}
-              value={tuning.click.liftToLeft}
-              valueLabel={tuning.click.liftToLeft.toFixed(2)}
-              onChange={(value) => updateClick("liftToLeft", value)}
-            />
-            <TuningSlider
-              label="曲率衰减 · curvatureRelaxation"
-              maximum={14}
-              minimum={3.5}
-              step={0.25}
-              theme={theme}
-              value={tuning.click.curvatureRelaxation}
-              valueLabel={tuning.click.curvatureRelaxation.toFixed(2)}
-              onChange={(value) => updateClick("curvatureRelaxation", value)}
-            />
-            <TuningSlider
-              label="时间步倍率 · playbackSpeed"
-              maximum={2}
-              minimum={0.5}
-              step={0.05}
-              theme={theme}
-              value={tuning.click.playbackSpeed}
-              valueLabel={tuning.click.playbackSpeed.toFixed(2)}
-              onChange={(value) => updateClick("playbackSpeed", value)}
-            />
-          </>
-        ) : (
-          <>
-            <TuningSlider
-              label="反向落页起点 · releaseX"
-              maximum={0.8}
-              minimum={0.58}
-              step={0.01}
-              theme={theme}
-              value={tuning.gesture.releaseX}
-              valueLabel={tuning.gesture.releaseX.toFixed(2)}
-              onChange={(value) => updateGesture("releaseX", value)}
-            />
-            <TuningSlider
-              label="松手向上速度 · liftVelocity"
-              maximum={1.8}
-              minimum={0.7}
-              step={0.05}
-              theme={theme}
-              value={tuning.gesture.liftVelocity}
-              valueLabel={tuning.gesture.liftVelocity.toFixed(2)}
-              onChange={(value) => updateGesture("liftVelocity", value)}
-            />
-            <TuningSlider
-              label="松手横向展开 · liftToLeft"
-              maximum={2.6}
-              minimum={1.4}
-              step={0.05}
-              theme={theme}
-              value={tuning.gesture.liftToLeft}
-              valueLabel={tuning.gesture.liftToLeft.toFixed(2)}
-              onChange={(value) => updateGesture("liftToLeft", value)}
-            />
-            <TuningSlider
-              label="曲率衰减 · curvatureRelaxation"
-              maximum={14}
-              minimum={3.5}
-              step={0.25}
-              theme={theme}
-              value={tuning.gesture.curvatureRelaxation}
-              valueLabel={tuning.gesture.curvatureRelaxation.toFixed(2)}
-              onChange={(value) => updateGesture("curvatureRelaxation", value)}
-            />
-            <TuningSlider
-              label="纸张重量 · pageWeight"
-              maximum={1.8}
-              minimum={0.5}
-              step={0.05}
-              theme={theme}
-              value={tuning.gesture.pageWeight}
-              valueLabel={tuning.gesture.pageWeight.toFixed(2)}
-              onChange={(value) => updateGesture("pageWeight", value)}
-            />
-            <TuningSlider
-              label="提交阈值 · commitThreshold"
-              maximum={1.2}
-              minimum={0.4}
-              step={0.01}
-              theme={theme}
-              value={tuning.gesture.commitThreshold}
-              valueLabel={tuning.gesture.commitThreshold.toFixed(2)}
-              onChange={(value) => updateGesture("commitThreshold", value)}
-            />
-            <TuningSlider
-              label="最低收尾速度 · minimumSpeedScale"
-              maximum={1.5}
-              minimum={0.5}
-              step={0.05}
-              theme={theme}
-              value={tuning.gesture.minimumSpeedScale}
-              valueLabel={tuning.gesture.minimumSpeedScale.toFixed(2)}
-              onChange={(value) => updateGesture("minimumSpeedScale", value)}
-            />
-            <TuningSlider
-              label="最高收尾速度 · maximumSpeedScale"
-              maximum={3}
-              minimum={tuning.gesture.minimumSpeedScale}
-              step={0.05}
-              theme={theme}
-              value={tuning.gesture.maximumSpeedScale}
-              valueLabel={tuning.gesture.maximumSpeedScale.toFixed(2)}
-              onChange={(value) => updateGesture("maximumSpeedScale", value)}
-            />
-            <TuningSlider
-              label="甩动速度增益 · velocityGain"
-              maximum={1.2}
-              minimum={0.1}
-              step={0.05}
-              theme={theme}
-              value={tuning.gesture.velocityGain}
-              valueLabel={tuning.gesture.velocityGain.toFixed(2)}
-              onChange={(value) => updateGesture("velocityGain", value)}
-            />
-            <TuningSlider
-              label="松手衰减秒数 · idleDecaySeconds"
-              maximum={0.2}
-              minimum={0.03}
-              step={0.005}
-              theme={theme}
-              value={tuning.gesture.idleDecaySeconds}
-              valueLabel={tuning.gesture.idleDecaySeconds.toFixed(3)}
-              onChange={(value) => updateGesture("idleDecaySeconds", value)}
-            />
-          </>
-        )}
+        <TuningSlider
+          label="反向落页起点 · releaseX"
+          maximum={0.8}
+          minimum={0.58}
+          step={0.01}
+          theme={theme}
+          value={tuning.gesture.releaseX}
+          valueLabel={tuning.gesture.releaseX.toFixed(2)}
+          onChange={(value) => updateGesture("releaseX", value)}
+        />
+        <TuningSlider
+          label="松手向上速度 · liftVelocity"
+          maximum={1.8}
+          minimum={0.7}
+          step={0.05}
+          theme={theme}
+          value={tuning.gesture.liftVelocity}
+          valueLabel={tuning.gesture.liftVelocity.toFixed(2)}
+          onChange={(value) => updateGesture("liftVelocity", value)}
+        />
+        <TuningSlider
+          label="松手横向展开 · liftToLeft"
+          maximum={2.6}
+          minimum={1.4}
+          step={0.05}
+          theme={theme}
+          value={tuning.gesture.liftToLeft}
+          valueLabel={tuning.gesture.liftToLeft.toFixed(2)}
+          onChange={(value) => updateGesture("liftToLeft", value)}
+        />
+        <TuningSlider
+          label="曲率衰减 · curvatureRelaxation"
+          maximum={14}
+          minimum={3.5}
+          step={0.25}
+          theme={theme}
+          value={tuning.gesture.curvatureRelaxation}
+          valueLabel={tuning.gesture.curvatureRelaxation.toFixed(2)}
+          onChange={(value) => updateGesture("curvatureRelaxation", value)}
+        />
+        <TuningSlider
+          label="纸张重量 · pageWeight"
+          maximum={1.8}
+          minimum={0.5}
+          step={0.05}
+          theme={theme}
+          value={tuning.gesture.pageWeight}
+          valueLabel={tuning.gesture.pageWeight.toFixed(2)}
+          onChange={(value) => updateGesture("pageWeight", value)}
+        />
+        <TuningSlider
+          label="提交阈值 · commitThreshold"
+          maximum={1.2}
+          minimum={0.4}
+          step={0.01}
+          theme={theme}
+          value={tuning.gesture.commitThreshold}
+          valueLabel={tuning.gesture.commitThreshold.toFixed(2)}
+          onChange={(value) => updateGesture("commitThreshold", value)}
+        />
+        <TuningSlider
+          label="最低收尾速度 · minimumSpeedScale"
+          maximum={1.5}
+          minimum={0.5}
+          step={0.05}
+          theme={theme}
+          value={tuning.gesture.minimumSpeedScale}
+          valueLabel={tuning.gesture.minimumSpeedScale.toFixed(2)}
+          onChange={(value) => updateGesture("minimumSpeedScale", value)}
+        />
+        <TuningSlider
+          label="最高收尾速度 · maximumSpeedScale"
+          maximum={3}
+          minimum={tuning.gesture.minimumSpeedScale}
+          step={0.05}
+          theme={theme}
+          value={tuning.gesture.maximumSpeedScale}
+          valueLabel={tuning.gesture.maximumSpeedScale.toFixed(2)}
+          onChange={(value) => updateGesture("maximumSpeedScale", value)}
+        />
+        <TuningSlider
+          label="甩动速度增益 · velocityGain"
+          maximum={1.2}
+          minimum={0.1}
+          step={0.05}
+          theme={theme}
+          value={tuning.gesture.velocityGain}
+          valueLabel={tuning.gesture.velocityGain.toFixed(2)}
+          onChange={(value) => updateGesture("velocityGain", value)}
+        />
+        <TuningSlider
+          label="松手衰减秒数 · idleDecaySeconds"
+          maximum={0.2}
+          minimum={0.03}
+          step={0.005}
+          theme={theme}
+          value={tuning.gesture.idleDecaySeconds}
+          valueLabel={tuning.gesture.idleDecaySeconds.toFixed(3)}
+          onChange={(value) => updateGesture("idleDecaySeconds", value)}
+        />
       </ScrollView>
 
       <View style={styles.footer}>
         <Text style={[styles.equation, { color: theme.secondaryText }]}>
           传播速度{" "}
-          {(
-            (mode === "click" ? tuning.click : tuning.gesture).liftVelocity *
-            (mode === "click" ? tuning.click : tuning.gesture).liftToLeft
-          ).toFixed(2)}
+          {(tuning.gesture.liftVelocity * tuning.gesture.liftToLeft).toFixed(2)}
         </Text>
         <Pressable
-          accessibilityLabel="恢复当前默认常量"
+          accessibilityLabel="恢复手势默认常量"
           accessibilityRole="button"
           onPress={() =>
-            onChange(
-              mode === "click"
-                ? {
-                    ...tuning,
-                    click: DEFAULT_READER_CLICK_PAGE_TURN_TUNING,
-                  }
-                : {
-                    ...tuning,
-                    gesture: DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
-                  },
-            )
+            onChange({
+              ...tuning,
+              gesture: DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
+            })
           }
         >
           <Text style={[styles.resetText, { color: theme.accentStrong }]}>
-            恢复当前默认
+            恢复手势默认
           </Text>
         </Pressable>
       </View>
@@ -494,30 +375,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 3,
-  },
-  modeTab: {
-    alignItems: "center",
-    borderRadius: 9,
-    flex: 1,
-    paddingVertical: 7,
-  },
-  modeTabActive: {
-    backgroundColor: "#fbf7f0",
-  },
-  modeTabs: {
-    backgroundColor: "#e9dfd5",
-    borderRadius: 11,
-    flexDirection: "row",
-    marginBottom: 5,
-    padding: 2,
-  },
-  modeTabText: {
-    color: "#8a7d72",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  modeTabTextActive: {
-    color: "#b94b24",
   },
   panel: {
     backgroundColor: "rgba(251, 247, 240, 0.98)",

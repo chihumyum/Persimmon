@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import { normalizeSettings } from "./reader-settings";
 import {
   DEFAULT_READER_APPEARANCE,
-  DEFAULT_READER_CLICK_PAGE_TURN_TUNING,
   DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
   DEFAULT_READER_PAGE_TURN_TUNING,
   DEFAULT_READER_SETTINGS,
@@ -57,16 +56,7 @@ describe("reader settings", () => {
       },
       layout: "single",
       pageTurnAnimation: "natural",
-      pageTurnTuning: {
-        click: {
-          releaseX: 0.58,
-          liftVelocity: 1.5,
-          liftToLeft: DEFAULT_READER_CLICK_PAGE_TURN_TUNING.liftToLeft,
-          curvatureRelaxation: 14,
-          playbackSpeed: 2,
-        },
-        gesture: DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
-      },
+      pageTurnTuning: DEFAULT_READER_PAGE_TURN_TUNING,
     });
   });
 
@@ -90,7 +80,6 @@ describe("reader settings", () => {
       normalizeSettings({
         appearance: DEFAULT_READER_APPEARANCE,
         pageTurnTuning: {
-          click: DEFAULT_READER_CLICK_PAGE_TURN_TUNING,
           gesture: {
             ...DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
             curvatureRelaxation: 20,
@@ -109,6 +98,28 @@ describe("reader settings", () => {
       maximumSpeedScale: 1.4,
       idleDecaySeconds: 0.12,
     });
+  });
+
+  it("discards legacy click tuning while retaining gesture tuning", () => {
+    const gesture = {
+      ...DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
+      liftVelocity: 1.5,
+    };
+
+    expect(
+      normalizeSettings({
+        pageTurnTuning: {
+          click: {
+            releaseX: 0.58,
+            liftVelocity: 0.7,
+            liftToLeft: 1.4,
+            curvatureRelaxation: 14,
+            playbackSpeed: 2,
+          },
+          gesture,
+        },
+      }).pageTurnTuning,
+    ).toEqual({ gesture });
   });
 
   it("falls back for corrupt settings", () => {

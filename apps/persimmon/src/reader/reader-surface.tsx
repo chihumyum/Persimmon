@@ -3,8 +3,8 @@ import { NotoSansSC_400Regular } from "@expo-google-fonts/noto-sans-sc/400Regula
 import { NotoSerifSC_400Regular } from "@expo-google-fonts/noto-serif-sc/400Regular";
 import type { BookIR, BookPosition } from "@persimmon/book-core";
 import {
+  DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
   LiveReader,
-  type AutomaticPageTurnTuning,
   type GesturePageTurnTuning,
   type ReaderAppearance,
   type ReaderLayoutMode,
@@ -64,7 +64,6 @@ export interface ReaderSurfaceProps {
   topInset: number;
   bottomInset: number;
   toolbarVisible: boolean;
-  automaticPageTurnTuning: AutomaticPageTurnTuning;
   gesturePageTurnTuning: GesturePageTurnTuning;
   initialPosition?: BookPosition;
   loadResource: (assetId: string) => Promise<Uint8Array | undefined>;
@@ -110,7 +109,6 @@ function FontBackedReaderSurface({
   topInset,
   bottomInset,
   toolbarVisible,
-  automaticPageTurnTuning,
   gesturePageTurnTuning,
   initialPosition,
   loadResource,
@@ -177,7 +175,7 @@ function FontBackedReaderSurface({
       topInset={topInset}
       bottomInset={bottomInset}
       toolbarVisible={toolbarVisible}
-      automaticPageTurnTuning={automaticPageTurnTuning}
+      automaticPageTurnTuning={DEFAULT_AUTOMATIC_PAGE_TURN_TUNING}
       gesturePageTurnTuning={gesturePageTurnTuning}
       initialPosition={initialPosition}
       loadResource={loadResource}
