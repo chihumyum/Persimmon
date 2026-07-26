@@ -164,6 +164,13 @@ class NativeLibraryRepository implements LibraryRepository {
   }
 
   async importBook(input: ImportBookInput): Promise<LibraryBookSummary> {
+    return this.persistImportedBook(input, new Date().toISOString());
+  }
+
+  private async persistImportedBook(
+    input: ImportBookInput,
+    addedAt: string,
+  ): Promise<LibraryBookSummary> {
     this.assertInitialized();
     const estimatedRequiredSpace =
       input.bytes.byteLength * 3 + MINIMUM_FREE_SPACE;
@@ -188,7 +195,7 @@ class NativeLibraryRepository implements LibraryRepository {
     const manifest = manifestFromImport(
       result,
       input.fileName,
-      new Date().toISOString(),
+      addedAt,
       input.bytes.byteLength,
     );
     const stage = new Directory(
@@ -233,7 +240,7 @@ class NativeLibraryRepository implements LibraryRepository {
       return openDemoBook();
     }
 
-    const manifest = this.manifests.get(bookId);
+    let manifest = this.manifests.get(bookId);
     if (!manifest) {
       throw new LibraryError("book-not-found", "书籍不存在或已被删除。");
     }
@@ -242,6 +249,29 @@ class NativeLibraryRepository implements LibraryRepository {
         "needs-reimport",
         "这本书来自旧版存储，需要重新导入原 EPUB。",
       );
+    }
+    if (manifest.compilerVersion !== EPUB_COMPILER_VERSION) {
+      const original = await new NativeBookSource(
+        this.bookDirectory(bookId),
+        manifest,
+      ).getOriginalEpub();
+      if (!original || original.byteLength === 0) {
+        throw new LibraryError(
+          "needs-reimport",
+          "这本书缺少原 EPUB，需要重新导入后才能升级。",
+        );
+      }
+      await this.persistImportedBook(
+        {
+          bytes: original,
+          fileName: manifest.sourceName,
+        },
+        manifest.addedAt,
+      );
+      manifest = this.manifests.get(bookId);
+      if (!manifest) {
+        throw new LibraryError("corrupt-storage", "书籍升级失败，请重新导入。");
+      }
     }
 
     const source = new NativeBookSource(this.bookDirectory(bookId), manifest);

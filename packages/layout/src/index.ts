@@ -6,6 +6,7 @@ export {
   type MeasuredLine,
   type MeasuredParagraph,
   type PageLayoutSpec,
+  type PageLinkRegion,
   type PageLocationIndex,
   type PageScene,
   type PageSceneItem,
@@ -18,7 +19,7 @@ export {
   type SceneImage,
   type TypographyPreset,
 } from "./types";
-export { paginateBook } from "./paginate";
+export { paginateBook, paginateBookSection } from "./paginate";
 export { createPageLocationIndex } from "./location-index";
 export {
   ReaderSession,

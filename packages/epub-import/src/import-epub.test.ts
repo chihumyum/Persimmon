@@ -388,6 +388,133 @@ describe("importEpub", () => {
     });
   });
 
+  it("compiles footnotes, endnotes, and backlinks into stable positions", () => {
+    const bytes = fixtureBytes({
+      packageXml: `<?xml version="1.0" encoding="utf-8"?>
+        <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+          <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <dc:title>Notes</dc:title>
+          </metadata>
+          <manifest>
+            <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+            <item id="notes" href="notes.xhtml" media-type="application/xhtml+xml"/>
+          </manifest>
+          <spine>
+            <itemref idref="chapter"/>
+            <itemref idref="notes"/>
+          </spine>
+        </package>`,
+      resources: {
+        "EPUB/chapter.xhtml": `<?xml version="1.0"?>
+          <html
+            xmlns="http://www.w3.org/1999/xhtml"
+            xmlns:epub="http://www.idpf.org/2007/ops"
+          >
+            <body>
+              <p>
+                Body<a id="ref-foot" href="#fn-one" epub:type="noteref">1</a>
+              </p>
+              <aside id="fn-one" epub:type="footnote">
+                <p>
+                  <a href="#ref-foot" role="doc-backlink">1</a> Footnote text.
+                  <a href="#ref-end">See the endnote reference</a>
+                </p>
+              </aside>
+              <p>
+                More<sup><a id="ref-end" class="endnote-ref" href="notes.xhtml#en-one">2</a></sup>
+              </p>
+            </body>
+          </html>`,
+        "EPUB/notes.xhtml": `<?xml version="1.0"?>
+          <html xmlns="http://www.w3.org/1999/xhtml">
+            <body>
+              <section role="doc-endnotes">
+                <h1>Notes</h1>
+                <ol>
+                  <li id="en-one">
+                    <p><a href="chapter.xhtml#ref-end" role="doc-backlink">2</a> Endnote text.</p>
+                  </li>
+                </ol>
+              </section>
+            </body>
+          </html>`,
+      },
+    });
+
+    const result = importEpub(bytes);
+    const chapter = result.book.sections[0]!;
+    const notes = result.book.sections[1]!;
+    const footnoteBlock = chapter.blocks[1];
+    const endnoteBlock = notes.blocks[1];
+    const footnoteReference =
+      chapter.blocks[0]?.kind === "paragraph"
+        ? chapter.blocks[0].runs.find((run) => run.link)
+        : undefined;
+    const endnoteReference =
+      chapter.blocks[2]?.kind === "paragraph"
+        ? chapter.blocks[2].runs.find((run) => run.link)
+        : undefined;
+
+    expect(footnoteReference).toMatchObject({
+      text: "¹",
+      verticalAlign: "superscript",
+      link: {
+        kind: "note-reference",
+        noteKind: "footnote",
+        label: "1",
+        target: {
+          sectionId: chapter.id,
+          blockId: footnoteBlock?.id,
+          offset: 0,
+        },
+      },
+    });
+    expect(footnoteBlock).toMatchObject({ noteKind: "footnote" });
+    expect(endnoteReference).toMatchObject({
+      text: "²",
+      verticalAlign: "superscript",
+      link: {
+        kind: "note-reference",
+        noteKind: "endnote",
+        label: "2",
+        target: {
+          sectionId: notes.id,
+          blockId: endnoteBlock?.id,
+          offset: 0,
+        },
+      },
+    });
+    expect(endnoteBlock).toMatchObject({ noteKind: "endnote" });
+
+    const footnoteBacklink =
+      footnoteBlock?.kind === "paragraph"
+        ? footnoteBlock.runs.find((run) => run.link)
+        : undefined;
+    const endnoteBacklink =
+      endnoteBlock?.kind === "paragraph"
+        ? endnoteBlock.runs.find((run) => run.link)
+        : undefined;
+    expect(footnoteBacklink?.link).toMatchObject({
+      kind: "note-backlink",
+      noteKind: "footnote",
+      target: { sectionId: chapter.id, blockId: chapter.blocks[0]?.id },
+    });
+    expect(
+      footnoteBlock?.kind === "paragraph"
+        ? footnoteBlock.runs.find((run) => run.link?.kind === "internal")?.link
+        : undefined,
+    ).toMatchObject({
+      kind: "internal",
+      target: { sectionId: chapter.id, blockId: chapter.blocks[2]?.id },
+    });
+    expect(endnoteBacklink?.link).toMatchObject({
+      kind: "note-backlink",
+      noteKind: "endnote",
+      target: { sectionId: chapter.id, blockId: chapter.blocks[2]?.id },
+    });
+    expect(result.warnings).toEqual([]);
+  });
+
   it("rejects malformed package XML", () => {
     const bytes = fixtureBytes({
       packageXml:

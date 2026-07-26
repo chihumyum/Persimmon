@@ -1,4 +1,3 @@
-import type { BookIR } from "@persimmon/book-core";
 import {
   createDefaultPageLayoutSpec,
   type PageLayoutSpec,
@@ -20,6 +19,10 @@ export function createReaderLayoutSpec(
   return {
     ...spec,
     body: { ...spec.body, fontSize },
+    note: {
+      ...spec.note,
+      fontSize: spec.note.fontSize * scale,
+    },
     headings: {
       1: {
         ...spec.headings[1],
@@ -34,19 +37,6 @@ export function createReaderLayoutSpec(
         fontSize: spec.headings[3].fontSize * scale,
       },
     },
-  };
-}
-
-export function bookForSection(book: BookIR, sectionIndex: number): BookIR {
-  return {
-    schemaVersion: book.schemaVersion,
-    id: book.id,
-    revisionId: book.revisionId,
-    title: book.title,
-    ...(book.language ? { language: book.language } : {}),
-    sections: [book.sections[sectionIndex]!],
-    assets: book.assets,
-    ...(book.coverAssetId ? { coverAssetId: book.coverAssetId } : {}),
   };
 }
 

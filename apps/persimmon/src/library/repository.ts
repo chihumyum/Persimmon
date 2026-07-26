@@ -151,6 +151,13 @@ class IndexedDbLibraryRepository implements LibraryRepository {
   }
 
   async importBook(input: ImportBookInput): Promise<LibraryBookSummary> {
+    return this.persistImportedBook(input, new Date().toISOString());
+  }
+
+  private async persistImportedBook(
+    input: ImportBookInput,
+    addedAt: string,
+  ): Promise<LibraryBookSummary> {
     const database = this.requireDatabase();
     const contentDigest = await sha256Hex(input.bytes);
     const result = await compileEpubInWorker(input.bytes, contentDigest);
@@ -166,7 +173,7 @@ class IndexedDbLibraryRepository implements LibraryRepository {
     const manifest = manifestFromImport(
       result,
       input.fileName,
-      new Date().toISOString(),
+      addedAt,
       input.bytes.byteLength,
     );
     const record: StoredBookRecord = {
@@ -220,7 +227,7 @@ class IndexedDbLibraryRepository implements LibraryRepository {
     }
 
     const database = this.requireDatabase();
-    const record = await database.get("books", bookId);
+    let record = await database.get("books", bookId);
     if (!record) {
       throw new LibraryError("book-not-found", "书籍不存在或已被删除。");
     }
@@ -229,6 +236,25 @@ class IndexedDbLibraryRepository implements LibraryRepository {
         "needs-reimport",
         "这本书来自旧版存储，需要重新导入原 EPUB。",
       );
+    }
+    if (record.compilerVersion !== EPUB_COMPILER_VERSION) {
+      if (record.originalEpub.byteLength === 0) {
+        throw new LibraryError(
+          "needs-reimport",
+          "这本书缺少原 EPUB，需要重新导入后才能升级。",
+        );
+      }
+      await this.persistImportedBook(
+        {
+          bytes: record.originalEpub,
+          fileName: record.sourceName,
+        },
+        record.addedAt,
+      );
+      record = await database.get("books", bookId);
+      if (!record) {
+        throw new LibraryError("corrupt-storage", "书籍升级失败，请重新导入。");
+      }
     }
 
     const source = new IndexedDbBookSource(database, record);

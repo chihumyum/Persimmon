@@ -3,12 +3,14 @@ import type {
   ParagraphLayoutBackend,
   ParagraphLayoutInput,
   Rect,
+  ResolvedRun,
   TypographyPreset,
 } from "@persimmon/layout";
 import {
   FontSlant,
   FontWeight,
   Skia,
+  TextDecoration,
   TextAlign,
   type SkParagraph,
   type SkParagraphStyle,
@@ -19,6 +21,7 @@ import {
 import { normalizeUtf16Boundary } from "./utf16";
 
 const TEXT_COLOR = Skia.Color("#2f2b26");
+const LINK_COLOR = Skia.Color("#a64f2d");
 
 function textAlignOf(align: TypographyPreset["align"]): TextAlign {
   switch (align) {
@@ -33,12 +36,30 @@ function textAlignOf(align: TypographyPreset["align"]): TextAlign {
 
 function textStyleOf(
   input: ParagraphLayoutInput,
-  marks: readonly ("strong" | "emphasis")[],
+  run?: Pick<ResolvedRun, "link" | "marks" | "verticalAlign">,
 ): SkTextStyle {
+  const marks = run?.marks ?? [];
+  const verticalScale = run?.verticalAlign ? 0.78 : 1;
   return {
-    color: TEXT_COLOR,
+    color: run?.link ? LINK_COLOR : TEXT_COLOR,
+    ...(run?.link?.kind === "internal"
+      ? {
+          decoration: TextDecoration.Underline,
+          decorationColor: LINK_COLOR,
+        }
+      : {}),
     fontFamilies: [...input.style.fontFamilies],
-    fontSize: input.style.fontSize,
+    fontSize: input.style.fontSize * verticalScale,
+    ...(run?.verticalAlign
+      ? {
+          fontFeatures: [
+            {
+              name: run.verticalAlign === "superscript" ? "sups" : "subs",
+              value: 1,
+            },
+          ],
+        }
+      : {}),
     fontStyle: {
       weight: (marks.includes("strong")
         ? FontWeight.Bold
@@ -56,7 +77,7 @@ function textStyleOf(
 function paragraphStyleOf(input: ParagraphLayoutInput): SkParagraphStyle {
   return {
     textAlign: textAlignOf(input.style.align),
-    textStyle: textStyleOf(input, []),
+    textStyle: textStyleOf(input),
   };
 }
 
@@ -91,7 +112,7 @@ export function createSkiaParagraphBackend(
       );
 
       for (const run of input.runs) {
-        builder.pushStyle(textStyleOf(input, run.marks));
+        builder.pushStyle(textStyleOf(input, run));
         builder.addText(run.text);
         builder.pop();
       }

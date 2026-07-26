@@ -26,6 +26,7 @@ export interface ParagraphBlockIR {
   kind: "paragraph";
   id: string;
   runs: readonly InlineRunIR[];
+  noteKind?: NoteKind;
   style?: BlockStyleIR;
   source?: ExternalSourceRef;
 }
@@ -35,6 +36,7 @@ export interface HeadingBlockIR {
   id: string;
   level: 1 | 2 | 3;
   runs: readonly InlineRunIR[];
+  noteKind?: NoteKind;
   style?: BlockStyleIR;
   source?: ExternalSourceRef;
 }
@@ -65,9 +67,25 @@ export interface BlockStyleIR {
 
 export type InlineMark = "strong" | "emphasis";
 
+export type NoteKind = "footnote" | "endnote";
+
+export type InternalLinkKind = "internal" | "note-reference" | "note-backlink";
+
+export interface InternalLinkIR {
+  kind: InternalLinkKind;
+  target: BookPosition;
+  noteKind?: NoteKind;
+  /**
+   * Human-readable source label before any visual superscript normalization.
+   */
+  label: string;
+}
+
 export interface InlineRunIR {
   text: string;
   marks?: readonly InlineMark[];
+  verticalAlign?: "superscript" | "subscript";
+  link?: InternalLinkIR;
 }
 
 export interface ImageAssetIR {

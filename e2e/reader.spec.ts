@@ -55,19 +55,34 @@ function createTestEpub(): Buffer {
       .hidden { display: none; }
     `),
     "EPUB/one.xhtml": strToU8(`<?xml version="1.0"?>
-      <html xmlns="http://www.w3.org/1999/xhtml">
+      <html
+        xmlns="http://www.w3.org/1999/xhtml"
+        xmlns:epub="http://www.idpf.org/2007/ops"
+      >
         <head><link rel="stylesheet" href="book.css"/></head>
         <body>
           <h1 id="opening">第一章</h1>
+          <p>
+            这里有一条脚注<a id="note-reference" href="two.xhtml#note-one" epub:type="noteref">1</a>。
+          </p>
           <p class="hidden">这段内容必须被安全样式层过滤。</p>
           <img src="cover.png" alt="测试插图"/>
           ${paragraphs}
         </body>
       </html>`),
     "EPUB/two.xhtml": strToU8(`<?xml version="1.0"?>
-      <html xmlns="http://www.w3.org/1999/xhtml">
+      <html
+        xmlns="http://www.w3.org/1999/xhtml"
+        xmlns:epub="http://www.idpf.org/2007/ops"
+      >
         <head><link rel="stylesheet" href="book.css"/></head>
-        <body><h1 id="second">第二章</h1><p>目录跳转成功。</p></body>
+        <body>
+          <h1 id="second">第二章</h1>
+          <p>目录跳转成功。</p>
+          <aside id="note-one" epub:type="footnote">
+            <p><a href="one.xhtml#note-reference" role="doc-backlink">1</a> 这是脚注正文。</p>
+          </aside>
+        </body>
       </html>`),
     "EPUB/cover.png": COVER_PNG,
   };
@@ -91,6 +106,11 @@ test.beforeEach(async ({ page }) => {
 test("imports, reads, navigates, resumes, and deletes a local EPUB", async ({
   page,
 }) => {
+  // Chromium's software CanvasKit path can spend tens of seconds delivering
+  // the drag's animation frames even though every reader state transition
+  // completes correctly. Keep the full lifecycle assertion above that jitter.
+  test.setTimeout(60_000);
+
   const fileChooserPromise = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "导入 EPUB" }).click();
   const fileChooser = await fileChooserPromise;
@@ -202,4 +222,98 @@ test("persists a two-page layout and hides floating controls while turning", asy
   await expect(
     page.getByRole("button", { name: "切换到单页布局" }),
   ).toBeVisible();
+});
+
+test("opens a footnote and returns to its exact reference", async ({
+  page,
+}) => {
+  const fileChooserPromise = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "导入 EPUB" }).click();
+  const fileChooser = await fileChooserPromise;
+  await fileChooser.setFiles({
+    name: "persimmon-footnote-e2e.epub",
+    mimeType: "application/epub+zip",
+    buffer: createTestEpub(),
+  });
+
+  await page.getByRole("link", { name: "打开脚注 1" }).click();
+  await expect(
+    page.getByRole("button", { name: "返回脚注引用位置 1" }),
+  ).toBeVisible();
+  await expect(page.getByLabel(/全书 100%/)).toBeVisible();
+
+  await page.getByRole("button", { name: "返回脚注引用位置 1" }).click();
+  await expect(page.getByLabel(/本章第 1 页/)).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "返回脚注引用位置 1" }),
+  ).toHaveCount(0);
+
+  await page.waitForTimeout(400);
+  await page.getByRole("button", { name: "返回书架" }).click();
+  await page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("persimmon-library");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const books = await new Promise<
+      Array<{ id: string; compilerVersion: number }>
+    >((resolve, reject) => {
+      const request = database
+        .transaction("books", "readonly")
+        .objectStore("books")
+        .getAll();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const [book] = books;
+    if (!book) {
+      throw new Error("Expected an imported book.");
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(
+        ["books", "sections"],
+        "readwrite",
+      );
+      transaction.objectStore("books").put({
+        ...book,
+        compilerVersion: 3,
+      });
+      transaction
+        .objectStore("sections")
+        .delete(IDBKeyRange.bound([book.id, ""], [book.id, "\uffff"]));
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+    database.close();
+  });
+
+  await page.getByRole("button", { name: "打开 E2E 柿子书" }).click();
+  await expect(page.getByRole("link", { name: "打开脚注 1" })).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const database = await new Promise<IDBDatabase>((resolve, reject) => {
+          const request = indexedDB.open("persimmon-library");
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        const books = await new Promise<Array<{ compilerVersion: number }>>(
+          (resolve, reject) => {
+            const request = database
+              .transaction("books", "readonly")
+              .objectStore("books")
+              .getAll();
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+          },
+        );
+        database.close();
+        return books[0]?.compilerVersion;
+      }),
+    )
+    .toBe(4);
 });

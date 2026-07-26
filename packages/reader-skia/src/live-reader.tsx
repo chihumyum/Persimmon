@@ -1,5 +1,9 @@
 import type { BookIR, BookLocator, BookPosition } from "@persimmon/book-core";
-import { paginateBook, type PaginationResult } from "@persimmon/layout";
+import {
+  paginateBookSection,
+  type PageLinkRegion,
+  type PaginationResult,
+} from "@persimmon/layout";
 import {
   MIN_PRESSED_EDGE_X,
   NaturalPageTurnController,
@@ -87,7 +91,6 @@ import {
 import { ReaderPageLayer } from "./reader-page-layer";
 import { READER_PAPER_COLOR } from "./reader-theme";
 import {
-  bookForSection,
   createReaderLayoutSpec,
   disposePaginationAfterPaint,
 } from "./reader-pagination";
@@ -193,6 +196,72 @@ interface LazyReaderEngineProps extends LiveReaderProps {
   readonly fontSize: number;
 }
 
+interface ReaderLinkHit {
+  readonly key: string;
+  readonly region: PageLinkRegion;
+  readonly frame: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
+}
+
+interface NoteReturnAnchor {
+  readonly position: BookPosition;
+  readonly label: string;
+  readonly noteKind?: PageLinkRegion["link"]["noteKind"];
+}
+
+const MINIMUM_LINK_TOUCH_TARGET = 44;
+
+function expandedLinkHitFrame(
+  region: PageLinkRegion,
+  offsetX: number,
+  pageWidth: number,
+  pageHeight: number,
+) {
+  const targetWidth = Math.max(MINIMUM_LINK_TOUCH_TARGET, region.frame.width);
+  const targetHeight = Math.max(MINIMUM_LINK_TOUCH_TARGET, region.frame.height);
+  const pageLeft = offsetX;
+  const pageRight = offsetX + pageWidth;
+  const x = Math.min(
+    pageRight - targetWidth,
+    Math.max(
+      pageLeft,
+      offsetX + region.frame.x - (targetWidth - region.frame.width) * 0.5,
+    ),
+  );
+  const y = Math.min(
+    pageHeight - targetHeight,
+    Math.max(0, region.frame.y - (targetHeight - region.frame.height) * 0.5),
+  );
+  return {
+    x,
+    y,
+    width: targetWidth,
+    height: targetHeight,
+  };
+}
+
+function noteKindLabel(noteKind: PageLinkRegion["link"]["noteKind"]): string {
+  return noteKind === "endnote"
+    ? "尾注"
+    : noteKind === "footnote"
+      ? "脚注"
+      : "注释";
+}
+
+function linkAccessibilityLabel(region: PageLinkRegion): string {
+  if (region.link.kind === "note-reference") {
+    return `打开${noteKindLabel(region.link.noteKind)} ${region.link.label}`;
+  }
+  if (region.link.kind === "note-backlink") {
+    return `返回正文 ${region.link.label}`;
+  }
+  return `跳转到 ${region.link.label}`;
+}
+
 function LazyReaderEngine({
   book,
   fontProvider,
@@ -258,11 +327,7 @@ function LazyReaderEngine({
       if (cached) {
         return cached;
       }
-      const pagination = paginateBook(
-        bookForSection(book, sectionIndex),
-        spec,
-        backend,
-      );
+      const pagination = paginateBookSection(book, sectionIndex, spec, backend);
       paginationCache.set(sectionIndex, pagination);
       return pagination;
     },
@@ -335,6 +400,9 @@ function LazyReaderEngine({
   const [readerState, setReaderState] = useState(() =>
     createPageTurnSchedulerState(initialAddress),
   );
+  const [noteReturnAnchor, setNoteReturnAnchor] = useState<
+    NoteReturnAnchor | undefined
+  >();
   // Native Gesture Handler can deliver begin and release to the RN thread
   // inside one React render interval. Keep scheduling ownership synchronous
   // so a short flick can release the exact turn it just claimed instead of
@@ -354,6 +422,62 @@ function LazyReaderEngine({
     },
     [],
   );
+  const pageAddressForPosition = useCallback(
+    (position: BookPosition): PageAddress | undefined => {
+      const sectionIndex = book.sections.findIndex(
+        (section) => section.id === position.sectionId,
+      );
+      if (sectionIndex < 0) {
+        return undefined;
+      }
+      const pageIndex =
+        ensurePagination(sectionIndex).locationIndex.pageFor(position);
+      return pageIndex === undefined ? undefined : { sectionIndex, pageIndex };
+    },
+    [book.sections, ensurePagination],
+  );
+  const jumpToPosition = useCallback(
+    (position: BookPosition): boolean => {
+      if (readerStateRef.current.turns.length > 0) {
+        return false;
+      }
+      const target = pageAddressForPosition(position);
+      if (!target) {
+        return false;
+      }
+      mutateReaderState(() => createPageTurnSchedulerState(target));
+      return true;
+    },
+    [mutateReaderState, pageAddressForPosition],
+  );
+  const handleLinkPress = useCallback(
+    (region: PageLinkRegion) => {
+      if (region.link.kind === "note-backlink" && noteReturnAnchor) {
+        if (jumpToPosition(noteReturnAnchor.position)) {
+          setNoteReturnAnchor(undefined);
+        }
+        return;
+      }
+      if (!jumpToPosition(region.link.target)) {
+        return;
+      }
+      if (region.link.kind === "note-reference") {
+        setNoteReturnAnchor({
+          position: region.source,
+          label: region.link.label,
+          ...(region.link.noteKind ? { noteKind: region.link.noteKind } : {}),
+        });
+      } else if (region.link.kind === "note-backlink") {
+        setNoteReturnAnchor(undefined);
+      }
+    },
+    [jumpToPosition, noteReturnAnchor],
+  );
+  const returnToNoteReference = useCallback(() => {
+    if (noteReturnAnchor && jumpToPosition(noteReturnAnchor.position)) {
+      setNoteReturnAnchor(undefined);
+    }
+  }, [jumpToPosition, noteReturnAnchor]);
 
   useEffect(() => {
     if (Platform.OS === "web") {
@@ -1102,6 +1226,31 @@ function LazyReaderEngine({
     [addressesForView, readerState.settled],
   );
   const settledPagination = ensurePagination(readerState.settled.sectionIndex);
+  const settledLinkHits = useMemo<readonly ReaderLinkHit[]>(
+    () =>
+      settledAddresses.flatMap((address, slot) => {
+        const page = ensurePagination(address.sectionIndex).pages[
+          address.pageIndex
+        ];
+        return (page?.links ?? []).map((region, regionIndex) => ({
+          key: [
+            address.sectionIndex,
+            address.pageIndex,
+            region.source.blockId,
+            region.source.offset,
+            regionIndex,
+          ].join(":"),
+          region,
+          frame: expandedLinkHitFrame(
+            region,
+            slot * physicalPageWidth,
+            physicalPageWidth,
+            height,
+          ),
+        }));
+      }),
+    [ensurePagination, height, physicalPageWidth, settledAddresses],
+  );
   const devicePixelRatio = Math.max(1, PixelRatio.get());
   const pageCaptureIdentity = useCallback(
     (address: PageAddress): PageCaptureIdentity<PageAddress> => ({
@@ -1756,12 +1905,58 @@ function LazyReaderEngine({
       </View>
     </View>
   );
-  return Platform.OS === "web" ? (
-    readerContent
-  ) : (
-    <GestureDetector gesture={nativePageTurn.gesture}>
-      {readerContent}
-    </GestureDetector>
+  const linkOverlay =
+    readerState.turns.length === 0 ? (
+      <View pointerEvents="box-none" style={styles.linkOverlay}>
+        {settledLinkHits.map(({ frame, key, region }) => (
+          <Pressable
+            key={key}
+            accessibilityHint={
+              region.link.kind === "note-reference"
+                ? "跳到注释内容，并提供返回正文的按钮"
+                : undefined
+            }
+            accessibilityLabel={linkAccessibilityLabel(region)}
+            accessibilityRole="link"
+            onPress={() => handleLinkPress(region)}
+            style={({ pressed }) => [
+              styles.linkHit,
+              {
+                height: frame.height,
+                left: frame.x,
+                top: frame.y,
+                width: frame.width,
+              },
+              pressed && styles.linkHitPressed,
+            ]}
+          />
+        ))}
+        {noteReturnAnchor ? (
+          <Pressable
+            accessibilityLabel={`返回${noteKindLabel(noteReturnAnchor.noteKind)}引用位置 ${noteReturnAnchor.label}`}
+            accessibilityRole="button"
+            onPress={returnToNoteReference}
+            style={({ pressed }) => [
+              styles.noteReturnButton,
+              pressed && styles.noteReturnButtonPressed,
+            ]}
+          >
+            <Text style={styles.noteReturnText}>↩ 返回正文</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    ) : null;
+  return (
+    <View style={styles.container}>
+      {Platform.OS === "web" ? (
+        readerContent
+      ) : (
+        <GestureDetector gesture={nativePageTurn.gesture}>
+          {readerContent}
+        </GestureDetector>
+      )}
+      {linkOverlay}
+    </View>
   );
 }
 
@@ -2110,8 +2305,56 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
   },
+  linkHit: {
+    backgroundColor: "transparent",
+    borderRadius: 12,
+    position: "absolute",
+  },
+  linkHitPressed: {
+    backgroundColor: "rgba(201, 122, 82, 0.16)",
+  },
+  linkOverlay: {
+    bottom: 0,
+    left: 0,
+    pointerEvents: "box-none",
+    position: "absolute",
+    right: 0,
+    top: 0,
+    zIndex: 12,
+  },
   leftEdge: {
     left: 0,
+  },
+  noteReturnButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(251, 247, 240, 0.96)",
+    borderColor: "rgba(166, 79, 45, 0.28)",
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: "center",
+    left: "30%",
+    minHeight: 36,
+    paddingHorizontal: 14,
+    position: "absolute",
+    right: "30%",
+    top: 14,
+    ...(Platform.OS === "web"
+      ? { boxShadow: "0 3px 12px rgba(61, 48, 38, 0.14)" }
+      : {
+          elevation: 3,
+          shadowColor: "#3d3026",
+          shadowOffset: { width: 0, height: 3 },
+          shadowOpacity: 0.14,
+          shadowRadius: 6,
+        }),
+  },
+  noteReturnButtonPressed: {
+    backgroundColor: "rgba(244, 229, 216, 0.98)",
+  },
+  noteReturnText: {
+    color: "#9d4728",
+    fontSize: 13,
+    fontWeight: "600",
   },
   pageBadge: {
     alignItems: "center",

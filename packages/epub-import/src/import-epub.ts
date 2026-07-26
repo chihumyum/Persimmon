@@ -10,6 +10,8 @@ import {
   type ImageAssetIR,
   type InlineMark,
   type InlineRunIR,
+  type InternalLinkKind,
+  type NoteKind,
   type SectionIR,
 } from "@persimmon/book-core";
 import type { Element } from "@xmldom/xmldom";
@@ -51,7 +53,7 @@ const EPUB_MIMETYPE = "application/epub+zip";
 const XHTML_MEDIA_TYPE = "application/xhtml+xml";
 const IMAGE_MEDIA_TYPE_PREFIX = "image/";
 
-export const EPUB_COMPILER_VERSION = 3 as const;
+export const EPUB_COMPILER_VERSION = 4 as const;
 
 export interface EpubImportWarning {
   code:
@@ -65,6 +67,7 @@ export interface EpubImportWarning {
     | "duplicate-spine-item-recovered"
     | "navigation-item-skipped"
     | "navigation-target-fallback"
+    | "internal-link-skipped"
     | "stylesheet-skipped";
   message: string;
   context?: string;
@@ -122,6 +125,7 @@ interface SpineItem {
 interface TextToken {
   kind: "text";
   run: InlineRunIR;
+  pendingLink?: PendingInternalLink;
 }
 
 interface ImageToken {
@@ -131,6 +135,30 @@ interface ImageToken {
 
 type InlineToken = TextToken | ImageToken;
 type StyleResolver = (element: ContentElement) => EpubElementStyle | undefined;
+
+interface PendingInternalLink {
+  readonly href: string;
+  readonly kind: InternalLinkKind;
+  readonly label: string;
+  readonly sourceNoteKind?: NoteKind;
+}
+
+interface UnresolvedInternalLink extends PendingInternalLink {
+  readonly run: InlineRunIR;
+  readonly sourcePath: string;
+}
+
+interface InlineContext {
+  readonly marks: ReadonlySet<InlineMark>;
+  readonly noteKind?: NoteKind;
+  readonly pendingLink?: PendingInternalLink;
+  readonly verticalAlign?: "superscript" | "subscript";
+}
+
+interface NoteContext {
+  readonly noteKind?: NoteKind;
+  readonly collectionKind?: NoteKind;
+}
 
 interface RawNavigationItem {
   readonly label: string;
@@ -174,8 +202,160 @@ const IGNORED_ELEMENTS = new Set([
 
 const MARK_ORDER: readonly InlineMark[] = ["strong", "emphasis"];
 
+const SUPERSCRIPT_CHARACTERS: Readonly<Record<string, string>> = {
+  "0": "⁰",
+  "1": "¹",
+  "2": "²",
+  "3": "³",
+  "4": "⁴",
+  "5": "⁵",
+  "6": "⁶",
+  "7": "⁷",
+  "8": "⁸",
+  "9": "⁹",
+  "+": "⁺",
+  "-": "⁻",
+  "=": "⁼",
+  "(": "⁽",
+  ")": "⁾",
+};
+
 function splitTokens(value: string | null | undefined): Set<string> {
   return new Set((value ?? "").split(/\s+/).filter(Boolean));
+}
+
+function elementSemanticTokens(element: ContentElement): Set<string> {
+  return splitTokens(
+    [
+      contentAttribute(element, "epub:type"),
+      contentAttribute(element, "type"),
+      contentAttribute(element, "role"),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase(),
+  );
+}
+
+function elementClassTokens(element: ContentElement): Set<string> {
+  return splitTokens(contentAttribute(element, "class")?.toLowerCase());
+}
+
+function hasClassLike(element: ContentElement, pattern: RegExp): boolean {
+  return [...elementClassTokens(element)].some((token) => pattern.test(token));
+}
+
+function noteKindForElement(element: ContentElement): NoteKind | undefined {
+  const semantics = elementSemanticTokens(element);
+  if (
+    semantics.has("endnote") ||
+    semantics.has("rearnote") ||
+    semantics.has("doc-endnote")
+  ) {
+    return "endnote";
+  }
+  if (
+    semantics.has("footnote") ||
+    semantics.has("note") ||
+    semantics.has("doc-footnote")
+  ) {
+    return "footnote";
+  }
+  if (hasClassLike(element, /(?:^|[-_])(footnote|fn)(?:$|[-_\d])/)) {
+    return "footnote";
+  }
+  if (hasClassLike(element, /(?:^|[-_])(endnote|rearnote)(?:$|[-_\d])/)) {
+    return "endnote";
+  }
+  return undefined;
+}
+
+function noteCollectionKindForElement(
+  element: ContentElement,
+): NoteKind | undefined {
+  const semantics = elementSemanticTokens(element);
+  return semantics.has("endnotes") ||
+    semantics.has("rearnotes") ||
+    semantics.has("doc-endnotes")
+    ? "endnote"
+    : undefined;
+}
+
+function noteContextForElement(
+  element: ContentElement,
+  inherited: NoteContext,
+): NoteContext {
+  const explicitNoteKind = noteKindForElement(element);
+  const collectionKind =
+    noteCollectionKindForElement(element) ?? inherited.collectionKind;
+  const collectionItemKind =
+    inherited.collectionKind && element.name === "li"
+      ? inherited.collectionKind
+      : undefined;
+  return {
+    ...((explicitNoteKind ?? collectionItemKind ?? inherited.noteKind)
+      ? {
+          noteKind:
+            explicitNoteKind ?? collectionItemKind ?? inherited.noteKind,
+        }
+      : {}),
+    ...(collectionKind ? { collectionKind } : {}),
+  };
+}
+
+function pendingLinkForElement(
+  element: ContentElement,
+  context: InlineContext,
+): PendingInternalLink | undefined {
+  if (element.name !== "a") {
+    return context.pendingLink;
+  }
+  const href = contentAttribute(element, "href")?.trim();
+  if (
+    !href ||
+    /^[A-Za-z][A-Za-z0-9+.-]*:/.test(href) ||
+    href.startsWith("//")
+  ) {
+    return undefined;
+  }
+
+  const semantics = elementSemanticTokens(element);
+  const isNoteReference =
+    semantics.has("noteref") ||
+    semantics.has("doc-noteref") ||
+    hasClassLike(
+      element,
+      /(?:^|[-_])(noteref|note-ref|fnref|footnote-ref)(?:$|[-_\d])/,
+    ) ||
+    (context.verticalAlign === "superscript" && href.includes("#"));
+  const isBacklink =
+    semantics.has("backlink") ||
+    semantics.has("doc-backlink") ||
+    hasClassLike(element, /(?:^|[-_])(backlink|backref)(?:$|[-_\d])/);
+  const targetFragment = href.includes("#")
+    ? href.slice(href.lastIndexOf("#") + 1).toLowerCase()
+    : "";
+  const isLikelyBacklink =
+    context.noteKind !== undefined &&
+    /^(?:(?:backref|noteref|note-ref|fnref|footnote-ref)(?:[-_]?\d+)?|ref[-_]?\d+)$/u.test(
+      targetFragment,
+    );
+  return {
+    href,
+    kind: isNoteReference
+      ? "note-reference"
+      : isBacklink || isLikelyBacklink
+        ? "note-backlink"
+        : "internal",
+    label: normalizedContentText(element) ?? href,
+    ...(context.noteKind ? { sourceNoteKind: context.noteKind } : {}),
+  };
+}
+
+function superscriptText(value: string): string {
+  return [...value]
+    .map((character) => SUPERSCRIPT_CHARACTERS[character] ?? character)
+    .join("");
 }
 
 function stableHash(bytes: Uint8Array): string {
@@ -483,10 +663,25 @@ function sameMarks(
   );
 }
 
+function samePendingLink(
+  left: PendingInternalLink | undefined,
+  right: PendingInternalLink | undefined,
+): boolean {
+  return (
+    left === right ||
+    (left !== undefined &&
+      right !== undefined &&
+      left.href === right.href &&
+      left.kind === right.kind &&
+      left.label === right.label &&
+      left.sourceNoteKind === right.sourceNoteKind)
+  );
+}
+
 function appendTextToken(
   tokens: InlineToken[],
   rawText: string,
-  marks: ReadonlySet<InlineMark>,
+  context: InlineContext,
 ): void {
   let text = rawText.replace(/[\t\n\r\f ]+/g, " ");
   if (text.length === 0) {
@@ -505,24 +700,33 @@ function appendTextToken(
     return;
   }
 
-  const orderedMarks = MARK_ORDER.filter((mark) => marks.has(mark));
-  const run: InlineRunIR =
-    orderedMarks.length > 0 ? { text, marks: orderedMarks } : { text };
+  const orderedMarks = MARK_ORDER.filter((mark) => context.marks.has(mark));
+  const run: InlineRunIR = {
+    text,
+    ...(orderedMarks.length > 0 ? { marks: orderedMarks } : {}),
+    ...(context.verticalAlign ? { verticalAlign: context.verticalAlign } : {}),
+  };
 
-  if (previous?.kind === "text" && sameMarks(previous.run.marks, run.marks)) {
+  if (
+    previous?.kind === "text" &&
+    sameMarks(previous.run.marks, run.marks) &&
+    previous.run.verticalAlign === run.verticalAlign &&
+    samePendingLink(previous.pendingLink, context.pendingLink)
+  ) {
     previous.run = {
       ...previous.run,
       text: previous.run.text + text,
     };
   } else {
-    tokens.push({ kind: "text", run });
+    tokens.push({
+      kind: "text",
+      run,
+      ...(context.pendingLink ? { pendingLink: context.pendingLink } : {}),
+    });
   }
 }
 
-function appendBreakToken(
-  tokens: InlineToken[],
-  marks: ReadonlySet<InlineMark>,
-) {
+function appendBreakToken(tokens: InlineToken[], context: InlineContext) {
   const previous = tokens.at(-1);
   if (previous?.kind === "text" && previous.run.text.endsWith(" ")) {
     previous.run = {
@@ -531,40 +735,50 @@ function appendBreakToken(
     };
   }
 
-  const orderedMarks = MARK_ORDER.filter((mark) => marks.has(mark));
-  const run: InlineRunIR =
-    orderedMarks.length > 0
-      ? { text: "\n", marks: orderedMarks }
-      : { text: "\n" };
+  const orderedMarks = MARK_ORDER.filter((mark) => context.marks.has(mark));
+  const run: InlineRunIR = {
+    text: "\n",
+    ...(orderedMarks.length > 0 ? { marks: orderedMarks } : {}),
+    ...(context.verticalAlign ? { verticalAlign: context.verticalAlign } : {}),
+  };
   const last = tokens.at(-1);
-  if (last?.kind === "text" && sameMarks(last.run.marks, run.marks)) {
+  if (
+    last?.kind === "text" &&
+    sameMarks(last.run.marks, run.marks) &&
+    last.run.verticalAlign === run.verticalAlign &&
+    samePendingLink(last.pendingLink, context.pendingLink)
+  ) {
     last.run = {
       ...last.run,
       text: `${last.run.text}\n`,
     };
   } else {
-    tokens.push({ kind: "text", run });
+    tokens.push({
+      kind: "text",
+      run,
+      ...(context.pendingLink ? { pendingLink: context.pendingLink } : {}),
+    });
   }
 }
 
 function collectInlineTokens(
   node: ContentElement,
-  inheritedMarks: ReadonlySet<InlineMark>,
+  context: InlineContext,
   tokens: InlineToken[],
   resolveStyle: StyleResolver,
 ): void {
   for (const child of node.children) {
     if (child.kind === "text") {
-      appendTextToken(tokens, child.value, inheritedMarks);
+      appendTextToken(tokens, child.value, context);
       continue;
     }
-    collectInlineElement(child, inheritedMarks, tokens, resolveStyle);
+    collectInlineElement(child, context, tokens, resolveStyle);
   }
 }
 
 function collectInlineElement(
   element: ContentElement,
-  inheritedMarks: ReadonlySet<InlineMark>,
+  inherited: InlineContext,
   tokens: InlineToken[],
   resolveStyle: StyleResolver,
 ): void {
@@ -578,29 +792,62 @@ function collectInlineElement(
     return;
   }
   if (name === "br") {
-    appendBreakToken(tokens, inheritedMarks);
+    appendBreakToken(tokens, inherited);
     return;
   }
 
-  const marks = new Set(marksWithElementStyle(inheritedMarks, elementStyle));
+  const marks = new Set(marksWithElementStyle(inherited.marks, elementStyle));
   if (name === "strong" || name === "b") {
     marks.add("strong");
   }
   if (name === "em" || name === "i") {
     marks.add("emphasis");
   }
-  collectInlineTokens(element, marks, tokens, resolveStyle);
+  const inheritedVerticalAlign =
+    name === "sup"
+      ? "superscript"
+      : name === "sub"
+        ? "subscript"
+        : inherited.verticalAlign;
+  const pendingLink = pendingLinkForElement(element, {
+    ...inherited,
+    marks,
+    ...(inheritedVerticalAlign
+      ? { verticalAlign: inheritedVerticalAlign }
+      : {}),
+  });
+  const verticalAlign =
+    pendingLink?.kind === "note-reference"
+      ? "superscript"
+      : inheritedVerticalAlign;
+  collectInlineTokens(
+    element,
+    {
+      marks,
+      ...(inherited.noteKind ? { noteKind: inherited.noteKind } : {}),
+      ...(pendingLink ? { pendingLink } : {}),
+      ...(verticalAlign ? { verticalAlign } : {}),
+    },
+    tokens,
+    resolveStyle,
+  );
 }
 
-function trimRuns(runs: readonly InlineRunIR[]): InlineRunIR[] {
-  const output = runs.map((run) => ({ ...run }));
+function trimTextTokens(tokens: readonly TextToken[]): TextToken[] {
+  const output = tokens.map((token) => ({
+    ...token,
+    run: { ...token.run },
+  }));
 
   while (output.length > 0) {
     output[0] = {
       ...output[0],
-      text: output[0].text.replace(/^[ \n]+/, ""),
+      run: {
+        ...output[0].run,
+        text: output[0].run.text.replace(/^[ \n]+/, ""),
+      },
     };
-    if (output[0].text.length > 0) {
+    if (output[0].run.text.length > 0) {
       break;
     }
     output.shift();
@@ -610,9 +857,12 @@ function trimRuns(runs: readonly InlineRunIR[]): InlineRunIR[] {
     const lastIndex = output.length - 1;
     output[lastIndex] = {
       ...output[lastIndex],
-      text: output[lastIndex].text.replace(/[ \n]+$/, ""),
+      run: {
+        ...output[lastIndex].run,
+        text: output[lastIndex].run.text.replace(/[ \n]+$/, ""),
+      },
     };
-    if (output[lastIndex].text.length > 0) {
+    if (output[lastIndex].run.text.length > 0) {
       break;
     }
     output.pop();
@@ -626,6 +876,7 @@ class SectionCompiler {
   private readonly assets: Record<string, ImageAssetIR>;
   private readonly resources: Record<string, Uint8Array>;
   private readonly fragmentBlockIds = new Map<string, string>();
+  private readonly fragmentNoteKinds = new Map<string, NoteKind>();
   private blockCounter = 0;
 
   constructor(
@@ -635,6 +886,7 @@ class SectionCompiler {
     private readonly sectionId: string,
     private readonly styleSheet: EpubStyleSheet,
     private readonly warnings: EpubImportWarning[],
+    private readonly unresolvedInternalLinks: UnresolvedInternalLink[],
     assets: Record<string, ImageAssetIR>,
     resources: Record<string, Uint8Array>,
   ) {
@@ -647,7 +899,7 @@ class SectionCompiler {
     if (this.styleFor(body)?.hidden) {
       return [];
     }
-    this.processContainer(body);
+    this.processContainer(body, noteContextForElement(body, {}));
     return this.blocks;
   }
 
@@ -662,6 +914,10 @@ class SectionCompiler {
         },
       ]),
     );
+  }
+
+  fragmentNoteKindsById(): ReadonlyMap<string, NoteKind> {
+    return new Map(this.fragmentNoteKinds);
   }
 
   private nextBlockId(): string {
@@ -703,7 +959,14 @@ class SectionCompiler {
     return Object.keys(style).length > 0 ? style : undefined;
   }
 
-  private recordElementAnchors(element: ContentElement, blockId: string): void {
+  private recordElementAnchors(
+    element: ContentElement,
+    blockId: string,
+    inheritedNoteKind?: NoteKind,
+  ): void {
+    const noteKind =
+      (element.name === "a" ? undefined : noteKindForElement(element)) ??
+      inheritedNoteKind;
     const anchorNames = [
       contentAttribute(element, "id")?.trim(),
       element.name === "a"
@@ -714,50 +977,77 @@ class SectionCompiler {
       if (!this.fragmentBlockIds.has(anchorName)) {
         this.fragmentBlockIds.set(anchorName, blockId);
       }
+      if (noteKind && !this.fragmentNoteKinds.has(anchorName)) {
+        this.fragmentNoteKinds.set(anchorName, noteKind);
+      }
     }
     for (const child of element.children) {
       if (child.kind === "element") {
-        this.recordElementAnchors(child, blockId);
+        this.recordElementAnchors(child, blockId, noteKind);
       }
     }
   }
 
-  private processContainer(container: ContentElement): void {
+  private processContainer(
+    container: ContentElement,
+    context: NoteContext,
+  ): void {
     let pendingInline: InlineToken[] = [];
 
     const flushInline = (): void => {
       if (pendingInline.length > 0) {
-        this.emitTokens(container, pendingInline, "paragraph");
+        this.emitTokens(
+          container,
+          pendingInline,
+          "paragraph",
+          1,
+          context.noteKind,
+        );
         pendingInline = [];
       }
     };
 
     for (const child of container.children) {
       if (child.kind === "text") {
-        appendTextToken(pendingInline, child.value, new Set());
+        appendTextToken(pendingInline, child.value, {
+          marks: new Set(),
+          ...(context.noteKind ? { noteKind: context.noteKind } : {}),
+        });
         continue;
       }
 
       const element = child;
       const name = element.name;
+      const elementContext = noteContextForElement(element, context);
       if (IGNORED_ELEMENTS.has(name) || this.styleFor(element)?.hidden) {
         continue;
       }
       if (INLINE_ELEMENTS.has(name)) {
-        collectInlineElement(element, new Set(), pendingInline, (candidate) =>
-          this.styleFor(candidate),
+        collectInlineElement(
+          element,
+          {
+            marks: new Set(),
+            ...(elementContext.noteKind
+              ? { noteKind: elementContext.noteKind }
+              : {}),
+          },
+          pendingInline,
+          (candidate) => this.styleFor(candidate),
         );
         continue;
       }
 
       flushInline();
-      this.processBlockElement(element);
+      this.processBlockElement(element, elementContext);
     }
 
     flushInline();
   }
 
-  private processBlockElement(element: ContentElement): void {
+  private processBlockElement(
+    element: ContentElement,
+    context: NoteContext,
+  ): void {
     const name = element.name;
     if (this.styleFor(element)?.hidden) {
       return;
@@ -765,21 +1055,33 @@ class SectionCompiler {
 
     if (name === "p") {
       const tokens: InlineToken[] = [];
-      collectInlineTokens(element, new Set(), tokens, (candidate) =>
-        this.styleFor(candidate),
+      collectInlineTokens(
+        element,
+        {
+          marks: new Set(),
+          ...(context.noteKind ? { noteKind: context.noteKind } : {}),
+        },
+        tokens,
+        (candidate) => this.styleFor(candidate),
       );
-      this.emitTokens(element, tokens, "paragraph");
+      this.emitTokens(element, tokens, "paragraph", 1, context.noteKind);
       return;
     }
 
     if (/^h[1-6]$/.test(name)) {
       const tokens: InlineToken[] = [];
-      collectInlineTokens(element, new Set(), tokens, (candidate) =>
-        this.styleFor(candidate),
+      collectInlineTokens(
+        element,
+        {
+          marks: new Set(),
+          ...(context.noteKind ? { noteKind: context.noteKind } : {}),
+        },
+        tokens,
+        (candidate) => this.styleFor(candidate),
       );
       const rawLevel = Number(name.slice(1));
       const level = Math.min(rawLevel, 3) as 1 | 2 | 3;
-      this.emitTokens(element, tokens, "heading", level);
+      this.emitTokens(element, tokens, "heading", level, context.noteKind);
       return;
     }
 
@@ -789,10 +1091,10 @@ class SectionCompiler {
     }
 
     const firstBlockIndex = this.blocks.length;
-    this.processContainer(element);
+    this.processContainer(element, context);
     const firstBlock = this.blocks[firstBlockIndex];
     if (firstBlock) {
-      this.recordElementAnchors(element, firstBlock.id);
+      this.recordElementAnchors(element, firstBlock.id, context.noteKind);
     }
   }
 
@@ -801,15 +1103,17 @@ class SectionCompiler {
     tokens: readonly InlineToken[],
     kind: "paragraph" | "heading",
     level: 1 | 2 | 3 = 1,
+    noteKind?: NoteKind,
   ): void {
-    let runs: InlineRunIR[] = [];
+    let runs: TextToken[] = [];
 
     const flushRuns = (): void => {
-      const normalizedRuns = trimRuns(runs);
+      const normalizedTokens = trimTextTokens(runs);
       runs = [];
-      if (normalizedRuns.length === 0) {
+      if (normalizedTokens.length === 0) {
         return;
       }
+      const normalizedRuns = normalizedTokens.map((token) => token.run);
 
       const id = this.nextBlockId();
       if (kind === "heading") {
@@ -818,6 +1122,7 @@ class SectionCompiler {
           id,
           level,
           runs: normalizedRuns,
+          ...(noteKind ? { noteKind } : {}),
           ...(this.blockStyleFor(sourceElement)
             ? { style: this.blockStyleFor(sourceElement) }
             : {}),
@@ -828,18 +1133,29 @@ class SectionCompiler {
           kind: "paragraph",
           id,
           runs: normalizedRuns,
+          ...(noteKind ? { noteKind } : {}),
           ...(this.blockStyleFor(sourceElement)
             ? { style: this.blockStyleFor(sourceElement) }
             : {}),
           source: this.sourceFor(sourceElement, id),
         });
       }
-      this.recordElementAnchors(sourceElement, id);
+      this.recordElementAnchors(sourceElement, id, noteKind);
+      for (const token of normalizedTokens) {
+        if (!token.pendingLink) {
+          continue;
+        }
+        this.unresolvedInternalLinks.push({
+          ...token.pendingLink,
+          run: token.run,
+          sourcePath: this.manifestItem.path ?? this.manifestItem.href,
+        });
+      }
     };
 
     for (const token of tokens) {
       if (token.kind === "text") {
-        runs.push(token.run);
+        runs.push(token);
       } else {
         flushRuns();
         this.emitImage(token.element);
@@ -1029,6 +1345,8 @@ function compileSections(
   resources: Record<string, Uint8Array>;
   firstSectionByPath: Map<string, SectionIR>;
   fragmentTargetsByPath: Map<string, ReadonlyMap<string, BookPosition>>;
+  fragmentNoteKindsByPath: Map<string, ReadonlyMap<string, NoteKind>>;
+  unresolvedInternalLinks: UnresolvedInternalLink[];
 } {
   const sections: SectionIR[] = [];
   const assets: Record<string, ImageAssetIR> = {};
@@ -1038,6 +1356,11 @@ function compileSections(
     string,
     ReadonlyMap<string, BookPosition>
   >();
+  const fragmentNoteKindsByPath = new Map<
+    string,
+    ReadonlyMap<string, NoteKind>
+  >();
+  const unresolvedInternalLinks: UnresolvedInternalLink[] = [];
 
   for (const spineItem of packageModel.spine) {
     const { manifestItem: item, occurrence } = spineItem;
@@ -1072,6 +1395,7 @@ function compileSections(
       sectionId,
       styleSheet,
       warnings,
+      unresolvedInternalLinks,
       assets,
       resources,
     );
@@ -1096,6 +1420,7 @@ function compileSections(
     if (!firstSectionByPath.has(item.path)) {
       firstSectionByPath.set(item.path, section);
       fragmentTargetsByPath.set(item.path, compiler.fragmentTargets());
+      fragmentNoteKindsByPath.set(item.path, compiler.fragmentNoteKindsById());
     }
   }
 
@@ -1105,6 +1430,8 @@ function compileSections(
     resources,
     firstSectionByPath,
     fragmentTargetsByPath,
+    fragmentNoteKindsByPath,
+    unresolvedInternalLinks,
   };
 }
 
@@ -1231,6 +1558,115 @@ function fragmentFromReference(reference: string): string | undefined {
     return decodeURIComponent(rawFragment);
   } catch {
     return rawFragment;
+  }
+}
+
+function inferredNoteKindFromReference(
+  reference: string,
+  label: string,
+): NoteKind | undefined {
+  const markerPunctuation = "*†‡().+-=[]";
+  if (
+    ![...label].every(
+      (character) =>
+        /[\s\d]/u.test(character) || markerPunctuation.includes(character),
+    )
+  ) {
+    return undefined;
+  }
+  const normalized = reference.toLowerCase();
+  if (/(?:endnote|rearnote|[#/_-]en[-_\d])/u.test(normalized)) {
+    return "endnote";
+  }
+  return /(?:footnote|[#/_-]fn[-_\d]|[#/_-]note[-_\d])/u.test(normalized)
+    ? "footnote"
+    : undefined;
+}
+
+function resolveInternalLinks(
+  unresolved: readonly UnresolvedInternalLink[],
+  firstSectionByPath: ReadonlyMap<string, SectionIR>,
+  fragmentTargetsByPath: ReadonlyMap<string, ReadonlyMap<string, BookPosition>>,
+  fragmentNoteKindsByPath: ReadonlyMap<string, ReadonlyMap<string, NoteKind>>,
+  warnings: EpubImportWarning[],
+): void {
+  for (const pending of unresolved) {
+    let targetPath: string;
+    try {
+      targetPath = resolveArchiveReference(pending.sourcePath, pending.href);
+    } catch {
+      warnings.push({
+        code: "internal-link-skipped",
+        message: `Internal link target is unsupported and was skipped: ${pending.href}`,
+        context: pending.href,
+      });
+      continue;
+    }
+
+    const targetSection = firstSectionByPath.get(targetPath);
+    if (!targetSection) {
+      warnings.push({
+        code: "internal-link-skipped",
+        message: `Internal link does not resolve to a readable spine section: ${pending.href}`,
+        context: pending.href,
+      });
+      continue;
+    }
+
+    const fragment = fragmentFromReference(pending.href);
+    const fragmentTarget = fragment
+      ? fragmentTargetsByPath.get(targetPath)?.get(fragment)
+      : undefined;
+    if (fragment && !fragmentTarget) {
+      warnings.push({
+        code: "internal-link-skipped",
+        message: `Internal link fragment was not found: ${pending.href}`,
+        context: pending.href,
+      });
+      continue;
+    }
+
+    const target = fragmentTarget ?? {
+      sectionId: targetSection.id,
+      blockId: targetSection.blocks[0]!.id,
+      offset: 0,
+    };
+    const semanticNoteKind = fragment
+      ? fragmentNoteKindsByPath.get(targetPath)?.get(fragment)
+      : undefined;
+    const inferredNoteKind =
+      semanticNoteKind ??
+      (pending.kind === "note-reference" || pending.kind === "internal"
+        ? inferredNoteKindFromReference(pending.href, pending.label)
+        : undefined);
+    const kind: InternalLinkKind =
+      pending.kind === "internal" && inferredNoteKind
+        ? "note-reference"
+        : pending.kind;
+    const noteKind =
+      inferredNoteKind ??
+      (kind === "note-backlink" ? pending.sourceNoteKind : undefined);
+    pending.run.link = {
+      kind,
+      target,
+      ...(noteKind ? { noteKind } : {}),
+      label: pending.label,
+    };
+    if (kind === "note-reference") {
+      pending.run.verticalAlign = "superscript";
+      pending.run.text = superscriptText(pending.run.text);
+      const targetBlock = targetSection.blocks.find(
+        (block) => block.id === target.blockId,
+      );
+      if (
+        inferredNoteKind &&
+        targetBlock &&
+        (targetBlock.kind === "paragraph" || targetBlock.kind === "heading") &&
+        !targetBlock.noteKind
+      ) {
+        targetBlock.noteKind = inferredNoteKind;
+      }
+    }
   }
 }
 
@@ -1382,6 +1818,8 @@ export function importEpub(
     resources,
     firstSectionByPath,
     fragmentTargetsByPath,
+    fragmentNoteKindsByPath,
+    unresolvedInternalLinks,
   } = compileSections(archive, packageModel, warnings);
 
   if (sections.length === 0) {
@@ -1392,6 +1830,13 @@ export function importEpub(
     );
   }
 
+  resolveInternalLinks(
+    unresolvedInternalLinks,
+    firstSectionByPath,
+    fragmentTargetsByPath,
+    fragmentNoteKindsByPath,
+    warnings,
+  );
   const navigation = compileNavigation(
     archive,
     packageModel,

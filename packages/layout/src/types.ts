@@ -1,6 +1,8 @@
 import type {
   BookPosition,
+  InternalLinkIR,
   InlineMark,
+  NoteKind,
   Size,
   SourceSpan,
 } from "@persimmon/book-core";
@@ -30,6 +32,7 @@ export interface PageLayoutSpec {
   viewport: Size;
   padding: Insets;
   body: TypographyPreset;
+  note: TypographyPreset;
   headings: Readonly<Record<1 | 2 | 3, TypographyPreset>>;
   paragraphGap: number;
   headingBefore: number;
@@ -44,6 +47,8 @@ export interface ResolvedRun {
   startOffset: number;
   endOffset: number;
   marks: readonly InlineMark[];
+  verticalAlign?: "superscript" | "subscript";
+  link?: InternalLinkIR;
 }
 
 export interface ParagraphLayoutInput {
@@ -90,6 +95,7 @@ export interface ParagraphSliceScene {
   source: SourceSpan;
   frame: Rect;
   sourceTop: number;
+  noteKind?: NoteKind;
 }
 
 export interface SceneImage {
@@ -104,11 +110,18 @@ export interface SceneImage {
 
 export type PageSceneItem = ParagraphSliceScene | SceneImage;
 
+export interface PageLinkRegion {
+  source: BookPosition;
+  link: InternalLinkIR;
+  frame: Rect;
+}
+
 export interface PageScene {
   index: number;
   size: Size;
   contentRect: Rect;
   items: readonly PageSceneItem[];
+  links?: readonly PageLinkRegion[];
   start: BookPosition;
   end: BookPosition;
 }
@@ -137,6 +150,11 @@ export function createDefaultPageLayoutSpec(viewport: Size): PageLayoutSpec {
     viewport,
     padding: { top: 52, right: 32, bottom: 52, left: 32 },
     body,
+    note: {
+      ...body,
+      fontSize: 17,
+      heightMultiplier: 1.55,
+    },
     headings: {
       1: {
         ...body,
