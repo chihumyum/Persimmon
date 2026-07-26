@@ -13,6 +13,11 @@ export {
 export { createSkiaParagraphBackend } from "./skia-paragraph-backend";
 export { READER_PAPER_COLOR } from "./reader-theme";
 export {
+  DEFAULT_LIVE_READER_APPEARANCE,
+  type ReaderAppearance,
+  type ReaderProgressDisplay,
+} from "./reader-appearance";
+export {
   LiveReader,
   type LiveReaderProps,
   type ReaderLayoutMode,

@@ -19,6 +19,7 @@ import {
 import {
   DEFAULT_READER_SETTINGS,
   LibraryError,
+  type ReaderAppearanceSettings,
   type ReaderPageTurnTuning,
   type ReaderSettings,
 } from "./library/types";
@@ -200,9 +201,9 @@ export function PersimmonApp() {
         .catch(() => setError("阅读设置保存失败。"));
     }, 250);
   }, []);
-  const updateFontSize = useCallback(
-    (nextFontSize: number) => {
-      updateReaderSettings({ ...readerSettings, fontSize: nextFontSize });
+  const updateAppearance = useCallback(
+    (appearance: ReaderAppearanceSettings) => {
+      updateReaderSettings({ ...readerSettings, appearance });
     },
     [readerSettings, updateReaderSettings],
   );
@@ -252,7 +253,7 @@ export function PersimmonApp() {
     return (
       <ReaderScreen
         entry={activeEntry}
-        fontSize={readerSettings.fontSize}
+        appearance={readerSettings.appearance}
         layout={readerSettings.layout}
         pageTurnTuning={readerSettings.pageTurnTuning}
         opened={activeBook}
@@ -260,7 +261,7 @@ export function PersimmonApp() {
           setActiveBook(null);
           setScreen({ kind: "library" });
         }}
-        onFontSizeChange={updateFontSize}
+        onAppearanceChange={updateAppearance}
         onLayoutChange={updateLayout}
         onPageTurnTuningChange={updatePageTurnTuning}
         onProgress={updateProgress}
