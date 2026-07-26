@@ -1,6 +1,6 @@
 import type { BookNavigationItem, BookPosition } from "@persimmon/book-core";
 import type { ReaderLayoutMode, ReaderProgress } from "@persimmon/reader-skia";
-import { READER_PAPER_COLOR } from "@persimmon/reader-skia/theme";
+import { resolveReaderTheme } from "@persimmon/reader-skia/theme";
 import React, { Suspense, useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -10,6 +10,7 @@ import {
   StatusBar,
   StyleSheet,
   Text,
+  useColorScheme,
   View,
   type LayoutChangeEvent,
 } from "react-native";
@@ -22,9 +23,11 @@ import type {
 } from "../library/repository";
 import type {
   ReaderAppearanceSettings,
+  ReaderPageTurnAnimation,
   ReaderPageTurnTuning,
 } from "../library/types";
 import { PageTurnTuningPanel } from "./page-turn-tuning-panel";
+import { ReadingLayoutPanel } from "./reading-layout-panel";
 import { ReadingStylePanel } from "./reading-style-panel";
 
 const ReaderSurface = React.lazy(() => import("../reader/reader-surface"));
@@ -53,11 +56,15 @@ export interface ReaderScreenProps {
   readonly entry: LibraryBookSummary;
   readonly appearance: ReaderAppearanceSettings;
   readonly layout: ReaderLayoutMode;
+  readonly pageTurnAnimation: ReaderPageTurnAnimation;
   readonly pageTurnTuning: ReaderPageTurnTuning;
   readonly opened: OpenedLibraryBook;
   readonly onBack: () => void;
   readonly onAppearanceChange: (appearance: ReaderAppearanceSettings) => void;
   readonly onLayoutChange: (layout: ReaderLayoutMode) => void;
+  readonly onPageTurnAnimationChange: (
+    animation: ReaderPageTurnAnimation,
+  ) => void;
   readonly onPageTurnTuningChange: (tuning: ReaderPageTurnTuning) => void;
   readonly onProgress: (progress: ReaderProgress) => void;
 }
@@ -66,21 +73,35 @@ export function ReaderScreen({
   entry,
   appearance,
   layout,
+  pageTurnAnimation,
   pageTurnTuning,
   opened,
   onBack,
   onAppearanceChange,
   onLayoutChange,
+  onPageTurnAnimationChange,
   onPageTurnTuningChange,
   onProgress,
 }: ReaderScreenProps) {
   const insets = useSafeAreaInsets();
+  const systemColorScheme = useColorScheme();
+  const resolvedColorScheme =
+    appearance.colorMode === "system"
+      ? systemColorScheme === "dark"
+        ? "dark"
+        : "light"
+      : appearance.colorMode;
+  const theme = useMemo(
+    () => resolveReaderTheme(appearance.theme, resolvedColorScheme),
+    [appearance.theme, resolvedColorScheme],
+  );
   const [viewport, setViewport] = useState<Viewport | null>(null);
   const [tocVisible, setTocVisible] = useState(false);
   const [turning, setTurning] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [styleVisible, setStyleVisible] = useState(false);
+  const [layoutVisible, setLayoutVisible] = useState(false);
   const [tuningVisible, setTuningVisible] = useState(false);
   const [navigationTarget, setNavigationTarget] = useState<
     BookPosition | undefined
@@ -117,6 +138,7 @@ export function ReaderScreen({
     }
     if (controlsVisible) {
       setStyleVisible(false);
+      setLayoutVisible(false);
       setTuningVisible(false);
     }
     setControlsVisible((visible) => !visible);
@@ -126,6 +148,7 @@ export function ReaderScreen({
     if (nextTurning) {
       setControlsVisible(false);
       setStyleVisible(false);
+      setLayoutVisible(false);
       setTuningVisible(false);
       setTocVisible(false);
     }
@@ -134,16 +157,19 @@ export function ReaderScreen({
     setSelecting(nextSelecting);
     if (nextSelecting) {
       setControlsVisible(false);
+      setLayoutVisible(false);
       setTuningVisible(false);
       setTocVisible(false);
     }
   }, []);
 
   return (
-    <View style={styles.readerScreen}>
+    <View style={[styles.readerScreen, { backgroundColor: theme.surrounding }]}>
       <StatusBar
         backgroundColor="transparent"
-        barStyle="dark-content"
+        barStyle={
+          theme.colorScheme === "dark" ? "light-content" : "dark-content"
+        }
         translucent
       />
 
@@ -152,14 +178,20 @@ export function ReaderScreen({
           onLayout={measureReader}
           style={[
             styles.readerPage,
+            { backgroundColor: theme.paper },
             layout === "spread" && styles.readerSpread,
           ]}
         >
           {viewport ? (
             <Suspense
               fallback={
-                <View style={styles.readerLoading}>
-                  <ActivityIndicator color="#d95f2b" />
+                <View
+                  style={[
+                    styles.readerLoading,
+                    { backgroundColor: theme.paper },
+                  ]}
+                >
+                  <ActivityIndicator color={theme.accent} />
                 </View>
               }
             >
@@ -171,6 +203,8 @@ export function ReaderScreen({
                   height={viewport.height}
                   appearance={appearance}
                   layout={layout}
+                  pageTurnAnimation={pageTurnAnimation}
+                  theme={theme}
                   topInset={insets.top}
                   bottomInset={insets.bottom}
                   progressHeaderVisible={!controlsVisible}
@@ -199,9 +233,21 @@ export function ReaderScreen({
               accessibilityLabel="返回书架"
               accessibilityRole="button"
               onPress={onBack}
-              style={[styles.floatingButton, styles.backButton]}
+              style={[
+                styles.floatingButton,
+                styles.backButton,
+                {
+                  backgroundColor: theme.panel,
+                  borderColor: theme.border,
+                  shadowColor: theme.shadow,
+                },
+              ]}
             >
-              <Text style={styles.accentButtonText}>‹ 书架</Text>
+              <Text
+                style={[styles.accentButtonText, { color: theme.accentStrong }]}
+              >
+                ‹ 书架
+              </Text>
             </Pressable>
             <Pressable
               accessibilityLabel="打开目录"
@@ -209,50 +255,107 @@ export function ReaderScreen({
               disabled={navigationRows.length === 0}
               onPress={() => {
                 setStyleVisible(false);
+                setLayoutVisible(false);
                 setTuningVisible(false);
                 setTocVisible((visible) => !visible);
               }}
-              style={styles.floatingButton}
+              style={[
+                styles.floatingButton,
+                {
+                  backgroundColor: theme.panel,
+                  borderColor: theme.border,
+                  shadowColor: theme.shadow,
+                },
+              ]}
             >
-              <Text style={styles.floatingButtonText}>目录</Text>
+              <Text
+                style={[
+                  styles.floatingButtonText,
+                  { color: theme.controlText },
+                ]}
+              >
+                目录
+              </Text>
             </Pressable>
           </View>
           <View pointerEvents="box-none" style={styles.controlGroup}>
             <Pressable
-              accessibilityLabel={
-                layout === "single" ? "切换到双页布局" : "切换到单页布局"
-              }
-              accessibilityRole="button"
-              onPress={() =>
-                onLayoutChange(layout === "single" ? "spread" : "single")
-              }
-              style={[styles.floatingButton, styles.layoutButton]}
-            >
-              <Text style={styles.layoutButtonText}>
-                {layout === "single" ? "▯" : "▯▯"}
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityLabel="调节翻页常量"
+              accessibilityLabel="打开阅读布局"
               accessibilityRole="button"
               onPress={() => {
                 setStyleVisible(false);
-                setTuningVisible((visible) => !visible);
+                setTuningVisible(false);
+                setLayoutVisible((visible) => !visible);
               }}
-              style={styles.floatingButton}
+              style={[
+                styles.floatingButton,
+                styles.layoutButton,
+                {
+                  backgroundColor: theme.panel,
+                  borderColor: theme.border,
+                  shadowColor: theme.shadow,
+                },
+              ]}
             >
-              <Text style={styles.floatingButtonText}>曲线</Text>
+              <Text
+                style={[
+                  styles.floatingButtonText,
+                  { color: theme.controlText },
+                ]}
+              >
+                布局
+              </Text>
             </Pressable>
+            {pageTurnAnimation === "natural" ? (
+              <Pressable
+                accessibilityLabel="调节翻页常量"
+                accessibilityRole="button"
+                onPress={() => {
+                  setStyleVisible(false);
+                  setLayoutVisible(false);
+                  setTuningVisible((visible) => !visible);
+                }}
+                style={[
+                  styles.floatingButton,
+                  {
+                    backgroundColor: theme.panel,
+                    borderColor: theme.border,
+                    shadowColor: theme.shadow,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.floatingButtonText,
+                    { color: theme.controlText },
+                  ]}
+                >
+                  曲线
+                </Text>
+              </Pressable>
+            ) : null}
             <Pressable
               accessibilityLabel="打开阅读样式"
               accessibilityRole="button"
               onPress={() => {
                 setTuningVisible(false);
+                setLayoutVisible(false);
                 setStyleVisible((visible) => !visible);
               }}
-              style={styles.floatingButton}
+              style={[
+                styles.floatingButton,
+                {
+                  backgroundColor: theme.panel,
+                  borderColor: theme.border,
+                  shadowColor: theme.shadow,
+                },
+              ]}
             >
-              <Text style={styles.typeButtonText}>Aa</Text>
+              <Text
+                style={[styles.typeButtonText, { color: theme.controlText }]}
+              >
+                Aa
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -260,6 +363,7 @@ export function ReaderScreen({
 
       {!turning && !selecting && controlsVisible && tuningVisible ? (
         <PageTurnTuningPanel
+          theme={theme}
           top={insets.top + 52}
           tuning={pageTurnTuning}
           onChange={onPageTurnTuningChange}
@@ -267,9 +371,22 @@ export function ReaderScreen({
         />
       ) : null}
 
+      {!turning && !selecting && controlsVisible && layoutVisible ? (
+        <ReadingLayoutPanel
+          layout={layout}
+          pageTurnAnimation={pageTurnAnimation}
+          theme={theme}
+          top={insets.top + 52}
+          onAnimationChange={onPageTurnAnimationChange}
+          onClose={() => setLayoutVisible(false)}
+          onLayoutChange={onLayoutChange}
+        />
+      ) : null}
+
       {!turning && controlsVisible && styleVisible ? (
         <ReadingStylePanel
           appearance={appearance}
+          theme={theme}
           top={insets.top + 52}
           onChange={onAppearanceChange}
           onClose={() => setStyleVisible(false)}
@@ -281,19 +398,23 @@ export function ReaderScreen({
           style={[
             styles.tocPanel,
             {
+              backgroundColor: theme.panel,
               paddingBottom: insets.bottom,
               paddingTop: insets.top,
+              shadowColor: theme.shadow,
             },
           ]}
         >
-          <View style={styles.tocHeader}>
-            <Text style={styles.tocTitle}>目录</Text>
+          <View style={[styles.tocHeader, { borderBottomColor: theme.border }]}>
+            <Text style={[styles.tocTitle, { color: theme.text }]}>目录</Text>
             <Pressable
               accessibilityLabel="关闭目录"
               accessibilityRole="button"
               onPress={() => setTocVisible(false)}
             >
-              <Text style={styles.tocClose}>关闭</Text>
+              <Text style={[styles.tocClose, { color: theme.accentStrong }]}>
+                关闭
+              </Text>
             </Pressable>
           </View>
           <ScrollView>
@@ -305,10 +426,14 @@ export function ReaderScreen({
                 onPress={() => jumpTo(item.target)}
                 style={[
                   styles.tocRow,
+                  { borderBottomColor: theme.border },
                   { paddingLeft: 18 + Math.min(depth, 3) * 16 },
                 ]}
               >
-                <Text numberOfLines={2} style={styles.tocRowText}>
+                <Text
+                  numberOfLines={2}
+                  style={[styles.tocRowText, { color: theme.controlText }]}
+                >
                   {item.label}
                 </Text>
               </Pressable>
@@ -323,12 +448,10 @@ export function ReaderScreen({
 const styles = StyleSheet.create({
   readerLoading: {
     alignItems: "center",
-    backgroundColor: READER_PAPER_COLOR,
     flex: 1,
     justifyContent: "center",
   },
   readerPage: {
-    backgroundColor: READER_PAPER_COLOR,
     ...(Platform.OS === "web"
       ? { boxShadow: "0 10px 24px rgba(61, 48, 38, 0.12)" }
       : {}),
@@ -401,13 +524,6 @@ const styles = StyleSheet.create({
   layoutButton: {
     minWidth: 46,
   },
-  layoutButtonText: {
-    color: "#5c534b",
-    fontSize: 18,
-    fontWeight: "700",
-    letterSpacing: -4,
-    paddingRight: 4,
-  },
   tocClose: {
     color: "#b94b24",
     fontSize: 14,
@@ -422,7 +538,6 @@ const styles = StyleSheet.create({
     padding: 18,
   },
   tocPanel: {
-    backgroundColor: READER_PAPER_COLOR,
     bottom: 0,
     left: 0,
     maxWidth: 390,

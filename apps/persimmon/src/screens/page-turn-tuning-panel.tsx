@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
+import type { ReaderTheme } from "@persimmon/reader-skia/theme";
 import {
   PanResponder,
   Platform,
@@ -20,6 +21,7 @@ import {
 } from "../library/types";
 
 interface PageTurnTuningPanelProps {
+  readonly theme: ReaderTheme;
   readonly top: number;
   readonly tuning: ReaderPageTurnTuning;
   readonly onChange: (tuning: ReaderPageTurnTuning) => void;
@@ -31,6 +33,7 @@ interface TuningSliderProps {
   readonly maximum: number;
   readonly minimum: number;
   readonly step: number;
+  readonly theme: ReaderTheme;
   readonly value: number;
   readonly valueLabel: string;
   readonly onChange: (value: number) => void;
@@ -41,6 +44,7 @@ function TuningSlider({
   maximum,
   minimum,
   step,
+  theme,
   value,
   valueLabel,
   onChange,
@@ -96,8 +100,12 @@ function TuningSlider({
   return (
     <View style={styles.sliderRow}>
       <View style={styles.sliderLabelRow}>
-        <Text style={styles.sliderLabel}>{label}</Text>
-        <Text style={styles.sliderValue}>{valueLabel}</Text>
+        <Text style={[styles.sliderLabel, { color: theme.controlText }]}>
+          {label}
+        </Text>
+        <Text style={[styles.sliderValue, { color: theme.secondaryText }]}>
+          {valueLabel}
+        </Text>
       </View>
       <View
         {...responder.panHandlers}
@@ -125,16 +133,33 @@ function TuningSlider({
         }}
         style={styles.sliderTouchTarget}
       >
-        <View style={styles.sliderRail}>
-          <View style={[styles.sliderFill, { width: percentage }]} />
+        <View
+          style={[styles.sliderRail, { backgroundColor: theme.panelMuted }]}
+        >
+          <View
+            style={[
+              styles.sliderFill,
+              { backgroundColor: theme.accent, width: percentage },
+            ]}
+          />
         </View>
-        <View style={[styles.sliderThumb, { left: percentage }]} />
+        <View
+          style={[
+            styles.sliderThumb,
+            {
+              backgroundColor: theme.paper,
+              borderColor: theme.accent,
+              left: percentage,
+            },
+          ]}
+        />
       </View>
     </View>
   );
 }
 
 export function PageTurnTuningPanel({
+  theme,
   top,
   tuning,
   onChange,
@@ -164,11 +189,25 @@ export function PageTurnTuningPanel({
   );
 
   return (
-    <View style={[styles.panel, { top }]}>
+    <View
+      style={[
+        styles.panel,
+        {
+          backgroundColor: theme.panel,
+          borderColor: theme.border,
+          shadowColor: theme.shadow,
+          top,
+        },
+      ]}
+    >
       <View style={styles.header}>
         <View>
-          <Text style={styles.eyebrow}>NATURAL PAGE TURN</Text>
-          <Text style={styles.title}>翻页原始常量</Text>
+          <Text style={[styles.eyebrow, { color: theme.accentStrong }]}>
+            NATURAL PAGE TURN
+          </Text>
+          <Text style={[styles.title, { color: theme.text }]}>
+            翻页原始常量
+          </Text>
         </View>
         <Pressable
           accessibilityLabel="关闭翻页曲线"
@@ -176,20 +215,28 @@ export function PageTurnTuningPanel({
           onPress={onClose}
           style={styles.closeButton}
         >
-          <Text style={styles.closeText}>关闭</Text>
+          <Text style={[styles.closeText, { color: theme.accentStrong }]}>
+            关闭
+          </Text>
         </Pressable>
       </View>
 
-      <View style={styles.modeTabs}>
+      <View style={[styles.modeTabs, { backgroundColor: theme.panelMuted }]}>
         <Pressable
           accessibilityRole="button"
           onPress={() => setMode("click")}
-          style={[styles.modeTab, mode === "click" && styles.modeTabActive]}
+          style={[
+            styles.modeTab,
+            mode === "click" && { backgroundColor: theme.panelRaised },
+          ]}
         >
           <Text
             style={[
               styles.modeTabText,
-              mode === "click" && styles.modeTabTextActive,
+              {
+                color:
+                  mode === "click" ? theme.accentStrong : theme.secondaryText,
+              },
             ]}
           >
             点击翻页
@@ -198,12 +245,18 @@ export function PageTurnTuningPanel({
         <Pressable
           accessibilityRole="button"
           onPress={() => setMode("gesture")}
-          style={[styles.modeTab, mode === "gesture" && styles.modeTabActive]}
+          style={[
+            styles.modeTab,
+            mode === "gesture" && { backgroundColor: theme.panelRaised },
+          ]}
         >
           <Text
             style={[
               styles.modeTabText,
-              mode === "gesture" && styles.modeTabTextActive,
+              {
+                color:
+                  mode === "gesture" ? theme.accentStrong : theme.secondaryText,
+              },
             ]}
           >
             手势翻页
@@ -223,6 +276,7 @@ export function PageTurnTuningPanel({
               maximum={0.8}
               minimum={0.58}
               step={0.01}
+              theme={theme}
               value={tuning.click.releaseX}
               valueLabel={tuning.click.releaseX.toFixed(2)}
               onChange={(value) => updateClick("releaseX", value)}
@@ -232,6 +286,7 @@ export function PageTurnTuningPanel({
               maximum={1.8}
               minimum={0.7}
               step={0.05}
+              theme={theme}
               value={tuning.click.liftVelocity}
               valueLabel={tuning.click.liftVelocity.toFixed(2)}
               onChange={(value) => updateClick("liftVelocity", value)}
@@ -241,6 +296,7 @@ export function PageTurnTuningPanel({
               maximum={2.6}
               minimum={1.4}
               step={0.05}
+              theme={theme}
               value={tuning.click.liftToLeft}
               valueLabel={tuning.click.liftToLeft.toFixed(2)}
               onChange={(value) => updateClick("liftToLeft", value)}
@@ -250,6 +306,7 @@ export function PageTurnTuningPanel({
               maximum={14}
               minimum={3.5}
               step={0.25}
+              theme={theme}
               value={tuning.click.curvatureRelaxation}
               valueLabel={tuning.click.curvatureRelaxation.toFixed(2)}
               onChange={(value) => updateClick("curvatureRelaxation", value)}
@@ -259,6 +316,7 @@ export function PageTurnTuningPanel({
               maximum={2}
               minimum={0.5}
               step={0.05}
+              theme={theme}
               value={tuning.click.playbackSpeed}
               valueLabel={tuning.click.playbackSpeed.toFixed(2)}
               onChange={(value) => updateClick("playbackSpeed", value)}
@@ -271,6 +329,7 @@ export function PageTurnTuningPanel({
               maximum={0.8}
               minimum={0.58}
               step={0.01}
+              theme={theme}
               value={tuning.gesture.releaseX}
               valueLabel={tuning.gesture.releaseX.toFixed(2)}
               onChange={(value) => updateGesture("releaseX", value)}
@@ -280,6 +339,7 @@ export function PageTurnTuningPanel({
               maximum={1.8}
               minimum={0.7}
               step={0.05}
+              theme={theme}
               value={tuning.gesture.liftVelocity}
               valueLabel={tuning.gesture.liftVelocity.toFixed(2)}
               onChange={(value) => updateGesture("liftVelocity", value)}
@@ -289,6 +349,7 @@ export function PageTurnTuningPanel({
               maximum={2.6}
               minimum={1.4}
               step={0.05}
+              theme={theme}
               value={tuning.gesture.liftToLeft}
               valueLabel={tuning.gesture.liftToLeft.toFixed(2)}
               onChange={(value) => updateGesture("liftToLeft", value)}
@@ -298,6 +359,7 @@ export function PageTurnTuningPanel({
               maximum={14}
               minimum={3.5}
               step={0.25}
+              theme={theme}
               value={tuning.gesture.curvatureRelaxation}
               valueLabel={tuning.gesture.curvatureRelaxation.toFixed(2)}
               onChange={(value) => updateGesture("curvatureRelaxation", value)}
@@ -307,6 +369,7 @@ export function PageTurnTuningPanel({
               maximum={1.8}
               minimum={0.5}
               step={0.05}
+              theme={theme}
               value={tuning.gesture.pageWeight}
               valueLabel={tuning.gesture.pageWeight.toFixed(2)}
               onChange={(value) => updateGesture("pageWeight", value)}
@@ -316,6 +379,7 @@ export function PageTurnTuningPanel({
               maximum={1.2}
               minimum={0.4}
               step={0.01}
+              theme={theme}
               value={tuning.gesture.commitThreshold}
               valueLabel={tuning.gesture.commitThreshold.toFixed(2)}
               onChange={(value) => updateGesture("commitThreshold", value)}
@@ -325,6 +389,7 @@ export function PageTurnTuningPanel({
               maximum={1.5}
               minimum={0.5}
               step={0.05}
+              theme={theme}
               value={tuning.gesture.minimumSpeedScale}
               valueLabel={tuning.gesture.minimumSpeedScale.toFixed(2)}
               onChange={(value) => updateGesture("minimumSpeedScale", value)}
@@ -334,6 +399,7 @@ export function PageTurnTuningPanel({
               maximum={3}
               minimum={tuning.gesture.minimumSpeedScale}
               step={0.05}
+              theme={theme}
               value={tuning.gesture.maximumSpeedScale}
               valueLabel={tuning.gesture.maximumSpeedScale.toFixed(2)}
               onChange={(value) => updateGesture("maximumSpeedScale", value)}
@@ -343,6 +409,7 @@ export function PageTurnTuningPanel({
               maximum={1.2}
               minimum={0.1}
               step={0.05}
+              theme={theme}
               value={tuning.gesture.velocityGain}
               valueLabel={tuning.gesture.velocityGain.toFixed(2)}
               onChange={(value) => updateGesture("velocityGain", value)}
@@ -352,6 +419,7 @@ export function PageTurnTuningPanel({
               maximum={0.2}
               minimum={0.03}
               step={0.005}
+              theme={theme}
               value={tuning.gesture.idleDecaySeconds}
               valueLabel={tuning.gesture.idleDecaySeconds.toFixed(3)}
               onChange={(value) => updateGesture("idleDecaySeconds", value)}
@@ -361,7 +429,7 @@ export function PageTurnTuningPanel({
       </ScrollView>
 
       <View style={styles.footer}>
-        <Text style={styles.equation}>
+        <Text style={[styles.equation, { color: theme.secondaryText }]}>
           传播速度{" "}
           {(
             (mode === "click" ? tuning.click : tuning.gesture).liftVelocity *
@@ -385,7 +453,9 @@ export function PageTurnTuningPanel({
             )
           }
         >
-          <Text style={styles.resetText}>恢复当前默认</Text>
+          <Text style={[styles.resetText, { color: theme.accentStrong }]}>
+            恢复当前默认
+          </Text>
         </Pressable>
       </View>
     </View>

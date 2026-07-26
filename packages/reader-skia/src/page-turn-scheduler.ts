@@ -195,6 +195,20 @@ export function hasRunningPageTurns(state: PageTurnSchedulerState): boolean {
   return state.turns.some((turn) => !turn.completed);
 }
 
+export function turnPageImmediately(
+  state: PageTurnSchedulerState,
+  direction: 1 | -1,
+  adjacent: PageTurnScheduler["adjacent"],
+): PageTurnSchedulerState {
+  if (state.turns.length > 0) {
+    return state;
+  }
+  const target = adjacent(state.settled, direction);
+  return samePageAddress(target, state.settled)
+    ? state
+    : createPageTurnSchedulerState(target);
+}
+
 function tryStartScheduledTurn(
   state: PageTurnSchedulerState,
   direction: 1 | -1,

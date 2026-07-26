@@ -11,6 +11,7 @@ import {
   requestScheduledGesturePageTurn,
   requestScheduledPageTurn,
   resolveScheduledPageTurn,
+  turnPageImmediately,
   scheduledPageAddress,
   type PageTurnScheduler,
 } from "./page-turn-scheduler";
@@ -43,6 +44,38 @@ const release = {
 };
 
 describe("page-turn scheduler", () => {
+  it("settles an animation-free turn immediately without creating a lane", () => {
+    const state = createPageTurnSchedulerState({
+      sectionIndex: 0,
+      pageIndex: 1,
+    });
+    const next = turnPageImmediately(state, 1, (address, direction) => ({
+      ...address,
+      pageIndex: Math.max(0, address.pageIndex + direction),
+    }));
+
+    expect(next).toEqual({
+      settled: { sectionIndex: 0, pageIndex: 2 },
+      desired: { sectionIndex: 0, pageIndex: 2 },
+      turns: [],
+      nextTapStartAtMs: 0,
+    });
+  });
+
+  it("does not interrupt a running turn or move past a boundary", () => {
+    const scheduler = createHarness(2);
+    const atEnd = createPageTurnSchedulerState(page(1));
+    expect(turnPageImmediately(atEnd, 1, scheduler.adjacent)).toBe(atEnd);
+
+    const running = requestScheduledPageTurn(
+      createPageTurnSchedulerState(page(0)),
+      1,
+      scheduler,
+      0,
+    );
+    expect(turnPageImmediately(running, -1, scheduler.adjacent)).toBe(running);
+  });
+
   it("launches a normal edge turn immediately", () => {
     const scheduler = createHarness();
     const state = requestScheduledPageTurn(

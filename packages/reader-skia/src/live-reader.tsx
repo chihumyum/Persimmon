@@ -105,7 +105,7 @@ import {
   progressDisplayWithHeaderVisibility,
   type PageProgressDecoration,
 } from "./page-progress-decoration";
-import { READER_PAPER_COLOR } from "./reader-theme";
+import { DEFAULT_READER_THEME, type ReaderTheme } from "./reader-theme";
 import {
   createReaderLayoutSpec,
   disposePaginationAfterPaint,
@@ -147,6 +147,7 @@ import {
   requestScheduledGesturePageTurn,
   resolveScheduledPageTurn,
   scheduledPageAddress,
+  turnPageImmediately,
   type PageTurnScheduler,
   type PageTurnSchedulerState,
   type ScheduledPageTurn,
@@ -179,6 +180,8 @@ export interface ReaderProgress {
 
 export type ReaderLayoutMode = "single" | "spread";
 
+export type ReaderPageTurnAnimation = "natural" | "none";
+
 export interface ReaderSelectionMenuRequest {
   readonly text: string;
   readonly rectInWindow: {
@@ -198,6 +201,8 @@ export interface LiveReaderProps {
   /** @deprecated Pass `appearance.fontSize` instead. */
   fontSize?: number;
   layout?: ReaderLayoutMode;
+  pageTurnAnimation?: ReaderPageTurnAnimation;
+  theme?: ReaderTheme;
   topInset?: number;
   bottomInset?: number;
   progressHeaderVisible?: boolean;
@@ -341,6 +346,8 @@ function LazyReaderEngine({
   height,
   appearance,
   layout = "single",
+  pageTurnAnimation = "natural",
+  theme = DEFAULT_READER_THEME,
   topInset,
   bottomInset,
   progressHeaderVisible = true,
@@ -366,8 +373,8 @@ function LazyReaderEngine({
   const pagesPerView = layout === "spread" ? 2 : 1;
   const physicalPageWidth = layout === "spread" ? width * 0.5 : width;
   const backend = useMemo(
-    () => createSkiaParagraphBackend(fontProvider),
-    [fontProvider],
+    () => createSkiaParagraphBackend(fontProvider, theme),
+    [fontProvider, theme],
   );
   const typographyAppearance = useMemo<ReaderAppearance>(
     () => ({
@@ -495,6 +502,7 @@ function LazyReaderEngine({
         horizontalMargin: appearance.horizontalMargin,
         topInset,
         bottomInset,
+        theme,
       });
       pageDecorationCache.set(key, { address, decoration });
       while (pageDecorationCache.size > PAGE_DECORATION_CACHE_LIMIT) {
@@ -520,6 +528,7 @@ function LazyReaderEngine({
       physicalPageWidth,
       progressDecorationForAddress,
       topInset,
+      theme,
     ],
   );
 
@@ -672,10 +681,10 @@ function LazyReaderEngine({
   }, [clearNoteReturnAnchor, jumpToPosition, noteReturnAnchor]);
 
   useEffect(() => {
-    if (Platform.OS === "web") {
+    if (Platform.OS === "web" && pageTurnAnimation === "natural") {
       preparePageTurnRenderer(width, layout === "spread");
     }
-  }, [layout, width]);
+  }, [layout, pageTurnAnimation, width]);
 
   useEffect(
     () => () => {
@@ -971,11 +980,29 @@ function LazyReaderEngine({
 
   const requestTurn = useCallback(
     (requestedDirection: 1 | -1) => {
+      if (pageTurnAnimation === "none") {
+        let turned = false;
+        mutateReaderState((current) => {
+          const next = turnPageImmediately(
+            current,
+            requestedDirection,
+            adjacent,
+          );
+          turned = next !== current;
+          return next;
+        });
+        if (turned) {
+          setNoteReturnAnchor((current) =>
+            reduceNoteReturnAnchor(current, { type: "page-turned" }),
+          );
+        }
+        return;
+      }
       mutateReaderState((current) =>
         requestScheduledPageTurn(current, requestedDirection, turnScheduler),
       );
     },
-    [mutateReaderState, turnScheduler],
+    [adjacent, mutateReaderState, pageTurnAnimation, turnScheduler],
   );
   const requestGestureTurn = useCallback(
     (input: PageGestureReleaseInput) => {
@@ -1018,6 +1045,10 @@ function LazyReaderEngine({
       if (!release) {
         return;
       }
+      if (pageTurnAnimation === "none") {
+        requestTurn(input.direction);
+        return true;
+      }
       if (input.interactive) {
         const interactiveTurnId =
           nativeInteractiveTurnIdRef.current ??
@@ -1054,7 +1085,14 @@ function LazyReaderEngine({
       );
       return true;
     },
-    [gesturePageTurnTuning, mutateReaderState, stopRunningTurn, turnScheduler],
+    [
+      gesturePageTurnTuning,
+      mutateReaderState,
+      pageTurnAnimation,
+      requestTurn,
+      stopRunningTurn,
+      turnScheduler,
+    ],
   );
   const beginNativeInteractiveTurn = useCallback(
     (requestedDirection: 1 | -1) => {
@@ -1303,6 +1341,7 @@ function LazyReaderEngine({
           );
         }
         if (
+          pageTurnAnimation === "natural" &&
           !runningTurnRef.current &&
           pending &&
           Math.abs(gesture.dx) > 6 &&
@@ -1430,6 +1469,7 @@ function LazyReaderEngine({
     flushInteractiveTurnMove,
     height,
     layout,
+    pageTurnAnimation,
     physicalPageWidth,
     queueInteractiveTurnMove,
     requestGestureTurn,
@@ -1707,6 +1747,8 @@ function LazyReaderEngine({
         book.revisionId,
         typographyAppearance,
         appearance.progressDisplay,
+        theme.name,
+        theme.colorScheme,
         layout,
         address.sectionIndex,
         address.pageIndex,
@@ -1722,6 +1764,8 @@ function LazyReaderEngine({
       height,
       layout,
       physicalPageWidth,
+      theme.colorScheme,
+      theme.name,
       typographyAppearance,
     ],
   );
@@ -1751,6 +1795,7 @@ function LazyReaderEngine({
           ? undefined
           : pageDecorationForAddress(address),
         appearance.progressDisplay,
+        theme,
       );
     },
     [
@@ -1761,6 +1806,7 @@ function LazyReaderEngine({
       loadResource,
       pageDecorationForAddress,
       physicalPageWidth,
+      theme,
     ],
   );
   const pageReadyForCapture = useCallback(
@@ -1907,7 +1953,7 @@ function LazyReaderEngine({
       tier,
     }));
     pageCaptureCache.reconcileUnpinnedTiers(retentions);
-    if (activeTurns.length > 0) {
+    if (pageTurnAnimation === "none" || activeTurns.length > 0) {
       return;
     }
     let cancelled = false;
@@ -1974,6 +2020,7 @@ function LazyReaderEngine({
     pageCaptureCache,
     pageCaptureIdentity,
     pageReadyForCapture,
+    pageTurnAnimation,
     passiveCapturePlan,
   ]);
 
@@ -2065,6 +2112,7 @@ function LazyReaderEngine({
     canTurnBackward: !textSelection && !previousDisabled,
     canTurnForward: !textSelection && !nextDisabled,
     canStartInteractive:
+      pageTurnAnimation === "natural" &&
       !textSelection &&
       driverTurn === undefined &&
       activeTurns.length < turnConcurrency.maximumConcurrentTurns,
@@ -2342,6 +2390,7 @@ function LazyReaderEngine({
           page={page}
           pagination={pagination}
           progressDisplay={progressDisplay}
+          theme={theme}
         />
       );
     });
@@ -2366,17 +2415,17 @@ function LazyReaderEngine({
       {...(Platform.OS === "web" ? pagePanResponder.panHandlers : {})}
       ref={readerViewRef}
       onLayout={measureReaderOrigin}
-      style={styles.container}
+      style={[styles.container, { backgroundColor: theme.paper }]}
     >
       <Canvas style={styles.canvas}>
-        <Fill color={READER_PAPER_COLOR} />
+        <Fill color={theme.paper} />
         {layout === "spread" ? (
           <Rect
             x={physicalPageWidth - 0.5}
             y={0}
             width={1}
             height={height}
-            color="#ded5ca"
+            color={theme.divider}
           />
         ) : null}
         {!transitionReady ? (
@@ -2588,6 +2637,11 @@ function LazyReaderEngine({
           <View
             style={[
               styles.noteReturnControls,
+              {
+                backgroundColor: theme.panel,
+                borderColor: theme.border,
+                shadowColor: theme.shadow,
+              },
               noteReturnAnchor.presentation === "compact"
                 ? styles.noteReturnControlsCompact
                 : styles.noteReturnControlsExpanded,
@@ -2603,20 +2657,25 @@ function LazyReaderEngine({
                 noteReturnAnchor.presentation === "compact"
                   ? styles.noteReturnButtonCompact
                   : styles.noteReturnButtonExpanded,
-                pressed && styles.noteReturnButtonPressed,
+                pressed && { backgroundColor: theme.panelRaised },
               ]}
             >
               <Text
                 accessibilityElementsHidden
                 importantForAccessibility="no"
-                style={styles.noteReturnText}
+                style={[styles.noteReturnText, { color: theme.accentStrong }]}
               >
                 {noteReturnAnchor.presentation === "compact"
                   ? "↩"
                   : "↩ 返回正文"}
               </Text>
             </Pressable>
-            <View style={styles.noteReturnDivider} />
+            <View
+              style={[
+                styles.noteReturnDivider,
+                { backgroundColor: theme.border },
+              ]}
+            />
             <Pressable
               accessibilityLabel={`关闭返回${noteKindLabel(noteReturnAnchor.noteKind)}引用位置的按钮`}
               accessibilityRole="button"
@@ -2624,13 +2683,16 @@ function LazyReaderEngine({
               onPress={clearNoteReturnAnchor}
               style={({ pressed }) => [
                 styles.noteReturnDismissButton,
-                pressed && styles.noteReturnButtonPressed,
+                pressed && { backgroundColor: theme.panelRaised },
               ]}
             >
               <Text
                 accessibilityElementsHidden
                 importantForAccessibility="no"
-                style={styles.noteReturnDismissText}
+                style={[
+                  styles.noteReturnDismissText,
+                  { color: theme.secondaryText },
+                ]}
               >
                 ×
               </Text>
@@ -2640,7 +2702,7 @@ function LazyReaderEngine({
       </View>
     ) : null;
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.paper }]}>
       {Platform.OS === "web" ? (
         readerContent
       ) : (
@@ -2871,6 +2933,8 @@ export function LiveReader({
   appearance,
   fontSize,
   layout = "single",
+  pageTurnAnimation = "natural",
+  theme = DEFAULT_READER_THEME,
   topInset = 0,
   bottomInset = 0,
   progressHeaderVisible = true,
@@ -2911,6 +2975,8 @@ export function LiveReader({
     resolvedAppearance.paragraphSpacing,
     resolvedAppearance.horizontalMargin,
     layout,
+    theme.name,
+    theme.colorScheme,
     topInset,
     bottomInset,
   ]);
@@ -2932,6 +2998,8 @@ export function LiveReader({
       height={height}
       appearance={resolvedAppearance}
       layout={layout}
+      pageTurnAnimation={pageTurnAnimation}
+      theme={theme}
       topInset={topInset}
       bottomInset={bottomInset}
       progressHeaderVisible={progressHeaderVisible}
@@ -3038,7 +3106,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   container: {
-    backgroundColor: READER_PAPER_COLOR,
     flex: 1,
     overflow: "hidden",
   },

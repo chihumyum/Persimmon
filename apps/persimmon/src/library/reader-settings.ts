@@ -6,6 +6,7 @@ import {
   DEFAULT_READER_SETTINGS,
   type ReaderAppearanceSettings,
   type ReaderClickPageTurnTuning,
+  type ReaderColorMode,
   type ReaderFontFamily,
   type ReaderGesturePageTurnTuning,
   type ReaderPageTurnTuning,
@@ -29,6 +30,10 @@ export function normalizeSettings(value: unknown): ReaderSettings {
     appearance: normalizeAppearance(appearanceSource),
     layout:
       "layout" in value && value.layout === "spread" ? "spread" : "single",
+    pageTurnAnimation:
+      "pageTurnAnimation" in value && value.pageTurnAnimation === "none"
+        ? "none"
+        : "natural",
     pageTurnTuning: normalizePageTurnTuning(
       "pageTurnTuning" in value ? value.pageTurnTuning : undefined,
     ),
@@ -37,6 +42,8 @@ export function normalizeSettings(value: unknown): ReaderSettings {
 
 function normalizeAppearance(value: object): ReaderAppearanceSettings {
   return {
+    theme: "warm",
+    colorMode: readerColorMode(value),
     fontFamily: readerFontFamily(value),
     fontSize: steppedNumber(
       value,
@@ -72,6 +79,19 @@ function normalizeAppearance(value: object): ReaderAppearanceSettings {
     ),
     progressDisplay: readerProgressDisplay(value),
   };
+}
+
+function readerColorMode(value: object): ReaderColorMode {
+  if (!("colorMode" in value)) {
+    return DEFAULT_READER_APPEARANCE.colorMode;
+  }
+  switch (value.colorMode) {
+    case "light":
+    case "dark":
+      return value.colorMode;
+    default:
+      return "system";
+  }
 }
 
 function readerFontFamily(value: object): ReaderFontFamily {

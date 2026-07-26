@@ -17,8 +17,8 @@ import {
   type PageProgressDecoration,
 } from "./page-progress-decoration";
 import { afterSkiaPaint } from "./skia-lifecycle";
+import { DEFAULT_READER_THEME, type ReaderTheme } from "./reader-theme";
 
-const DECORATION_COLOR = "#8b8177";
 const DECORATION_FONT_SIZE = 12;
 const DECORATION_HEIGHT_MULTIPLIER = 1.3;
 const HEADER_GAP = 12;
@@ -47,6 +47,7 @@ export interface CreateSkiaPageDecorationInput {
   readonly horizontalMargin: number;
   readonly topInset: number;
   readonly bottomInset: number;
+  readonly theme?: ReaderTheme;
 }
 
 export function createSkiaPageDecoration({
@@ -58,6 +59,7 @@ export function createSkiaPageDecoration({
   horizontalMargin,
   topInset,
   bottomInset,
+  theme = DEFAULT_READER_THEME,
 }: CreateSkiaPageDecorationInput): SkiaPageDecoration {
   const maximumHorizontalMargin = Math.max(8, (width - 96) / 2);
   const margin = Math.min(horizontalMargin, maximumHorizontalMargin);
@@ -76,6 +78,7 @@ export function createSkiaPageDecoration({
     0.2,
     fontProvider,
     fontFamily,
+    theme.decoration,
   );
   const headerProgress = createDecorationParagraph(
     model.percentageLabel,
@@ -84,6 +87,7 @@ export function createSkiaPageDecoration({
     0.5,
     fontProvider,
     fontFamily,
+    theme.decoration,
   );
   const footer = createDecorationParagraph(
     model.footerLabel,
@@ -92,6 +96,7 @@ export function createSkiaPageDecoration({
     0.5,
     fontProvider,
     fontFamily,
+    theme.decoration,
   );
   let disposed = false;
 
@@ -190,9 +195,10 @@ function createDecorationParagraph(
   letterSpacing: number,
   fontProvider: SkTypefaceFontProvider,
   fontFamily: string,
+  color: string,
 ): SkParagraph {
   const textStyle: SkTextStyle = {
-    color: Skia.Color(DECORATION_COLOR),
+    color: Skia.Color(color),
     fontFamilies: [fontFamily],
     fontSize: DECORATION_FONT_SIZE,
     fontStyle: {

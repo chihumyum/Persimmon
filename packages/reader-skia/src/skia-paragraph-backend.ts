@@ -19,9 +19,7 @@ import {
 } from "@shopify/react-native-skia";
 
 import { normalizeUtf16Boundary } from "./utf16";
-
-const TEXT_COLOR = Skia.Color("#2f2b26");
-const LINK_COLOR = Skia.Color("#a64f2d");
+import { DEFAULT_READER_THEME, type ReaderTheme } from "./reader-theme";
 
 function textAlignOf(align: TypographyPreset["align"]): TextAlign {
   switch (align) {
@@ -36,16 +34,18 @@ function textAlignOf(align: TypographyPreset["align"]): TextAlign {
 
 function textStyleOf(
   input: ParagraphLayoutInput,
+  theme: ReaderTheme,
   run?: Pick<ResolvedRun, "link" | "marks" | "verticalAlign">,
 ): SkTextStyle {
   const marks = run?.marks ?? [];
   const verticalScale = run?.verticalAlign ? 0.78 : 1;
+  const linkColor = Skia.Color(theme.link);
   return {
-    color: run?.link ? LINK_COLOR : TEXT_COLOR,
+    color: run?.link ? linkColor : Skia.Color(theme.text),
     ...(run?.link?.kind === "internal"
       ? {
           decoration: TextDecoration.Underline,
-          decorationColor: LINK_COLOR,
+          decorationColor: linkColor,
         }
       : {}),
     fontFamilies: [...input.style.fontFamilies],
@@ -74,10 +74,13 @@ function textStyleOf(
   };
 }
 
-function paragraphStyleOf(input: ParagraphLayoutInput): SkParagraphStyle {
+function paragraphStyleOf(
+  input: ParagraphLayoutInput,
+  theme: ReaderTheme,
+): SkParagraphStyle {
   return {
     textAlign: textAlignOf(input.style.align),
-    textStyle: textStyleOf(input),
+    textStyle: textStyleOf(input, theme),
   };
 }
 
@@ -103,16 +106,17 @@ function lineGeometry(
  */
 export function createSkiaParagraphBackend(
   fontProvider: SkTypefaceFontProvider,
+  theme: ReaderTheme = DEFAULT_READER_THEME,
 ): ParagraphLayoutBackend<SkParagraph> {
   return {
     layout(input) {
       const builder = Skia.ParagraphBuilder.Make(
-        paragraphStyleOf(input),
+        paragraphStyleOf(input, theme),
         fontProvider,
       );
 
       for (const run of input.runs) {
-        builder.pushStyle(textStyleOf(input, run));
+        builder.pushStyle(textStyleOf(input, theme, run));
         builder.addText(run.text);
         builder.pop();
       }

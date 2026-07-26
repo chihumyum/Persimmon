@@ -10,7 +10,7 @@ import { Platform } from "react-native";
 import type { DecodedImageCache } from "./image-cache";
 import { pageCapturePixelSize } from "./page-capture-budget";
 import type { ReaderProgressDisplay } from "./reader-appearance";
-import { READER_PAPER_COLOR } from "./reader-theme";
+import { DEFAULT_READER_THEME, type ReaderTheme } from "./reader-theme";
 import { afterSkiaPaint } from "./skia-lifecycle";
 import {
   drawSkiaPageDecoration,
@@ -46,6 +46,7 @@ export function capturePage(
   allowUnrequestedImages = false,
   decoration?: SkiaPageDecoration,
   progressDisplay: ReaderProgressDisplay = "hidden",
+  theme: ReaderTheme = DEFAULT_READER_THEME,
 ): CapturedPage | null {
   if (!pageImagesSettledForCapture(page, imageCache, allowUnrequestedImages)) {
     return null;
@@ -73,13 +74,13 @@ export function capturePage(
   const imagePaint = Skia.Paint();
   const placeholderPaint = Skia.Paint();
   const notePaint = Skia.Paint();
-  placeholderPaint.setColor(Skia.Color("#eed9c8"));
-  notePaint.setColor(Skia.Color("#c97a52"));
+  placeholderPaint.setColor(Skia.Color(theme.imagePlaceholder));
+  notePaint.setColor(Skia.Color(theme.noteAccent));
   let returnedCapture = false;
   let surfaceDisposed = false;
 
   try {
-    canvas.clear(Skia.Color(READER_PAPER_COLOR));
+    canvas.clear(Skia.Color(theme.paper));
     canvas.scale(scale, scale);
 
     for (const item of page.items) {
