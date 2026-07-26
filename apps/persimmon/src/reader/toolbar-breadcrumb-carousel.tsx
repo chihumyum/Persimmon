@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Easing, StyleSheet, Text, View } from "react-native";
+import { PixelRatio, StyleSheet, Text, View } from "react-native";
+import Animated, {
+  Easing,
+  cancelAnimation,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from "react-native-reanimated";
 
+import { READER_UI_FONT_FAMILY } from "./reader-ui-typography";
 import {
   estimatedToolbarBreadcrumbWidth,
   toolbarBreadcrumbLabel,
@@ -25,29 +34,35 @@ export function ToolbarBreadcrumbCarousel({
     [fullLabel],
   );
   const [availableWidth, setAvailableWidth] = useState(0);
-  const translateX = useRef(new Animated.Value(0)).current;
+  const pixelRatio = useRef(Math.max(1, PixelRatio.get())).current;
+  const translateX = useSharedValue(0);
   const overflowing =
     availableWidth > 0 && estimatedFullLabelWidth > availableWidth;
   const cycleDistance = estimatedFullLabelWidth + CAROUSEL_GAP;
+  const trackStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateX: Math.round(translateX.value * pixelRatio) / pixelRatio,
+      },
+    ],
+  }));
 
   useEffect(() => {
-    translateX.stopAnimation();
-    translateX.setValue(0);
+    cancelAnimation(translateX);
+    translateX.value = 0;
     if (!overflowing || cycleDistance <= 0) {
       return;
     }
     const cycleDuration = (cycleDistance / CAROUSEL_PIXELS_PER_SECOND) * 1000;
-    const carousel = Animated.loop(
-      Animated.timing(translateX, {
+    translateX.value = withRepeat(
+      withTiming(-cycleDistance, {
         duration: cycleDuration,
         easing: Easing.linear,
-        toValue: -cycleDistance,
-        useNativeDriver: true,
       }),
-      { resetBeforeIteration: true },
+      -1,
+      false,
     );
-    carousel.start();
-    return () => carousel.stop();
+    return () => cancelAnimation(translateX);
   }, [cycleDistance, overflowing, translateX]);
 
   if (!fullLabel) {
@@ -72,8 +87,8 @@ export function ToolbarBreadcrumbCarousel({
           <Animated.View
             style={[
               styles.carouselTrack,
+              trackStyle,
               {
-                transform: [{ translateX }],
                 width: cycleDistance * 2,
               },
             ]}
@@ -108,8 +123,10 @@ export function ToolbarBreadcrumbCarousel({
 
 const styles = StyleSheet.create({
   carouselLabel: {
+    fontFamily: READER_UI_FONT_FAMILY,
     fontSize: 12,
-    fontWeight: "600",
+    includeFontPadding: false,
+    letterSpacing: 0.2,
     lineHeight: 17,
     textAlign: "left",
   },
@@ -134,8 +151,10 @@ const styles = StyleSheet.create({
   },
   label: {
     flexShrink: 1,
+    fontFamily: READER_UI_FONT_FAMILY,
     fontSize: 12,
-    fontWeight: "600",
+    includeFontPadding: false,
+    letterSpacing: 0.2,
     lineHeight: 17,
     textAlign: "center",
   },

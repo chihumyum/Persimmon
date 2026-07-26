@@ -34,6 +34,7 @@ import type {
   ReaderPageTurnTuning,
 } from "../library/types";
 import { navigationLabelsForPosition } from "../reader/navigation-path";
+import { READER_UI_FONT_FAMILY } from "../reader/reader-ui-typography";
 import { ToolbarBreadcrumbCarousel } from "../reader/toolbar-breadcrumb-carousel";
 import { PageTurnTuningPanel } from "./page-turn-tuning-panel";
 import { ReadingLayoutPanel } from "./reading-layout-panel";
@@ -681,12 +682,18 @@ const styles = StyleSheet.create({
   floatingButtonText: {
     color: "#6e6259",
     fontSize: 13,
-    fontWeight: "600",
+    fontFamily: READER_UI_FONT_FAMILY,
+    includeFontPadding: false,
+    letterSpacing: 0.25,
+    lineHeight: 18,
   },
   accentButtonText: {
     color: "#b94b24",
-    fontSize: 14,
-    fontWeight: "600",
+    fontFamily: READER_UI_FONT_FAMILY,
+    fontSize: 13,
+    includeFontPadding: false,
+    letterSpacing: 0.2,
+    lineHeight: 18,
   },
   backButton: {
     paddingLeft: 9,
@@ -697,8 +704,11 @@ const styles = StyleSheet.create({
   },
   tocClose: {
     color: "#b94b24",
+    fontFamily: READER_UI_FONT_FAMILY,
     fontSize: 14,
-    fontWeight: "600",
+    includeFontPadding: false,
+    letterSpacing: 0.2,
+    lineHeight: 20,
   },
   tocHeader: {
     alignItems: "center",
@@ -734,17 +744,26 @@ const styles = StyleSheet.create({
   },
   tocRowText: {
     color: "#4d443d",
+    fontFamily: READER_UI_FONT_FAMILY,
     fontSize: 14,
+    includeFontPadding: false,
+    letterSpacing: 0.15,
     lineHeight: 20,
   },
   tocTitle: {
     color: "#3e3731",
+    fontFamily: READER_UI_FONT_FAMILY,
     fontSize: 18,
-    fontWeight: "700",
+    includeFontPadding: false,
+    letterSpacing: 0.2,
+    lineHeight: 25,
   },
   typeButtonText: {
     color: "#5c534b",
-    fontSize: 14,
-    fontWeight: "700",
+    fontFamily: READER_UI_FONT_FAMILY,
+    fontSize: 13,
+    includeFontPadding: false,
+    letterSpacing: 0.1,
+    lineHeight: 18,
   },
 });

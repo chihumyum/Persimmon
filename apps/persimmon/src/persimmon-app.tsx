@@ -1,5 +1,7 @@
+import { NotoSansSC_400Regular } from "@expo-google-fonts/noto-sans-sc/400Regular";
 import type { ReaderProgress } from "@persimmon/reader-skia";
 import { EpubImportError } from "@persimmon/epub-import";
+import { useFonts } from "expo-font";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -26,6 +28,7 @@ import {
   type ReaderSettings,
 } from "./library/types";
 import { pickAndImportEpub } from "./pick-epub";
+import { READER_UI_FONT_FAMILY } from "./reader/reader-ui-typography";
 import { LibraryScreen } from "./screens/library-screen";
 import { ReaderScreen } from "./screens/reader-screen";
 import { googleDriveSyncService } from "./sync/sync-service";
@@ -64,6 +67,9 @@ function LoadingScreen() {
 }
 
 export function PersimmonApp() {
+  const [readerUiFontLoaded, readerUiFontError] = useFonts({
+    [READER_UI_FONT_FAMILY]: NotoSansSC_400Regular,
+  });
   const [entries, setEntries] = useState<readonly LibraryBookSummary[]>([
     demoSummary(),
   ]);
@@ -305,7 +311,7 @@ export function PersimmonApp() {
     [refreshLibrary],
   );
 
-  if (!hydrated) {
+  if (!hydrated || (!readerUiFontLoaded && !readerUiFontError)) {
     return <LoadingScreen />;
   }
 

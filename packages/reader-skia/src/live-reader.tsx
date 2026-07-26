@@ -809,9 +809,9 @@ function LazyReaderEngine({
 
   useEffect(() => {
     if (Platform.OS === "web" && pageTurnAnimation === "natural") {
-      preparePageTurnRenderer(width, layout === "spread");
+      preparePageTurnRenderer(width, layout === "spread", theme.paper);
     }
-  }, [layout, pageTurnAnimation, width]);
+  }, [layout, pageTurnAnimation, theme.paper, width]);
 
   useEffect(
     () => () => {
@@ -2625,6 +2625,7 @@ function LazyReaderEngine({
                     onRef={(handle) =>
                       registerWebPageTurnMesh(turn.id, face, handle)
                     }
+                    paperColor={theme.paper}
                     paperImage={texture.frontImage}
                     spread={layout === "spread"}
                     turn={turn}
@@ -2638,6 +2639,7 @@ function LazyReaderEngine({
                   backImage={texture.backImage ?? undefined}
                   drawShadow={shouldDrawPageTurnShadow(turn.direction, face)}
                   face={face}
+                  paperColor={theme.paper}
                   paperImage={texture.frontImage}
                   nativeFrame={
                     turn.interactive || turn.handoffPending
@@ -2911,6 +2913,7 @@ interface WebPageTurnFaceMeshProps {
   readonly gesturePageTurnTuning: GesturePageTurnTuning;
   readonly paperImage: SkImage;
   readonly backImage?: SkImage;
+  readonly paperColor: string;
   readonly width: number;
   readonly height: number;
   readonly spread: boolean;
@@ -2925,6 +2928,7 @@ function WebPageTurnFaceMesh({
   gesturePageTurnTuning,
   paperImage,
   backImage,
+  paperColor,
   width,
   height,
   spread,
@@ -2951,6 +2955,7 @@ function WebPageTurnFaceMesh({
       face={face}
       height={height}
       initialProfile={initialProfile}
+      paperColor={paperColor}
       paperImage={paperImage}
       direction={turn.direction}
       spread={spread}
