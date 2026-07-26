@@ -164,7 +164,10 @@ class NativeLibraryRepository implements LibraryRepository {
   }
 
   async importBook(input: ImportBookInput): Promise<LibraryBookSummary> {
-    return this.persistImportedBook(input, new Date().toISOString());
+    return this.persistImportedBook(
+      input,
+      input.addedAt ?? new Date().toISOString(),
+    );
   }
 
   private async persistImportedBook(
@@ -296,6 +299,15 @@ class NativeLibraryRepository implements LibraryRepository {
       progressKey(locator.bookId),
       JSON.stringify(locator),
     );
+  }
+
+  async getOriginalEpub(bookId: string): Promise<Uint8Array | undefined> {
+    this.assertInitialized();
+    if (bookId === DEMO_BOOK.id) {
+      return undefined;
+    }
+    const file = new File(this.bookDirectory(bookId), "original.epub");
+    return file.exists ? file.bytes() : undefined;
   }
 
   async getResource(

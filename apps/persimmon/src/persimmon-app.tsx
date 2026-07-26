@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Platform,
   StyleSheet,
   Text,
@@ -26,6 +27,8 @@ import {
 import { pickAndImportEpub } from "./pick-epub";
 import { LibraryScreen } from "./screens/library-screen";
 import { ReaderScreen } from "./screens/reader-screen";
+import { googleDriveSyncService } from "./sync/sync-service";
+import type { GoogleDriveSyncStatus } from "./sync/types";
 
 type Screen = { kind: "library" } | { kind: "reader"; bookId: string };
 
@@ -72,6 +75,9 @@ export function PersimmonApp() {
   const [importing, setImporting] = useState(false);
   const [openingBookId, setOpeningBookId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<GoogleDriveSyncStatus>(
+    googleDriveSyncService.getStatus(),
+  );
   const progressTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
@@ -112,6 +118,44 @@ export function PersimmonApp() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => googleDriveSyncService.subscribe(setSyncStatus), []);
+
+  useEffect(() => {
+    if (!hydrated) {
+      return;
+    }
+    let cancelled = false;
+    void googleDriveSyncService.initialize().then(() => {
+      if (!cancelled) {
+        void refreshLibrary();
+      }
+    });
+    const appStateSubscription = AppState.addEventListener(
+      "change",
+      (nextState) => {
+        if (nextState === "active") {
+          void googleDriveSyncService.syncNow();
+        }
+      },
+    );
+    const interval = setInterval(() => {
+      if (AppState.currentState === "active") {
+        void googleDriveSyncService.syncNow();
+      }
+    }, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      appStateSubscription.remove();
+    };
+  }, [hydrated, refreshLibrary]);
+
+  useEffect(() => {
+    if (hydrated && syncStatus.phase === "idle") {
+      void refreshLibrary();
+    }
+  }, [hydrated, refreshLibrary, syncStatus]);
 
   useEffect(
     () => () => {
@@ -159,6 +203,7 @@ export function PersimmonApp() {
         bytes: picked.bytes,
         fileName: picked.fileName,
       });
+      await googleDriveSyncService.noteBookImported(entry);
       await refreshLibrary();
       await openBook(entry.id);
     } catch (importError: unknown) {
@@ -180,12 +225,15 @@ export function PersimmonApp() {
     if (progressTimer.current) {
       clearTimeout(progressTimer.current);
     }
-    progressTimer.current = setTimeout(() => {
+    progressTimer.current = setTimeout(async () => {
       const pending = pendingProgress.current;
       if (pending) {
-        libraryRepository
-          .saveProgress(pending.locator)
-          .catch(() => setError("本地阅读进度保存失败。"));
+        try {
+          await libraryRepository.saveProgress(pending.locator);
+          await googleDriveSyncService.noteProgress(pending.locator);
+        } catch {
+          setError("阅读进度保存失败。");
+        }
       }
     }, 250);
   }, []);
@@ -225,6 +273,7 @@ export function PersimmonApp() {
       const remove = async () => {
         try {
           await libraryRepository.removeBook(entry.id);
+          await googleDriveSyncService.noteBookDeleted(entry.id);
           await refreshLibrary();
         } catch (deleteError: unknown) {
           setError(userFacingError(deleteError));
@@ -275,10 +324,20 @@ export function PersimmonApp() {
       error={error}
       importing={importing}
       openingBookId={openingBookId}
+      syncStatus={syncStatus}
+      onConnectGoogleDrive={() => {
+        void googleDriveSyncService.connectAndSync();
+      }}
       onDelete={deleteEntry}
+      onDisconnectGoogleDrive={() => {
+        void googleDriveSyncService.disconnect();
+      }}
       onDismissError={() => setError(null)}
       onImport={importBook}
       onOpen={(bookId) => void openBook(bookId)}
+      onSyncNow={() => {
+        void googleDriveSyncService.syncNow();
+      }}
     />
   );
 }

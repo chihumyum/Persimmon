@@ -21,6 +21,7 @@ export interface LibraryBookSummary {
   readonly author?: string;
   readonly sourceName: string;
   readonly addedAt: string;
+  readonly originalByteLength: number;
   readonly builtIn?: boolean;
   readonly coverAssetId?: string;
   readonly coverMediaType?: string;
@@ -152,6 +153,7 @@ export interface OpenedLibraryBook {
 export interface ImportBookInput {
   readonly bytes: Uint8Array;
   readonly fileName: string;
+  readonly addedAt?: string;
 }
 
 export interface LibraryRepository {
@@ -159,6 +161,7 @@ export interface LibraryRepository {
   listBooks(): Promise<readonly LibraryBookSummary[]>;
   importBook(input: ImportBookInput): Promise<LibraryBookSummary>;
   openBook(bookId: string): Promise<OpenedLibraryBook>;
+  getOriginalEpub(bookId: string): Promise<Uint8Array | undefined>;
   getResource(bookId: string, assetId: string): Promise<Uint8Array | undefined>;
   saveProgress(locator: BookLocator): Promise<void>;
   removeBook(bookId: string): Promise<void>;

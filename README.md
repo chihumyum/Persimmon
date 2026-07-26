@@ -9,13 +9,17 @@ EPUB 阅读器。它不使用 WebView：EPUB 会先被编译成版本化、平�
 - EPUB 2/3 可重排书籍解析、HTML5 容错、NCX / nav 目录、封面与图片；
 - 安全 CSS 白名单（对齐、粗斜体、段间距、隐藏内容），不执行书内脚本；
 - Web IndexedDB 与 Native 文件系统本地书库，原 EPUB、章节、资源和进度分开存储；
+- Google Drive `appDataFolder` 跨 Web / iOS /
+  Android 同步原 EPUB、删除状态与稳定阅读位置；
 - 章节级懒分页、目录跳转、字号重排、稳定位置续读和图片 LRU；
 - 从 `play-books-page-turning` 移植的连续曲率翻页，支持点按、拖拽、完成与回弹；
 - Chromium / WebKit 自动端到端测试，以及 iOS / Android 无 UI bundle 门禁。
 
 架构说明见
 [docs/architecture.md](docs/architecture.md)，当前验收证据与真机清单见
-[docs/mvp-acceptance.md](docs/mvp-acceptance.md)。
+[docs/mvp-acceptance.md](docs/mvp-acceptance.md)，Google
+Cloud 凭证创建和双设备验收见
+[docs/google-drive-sync.md](docs/google-drive-sync.md)。
 
 ## Workspace
 

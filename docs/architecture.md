@@ -103,6 +103,30 @@ persimmon-library-v2/
 导入先完整写入 staging 并校验，再在同卷内 rename。更新已有书时，旧目录先变为replacement
 backup；启动恢复会覆盖“旧目录已备份”和“新目录已落地”两个中断点。因此崩溃后保留旧版或新版完整书籍，不会留下半本书。AsyncStorage 只保存小型索引、进度和设置。
 
+## Google Drive 同步
+
+`SyncEngine` 位于 `LibraryRepository` 之上，UI 不直接操作 Drive。云端使用隐藏
+`appDataFolder`，只保存不可变原始 EPUB 和小型逻辑状态，不上传 sections、resources、BookIR 或阅读样式。
+
+```text
+LibraryRepository
+      │ local books / locators
+      ▼
+SyncEngine ── per-device mutation document ── Google Drive appDataFolder
+      │                                           ├── book SHA-256.epub
+      └── HLC merge + tombstones                  └── device state.json
+```
+
+每台设备只更新自己的状态文件，避免多个设备并发覆盖同一个全局清单。书籍 upsert /
+delete 和进度使用 HLC 排序；同一本 EPUB 由 SHA-256 `bookId` / `revisionId`
+确定身份。上传时先完成 resumable EPUB
+upload，再发布引用它的设备状态。下载时校验长度和 SHA-256 后才进入 Repository 的原子导入路径。
+
+Native 授权由 Google Sign-In SDK 管理；Web 使用 Google Identity
+Services 的短期 token。同步凭证只授予
+`drive.appdata`，不需要 Persimmon 自有账号，也不会访问用户普通 Drive 文件。具体配置和验收见
+[google-drive-sync.md](google-drive-sync.md)。
+
 ## 分页、进度与资源
 
 阅读器只分页当前 section，并预热相邻 section；离开范围后释放 SkParagraph。大书不会在打开时一次性排完整本。
