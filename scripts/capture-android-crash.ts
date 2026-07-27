@@ -5,6 +5,8 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import { connectedAndroidDeviceSerials } from "./android-device-list";
+
 const APP_ID = "dev.chihum.persimmon";
 const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = path.resolve(SCRIPT_DIRECTORY, "..");
@@ -60,12 +62,7 @@ function assertSingleConnectedDevice(adb: string): string {
   if (result.status !== 0) {
     throw new Error(result.stderr.trim() || "Unable to query Android devices.");
   }
-  const devices = result.stdout
-    .split(/\r?\n/)
-    .slice(1)
-    .map((line) => line.trim())
-    .filter((line) => line.includes("\tdevice"))
-    .map((line) => line.split(/\s+/, 1)[0]!);
+  const devices = connectedAndroidDeviceSerials(result.stdout);
   const requestedSerial = process.env.ANDROID_SERIAL;
   if (requestedSerial) {
     if (!devices.includes(requestedSerial)) {
