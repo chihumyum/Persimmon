@@ -1,8 +1,11 @@
 import { NotoSansSC_400Regular } from "@expo-google-fonts/noto-sans-sc/400Regular";
-import type { ReaderProgress, ReaderTheme } from "@persimmon/reader-skia";
+import type { ReaderProgress } from "@persimmon/reader-skia";
+import {
+  resolveReaderTheme,
+  type ReaderTheme,
+} from "@persimmon/reader-skia/theme";
 import { EpubImportError } from "@persimmon/epub-import";
 import { useFonts } from "expo-font";
-import * as SystemUI from "expo-system-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -11,11 +14,9 @@ import {
   Platform,
   StyleSheet,
   Text,
-  useColorScheme,
   View,
 } from "react-native";
 
-import { resolveAppTheme } from "./app-theme";
 import { demoSummary } from "./library/demo";
 import {
   libraryRepository,
@@ -26,11 +27,14 @@ import {
   DEFAULT_READER_SETTINGS,
   LibraryError,
   type ReaderAppearanceSettings,
+  type ReaderColorMode,
   type ReaderPageTurnAnimation,
   type ReaderPageTurnTuning,
   type ReaderSettings,
 } from "./library/types";
 import { pickAndImportEpub } from "./pick-epub";
+import { useSystemReaderColorScheme } from "./reader/reader-color-scheme";
+import { resolveReaderColorScheme } from "./reader/reader-color-mode";
 import { READER_UI_FONT_FAMILY } from "./reader/reader-ui-typography";
 import { LibraryScreen } from "./screens/library-screen";
 import { ReaderScreen } from "./screens/reader-screen";
@@ -60,17 +64,26 @@ function userFacingError(error: unknown): string {
 
 function LoadingScreen({ theme }: { readonly theme: ReaderTheme }) {
   return (
-    <View style={[styles.loadingScreen, { backgroundColor: theme.paper }]}>
+    <View
+      style={[styles.loadingScreen, { backgroundColor: theme.surrounding }]}
+    >
       <View style={[styles.brandMark, { backgroundColor: theme.accent }]}>
-        <Text style={styles.brandMarkText}>柿</Text>
+        <Text style={[styles.brandMarkText, { color: theme.panelRaised }]}>
+          柿
+        </Text>
       </View>
       <ActivityIndicator color={theme.accent} />
     </View>
   );
 }
 
+interface PendingReaderProgress {
+  readonly progress: ReaderProgress;
+  readonly updatedAt: string;
+}
+
 export function PersimmonApp() {
-  const systemColorScheme = useColorScheme();
+  const systemColorScheme = useSystemReaderColorScheme();
   const [readerUiFontLoaded, readerUiFontError] = useFonts({
     [READER_UI_FONT_FAMILY]: NotoSansSC_400Regular,
   });
@@ -93,18 +106,10 @@ export function PersimmonApp() {
   const progressTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
-  const pendingProgress = useRef<ReaderProgress | undefined>(undefined);
+  const pendingProgress = useRef<PendingReaderProgress | undefined>(undefined);
   const settingsTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
-  const theme = useMemo(
-    () => resolveAppTheme(readerSettings.appearance, systemColorScheme),
-    [readerSettings.appearance, systemColorScheme],
-  );
-
-  useEffect(() => {
-    void SystemUI.setBackgroundColorAsync(theme.paper);
-  }, [theme.paper]);
 
   const refreshLibrary = useCallback(async () => {
     setEntries(await libraryRepository.listBooks());
@@ -197,6 +202,15 @@ export function PersimmonApp() {
         : undefined,
     [entries, screen],
   );
+  const resolvedColorScheme = resolveReaderColorScheme(
+    readerSettings.appearance.colorMode,
+    systemColorScheme,
+  );
+  const appTheme = useMemo(
+    () =>
+      resolveReaderTheme(readerSettings.appearance.theme, resolvedColorScheme),
+    [readerSettings.appearance.theme, resolvedColorScheme],
+  );
 
   const openBook = useCallback(async (bookId: string) => {
     setError(null);
@@ -234,30 +248,65 @@ export function PersimmonApp() {
     }
   }, [openBook, refreshLibrary]);
 
-  const updateProgress = useCallback((progress: ReaderProgress) => {
-    setEntries((current) =>
-      current.map((entry) =>
-        entry.id === progress.locator.bookId
-          ? { ...entry, locator: progress.locator }
-          : entry,
-      ),
-    );
-    pendingProgress.current = progress;
+  const persistPendingProgress = useCallback(async () => {
+    const pending = pendingProgress.current;
+    if (!pending) {
+      return;
+    }
+    pendingProgress.current = undefined;
     if (progressTimer.current) {
       clearTimeout(progressTimer.current);
+      progressTimer.current = undefined;
     }
-    progressTimer.current = setTimeout(async () => {
-      const pending = pendingProgress.current;
-      if (pending) {
-        try {
-          await libraryRepository.saveProgress(pending.locator);
-          await googleDriveSyncService.noteProgress(pending.locator);
-        } catch {
-          setError("阅读进度保存失败。");
-        }
-      }
-    }, 250);
+    try {
+      await libraryRepository.saveProgress(pending.progress.locator, {
+        publicationProgress: pending.progress.publicationProgress,
+        updatedAt: pending.updatedAt,
+      });
+      await googleDriveSyncService.noteProgress(pending.progress.locator);
+    } catch {
+      pendingProgress.current ??= pending;
+      setError("阅读进度保存失败。");
+    }
   }, []);
+
+  const updateProgress = useCallback(
+    (progress: ReaderProgress) => {
+      const updatedAt = new Date().toISOString();
+      setEntries((current) =>
+        current.map((entry) =>
+          entry.id === progress.locator.bookId
+            ? {
+                ...entry,
+                locator: progress.locator,
+                readingProgress: progress.publicationProgress,
+                lastReadAt: updatedAt,
+              }
+            : entry,
+        ),
+      );
+      pendingProgress.current = { progress, updatedAt };
+      if (progressTimer.current) {
+        clearTimeout(progressTimer.current);
+      }
+      progressTimer.current = setTimeout(() => {
+        void persistPendingProgress();
+      }, 250);
+    },
+    [persistPendingProgress],
+  );
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState !== "active") {
+        void persistPendingProgress();
+      }
+    });
+    return () => {
+      subscription.remove();
+      void persistPendingProgress();
+    };
+  }, [persistPendingProgress]);
 
   const updateReaderSettings = useCallback((patch: Partial<ReaderSettings>) => {
     const next = { ...readerSettingsRef.current, ...patch };
@@ -277,6 +326,12 @@ export function PersimmonApp() {
       updateReaderSettings({ appearance });
     },
     [updateReaderSettings],
+  );
+  const updateColorMode = useCallback(
+    (colorMode: ReaderColorMode) => {
+      updateAppearance({ ...readerSettingsRef.current.appearance, colorMode });
+    },
+    [updateAppearance],
   );
   const updateLayout = useCallback(
     (layout: ReaderSettings["layout"]) => {
@@ -324,7 +379,7 @@ export function PersimmonApp() {
   );
 
   if (!hydrated || (!readerUiFontLoaded && !readerUiFontError)) {
-    return <LoadingScreen theme={theme} />;
+    return <LoadingScreen theme={appTheme} />;
   }
 
   if (screen.kind === "reader" && activeEntry && activeBook) {
@@ -332,12 +387,13 @@ export function PersimmonApp() {
       <ReaderScreen
         entry={activeEntry}
         appearance={readerSettings.appearance}
+        resolvedColorScheme={resolvedColorScheme}
         layout={readerSettings.layout}
         pageTurnAnimation={readerSettings.pageTurnAnimation}
         pageTurnTuning={readerSettings.pageTurnTuning}
         opened={activeBook}
-        theme={theme}
         onBack={() => {
+          void persistPendingProgress();
           setActiveBook(null);
           setScreen({ kind: "library" });
         }}
@@ -353,11 +409,12 @@ export function PersimmonApp() {
   return (
     <LibraryScreen
       entries={entries}
+      colorMode={readerSettings.appearance.colorMode}
       error={error}
       importing={importing}
       openingBookId={openingBookId}
       syncStatus={syncStatus}
-      theme={theme}
+      theme={appTheme}
       onConnectGoogleDrive={() => {
         void googleDriveSyncService.connectAndSync();
       }}
@@ -366,6 +423,7 @@ export function PersimmonApp() {
         void googleDriveSyncService.disconnect();
       }}
       onDismissError={() => setError(null)}
+      onColorModeChange={updateColorMode}
       onImport={importBook}
       onOpen={(bookId) => void openBook(bookId)}
       onSyncNow={() => {
@@ -378,6 +436,7 @@ export function PersimmonApp() {
 const styles = StyleSheet.create({
   brandMark: {
     alignItems: "center",
+    backgroundColor: "#df5d2c",
     borderRadius: 25,
     height: 78,
     justifyContent: "center",
@@ -391,6 +450,7 @@ const styles = StyleSheet.create({
   },
   loadingScreen: {
     alignItems: "center",
+    backgroundColor: "#f7f1e8",
     flex: 1,
     justifyContent: "center",
   },

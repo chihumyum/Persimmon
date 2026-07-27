@@ -1,9 +1,8 @@
-import type { BookLocator } from "@persimmon/book-core";
-
 import { DEMO_BOOK } from "../demo-book";
 import {
   LIBRARY_SCHEMA_VERSION,
   type LibraryBookSummary,
+  type LibraryReadingProgress,
   type OpenedLibraryBook,
   type StoredBookManifest,
 } from "./types";
@@ -29,7 +28,9 @@ const DEMO_MANIFEST: StoredBookManifest = {
   originalByteLength: 0,
 };
 
-export function demoSummary(locator?: BookLocator): LibraryBookSummary {
+export function demoSummary(
+  readingProgress?: LibraryReadingProgress,
+): LibraryBookSummary {
   return {
     id: DEMO_BOOK.id,
     revisionId: DEMO_BOOK.revisionId,
@@ -39,7 +40,15 @@ export function demoSummary(locator?: BookLocator): LibraryBookSummary {
     addedAt: "2026-07-23T00:00:00.000Z",
     originalByteLength: 0,
     builtIn: true,
-    ...(locator ? { locator } : {}),
+    ...(readingProgress
+      ? {
+          locator: readingProgress.locator,
+          readingProgress: readingProgress.publicationProgress,
+          ...(readingProgress.updatedAt
+            ? { lastReadAt: readingProgress.updatedAt }
+            : {}),
+        }
+      : {}),
     status: "ready",
     warningCount: 0,
   };

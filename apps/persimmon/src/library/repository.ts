@@ -13,6 +13,7 @@ import {
   sha256Hex,
   summaryFromManifest,
 } from "./shared";
+import { readingProgressFromStored } from "./reading-progress";
 import {
   LibraryError,
   type BookSource,
@@ -21,6 +22,7 @@ import {
   type LibraryRepository,
   type OpenedLibraryBook,
   type ReaderSettings,
+  type SaveProgressOptions,
   type StoredBookManifest,
 } from "./types";
 import { compileEpubInWorker } from "./web-epub-compiler";
@@ -51,6 +53,13 @@ interface StoredSetting {
   readonly value: unknown;
 }
 
+interface StoredReadingProgress {
+  readonly bookId: string;
+  readonly locator: BookLocator;
+  readonly publicationProgress: number;
+  readonly updatedAt: string;
+}
+
 interface PersimmonDatabase extends DBSchema {
   books: {
     key: string;
@@ -66,7 +75,7 @@ interface PersimmonDatabase extends DBSchema {
   };
   progress: {
     key: string;
-    value: BookLocator;
+    value: BookLocator | StoredReadingProgress;
   };
   settings: {
     key: string;
@@ -136,16 +145,30 @@ class IndexedDbLibraryRepository implements LibraryRepository {
       database.getAll("books"),
       database.getAll("progress"),
     ]);
-    const locatorByBook = new Map(
-      locators.map((locator) => [locator.bookId, locator]),
+    const progressByBook = new Map(
+      locators.map((progress) => [
+        "locator" in progress ? progress.locator.bookId : progress.bookId,
+        progress,
+      ]),
     );
     const summaries = records
       .map((record) =>
-        summaryFromManifest(record, locatorByBook.get(record.id)),
+        summaryFromManifest(
+          record,
+          readingProgressFromStored(
+            progressByBook.get(record.id),
+            record.sectionIds,
+          ),
+        ),
       )
       .sort((left, right) => right.addedAt.localeCompare(left.addedAt));
     return [
-      demoSummary(locatorByBook.get(DEMO_BOOK.id)),
+      demoSummary(
+        readingProgressFromStored(
+          progressByBook.get(DEMO_BOOK.id),
+          DEMO_BOOK.sections.map((section) => section.id),
+        ),
+      ),
       ...summaries.filter((summary) => summary.id !== DEMO_BOOK.id),
     ];
   }
@@ -169,8 +192,11 @@ class IndexedDbLibraryRepository implements LibraryRepository {
       existing?.status === "ready" &&
       existing.compilerVersion === EPUB_COMPILER_VERSION
     ) {
-      const locator = await database.get("progress", existing.id);
-      return summaryFromManifest(existing, locator);
+      const progress = readingProgressFromStored(
+        await database.get("progress", existing.id),
+        existing.sectionIds,
+      );
+      return summaryFromManifest(existing, progress);
     }
 
     const manifest = manifestFromImport(
@@ -276,8 +302,41 @@ class IndexedDbLibraryRepository implements LibraryRepository {
     };
   }
 
-  async saveProgress(locator: BookLocator): Promise<void> {
-    await this.requireDatabase().put("progress", locator);
+  async saveProgress(
+    locator: BookLocator,
+    options?: SaveProgressOptions,
+  ): Promise<void> {
+    const database = this.requireDatabase();
+    const sectionIds =
+      locator.bookId === DEMO_BOOK.id
+        ? DEMO_BOOK.sections.map((section) => section.id)
+        : ((await database.get("books", locator.bookId))?.sectionIds ?? []);
+    const existing = readingProgressFromStored(
+      await database.get("progress", locator.bookId),
+      sectionIds,
+    );
+    const fallback = readingProgressFromStored(locator, sectionIds);
+    const requested =
+      options?.publicationProgress === undefined
+        ? undefined
+        : readingProgressFromStored(
+            {
+              locator,
+              publicationProgress: options.publicationProgress,
+            },
+            sectionIds,
+          )?.publicationProgress;
+    const publicationProgress =
+      requested ??
+      existing?.publicationProgress ??
+      fallback?.publicationProgress ??
+      0;
+    await database.put("progress", {
+      bookId: locator.bookId,
+      locator,
+      publicationProgress,
+      updatedAt: options?.updatedAt ?? new Date().toISOString(),
+    });
   }
 
   async getOriginalEpub(bookId: string): Promise<Uint8Array | undefined> {

@@ -13,6 +13,7 @@ import {
   sha256Hex,
   summaryFromManifest,
 } from "./shared";
+import { readingProgressFromStored } from "./reading-progress";
 import {
   LIBRARY_SCHEMA_VERSION,
   LibraryError,
@@ -22,6 +23,7 @@ import {
   type LibraryRepository,
   type OpenedLibraryBook,
   type ReaderSettings,
+  type SaveProgressOptions,
   type StoredBookManifest,
 } from "./types";
 
@@ -140,24 +142,37 @@ class NativeLibraryRepository implements LibraryRepository {
       progressKey(DEMO_BOOK.id),
       ...manifests.map((manifest) => progressKey(manifest.id)),
     ]);
-    const locatorByBook = new Map<string, BookLocator>();
+    const progressByBook = new Map<string, unknown>();
     for (const [key, value] of progressValues) {
       if (!value) {
         continue;
       }
       try {
-        const locator = JSON.parse(value) as BookLocator;
-        locatorByBook.set(key.slice(PROGRESS_PREFIX.length), locator);
+        progressByBook.set(
+          key.slice(PROGRESS_PREFIX.length),
+          JSON.parse(value) as unknown,
+        );
       } catch {
         // A corrupt progress record is disposable; book content is untouched.
       }
     }
 
     return [
-      demoSummary(locatorByBook.get(DEMO_BOOK.id)),
+      demoSummary(
+        readingProgressFromStored(
+          progressByBook.get(DEMO_BOOK.id),
+          DEMO_BOOK.sections.map((section) => section.id),
+        ),
+      ),
       ...manifests
         .map((manifest) =>
-          summaryFromManifest(manifest, locatorByBook.get(manifest.id)),
+          summaryFromManifest(
+            manifest,
+            readingProgressFromStored(
+              progressByBook.get(manifest.id),
+              manifest.sectionIds,
+            ),
+          ),
         )
         .sort((left, right) => right.addedAt.localeCompare(left.addedAt)),
     ];
@@ -191,8 +206,8 @@ class NativeLibraryRepository implements LibraryRepository {
       existing?.status === "ready" &&
       existing.compilerVersion === EPUB_COMPILER_VERSION
     ) {
-      const locator = await this.readProgress(existing.id);
-      return summaryFromManifest(existing, locator);
+      const progress = await this.readProgress(existing);
+      return summaryFromManifest(existing, progress);
     }
 
     const manifest = manifestFromImport(
@@ -293,11 +308,49 @@ class NativeLibraryRepository implements LibraryRepository {
     };
   }
 
-  async saveProgress(locator: BookLocator): Promise<void> {
+  async saveProgress(
+    locator: BookLocator,
+    options?: SaveProgressOptions,
+  ): Promise<void> {
     this.assertInitialized();
+    const sectionIds =
+      locator.bookId === DEMO_BOOK.id
+        ? DEMO_BOOK.sections.map((section) => section.id)
+        : (this.manifests.get(locator.bookId)?.sectionIds ?? []);
+    const existingValue = await AsyncStorage.getItem(
+      progressKey(locator.bookId),
+    );
+    let parsedExisting: unknown;
+    try {
+      parsedExisting = existingValue
+        ? (JSON.parse(existingValue) as unknown)
+        : undefined;
+    } catch {
+      parsedExisting = undefined;
+    }
+    const existing = readingProgressFromStored(parsedExisting, sectionIds);
+    const fallback = readingProgressFromStored(locator, sectionIds);
+    const requested =
+      options?.publicationProgress === undefined
+        ? undefined
+        : readingProgressFromStored(
+            {
+              locator,
+              publicationProgress: options.publicationProgress,
+            },
+            sectionIds,
+          )?.publicationProgress;
     await AsyncStorage.setItem(
       progressKey(locator.bookId),
-      JSON.stringify(locator),
+      JSON.stringify({
+        locator,
+        publicationProgress:
+          requested ??
+          existing?.publicationProgress ??
+          fallback?.publicationProgress ??
+          0,
+        updatedAt: options?.updatedAt ?? new Date().toISOString(),
+      }),
     );
   }
 
@@ -511,13 +564,18 @@ class NativeLibraryRepository implements LibraryRepository {
     );
   }
 
-  private async readProgress(bookId: string): Promise<BookLocator | undefined> {
-    const serialized = await AsyncStorage.getItem(progressKey(bookId));
+  private async readProgress(
+    manifest: StoredBookManifest,
+  ): Promise<ReturnType<typeof readingProgressFromStored>> {
+    const serialized = await AsyncStorage.getItem(progressKey(manifest.id));
     if (!serialized) {
       return undefined;
     }
     try {
-      return JSON.parse(serialized) as BookLocator;
+      return readingProgressFromStored(
+        JSON.parse(serialized) as unknown,
+        manifest.sectionIds,
+      );
     } catch {
       return undefined;
     }

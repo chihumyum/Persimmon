@@ -1,9 +1,9 @@
 import type { BookNavigationItem, BookPosition } from "@persimmon/book-core";
-import type {
-  ReaderLayoutMode,
-  ReaderProgress,
-  ReaderTheme,
-} from "@persimmon/reader-skia";
+import type { ReaderLayoutMode, ReaderProgress } from "@persimmon/reader-skia";
+import {
+  resolveReaderTheme,
+  type ResolvedReaderColorScheme,
+} from "@persimmon/reader-skia/theme";
 import React, {
   Suspense,
   useCallback,
@@ -71,11 +71,11 @@ function flattenNavigation(
 export interface ReaderScreenProps {
   readonly entry: LibraryBookSummary;
   readonly appearance: ReaderAppearanceSettings;
+  readonly resolvedColorScheme: ResolvedReaderColorScheme;
   readonly layout: ReaderLayoutMode;
   readonly pageTurnAnimation: ReaderPageTurnAnimation;
   readonly pageTurnTuning: ReaderPageTurnTuning;
   readonly opened: OpenedLibraryBook;
-  readonly theme: ReaderTheme;
   readonly onBack: () => void;
   readonly onAppearanceChange: (appearance: ReaderAppearanceSettings) => void;
   readonly onLayoutChange: (layout: ReaderLayoutMode) => void;
@@ -89,11 +89,11 @@ export interface ReaderScreenProps {
 export function ReaderScreen({
   entry,
   appearance,
+  resolvedColorScheme,
   layout,
   pageTurnAnimation,
   pageTurnTuning,
   opened,
-  theme,
   onBack,
   onAppearanceChange,
   onLayoutChange,
@@ -102,6 +102,10 @@ export function ReaderScreen({
   onProgress,
 }: ReaderScreenProps) {
   const insets = useSafeAreaInsets();
+  const theme = useMemo(
+    () => resolveReaderTheme(appearance.theme, resolvedColorScheme),
+    [appearance.theme, resolvedColorScheme],
+  );
   const [readerFrame, setReaderFrame] = useState<ReaderFrame | null>(null);
   const measuredViewportRef = useRef<Viewport | null>(null);
   const [tocVisible, setTocVisible] = useState(false);
@@ -305,7 +309,7 @@ export function ReaderScreen({
             >
               <AsyncSkia>
                 <ReaderSurface
-                  key={`${opened.book.revisionId}:${navigationGeneration}`}
+                  key={`${opened.book.revisionId}:${navigationGeneration}:${theme.colorScheme}`}
                   book={opened.book}
                   width={readerFrame.width}
                   height={readerFrame.height}

@@ -15,6 +15,7 @@ import { DEMO_BOOK } from "../demo-book";
 import {
   LIBRARY_SCHEMA_VERSION,
   type LibraryBookSummary,
+  type LibraryReadingProgress,
   type StoredBookManifest,
 } from "./types";
 
@@ -83,7 +84,7 @@ export function bookFromManifest(
 
 export function summaryFromManifest(
   manifest: StoredBookManifest,
-  locator?: BookLocator,
+  readingProgress?: LibraryReadingProgress,
 ): LibraryBookSummary {
   return {
     id: manifest.id,
@@ -104,7 +105,15 @@ export function summaryFromManifest(
             : {}),
         }
       : {}),
-    ...(locator ? { locator } : {}),
+    ...(readingProgress
+      ? {
+          locator: readingProgress.locator,
+          readingProgress: readingProgress.publicationProgress,
+          ...(readingProgress.updatedAt
+            ? { lastReadAt: readingProgress.updatedAt }
+            : {}),
+        }
+      : {}),
     status: manifest.status,
     warningCount: manifest.warnings.length,
   };

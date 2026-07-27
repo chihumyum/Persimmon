@@ -37,8 +37,25 @@ export interface LibraryBookSummary {
   readonly coverAssetId?: string;
   readonly coverMediaType?: string;
   readonly locator?: BookLocator;
+  readonly readingProgress?: number;
+  readonly lastReadAt?: string;
   readonly status: LibraryBookStatus;
   readonly warningCount: number;
+}
+
+export interface LibraryReadingProgress {
+  readonly locator: BookLocator;
+  /**
+   * Denormalized local display value. The stable locator remains the
+   * cross-device progress authority because pagination varies by device.
+   */
+  readonly publicationProgress: number;
+  readonly updatedAt?: string;
+}
+
+export interface SaveProgressOptions {
+  readonly publicationProgress?: number;
+  readonly updatedAt?: string;
 }
 
 export interface StoredBookManifest {
@@ -161,7 +178,10 @@ export interface LibraryRepository {
   openBook(bookId: string): Promise<OpenedLibraryBook>;
   getOriginalEpub(bookId: string): Promise<Uint8Array | undefined>;
   getResource(bookId: string, assetId: string): Promise<Uint8Array | undefined>;
-  saveProgress(locator: BookLocator): Promise<void>;
+  saveProgress(
+    locator: BookLocator,
+    options?: SaveProgressOptions,
+  ): Promise<void>;
   removeBook(bookId: string): Promise<void>;
   getSettings(): Promise<ReaderSettings>;
   saveSettings(settings: ReaderSettings): Promise<void>;

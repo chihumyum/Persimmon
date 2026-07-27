@@ -278,7 +278,9 @@ export class SyncEngine {
         !local.locator ||
         locatorKey(local.locator) !== locatorKey(mutation.locator)
       ) {
-        await this.library.saveProgress(mutation.locator);
+        await this.library.saveProgress(mutation.locator, {
+          updatedAt: new Date(mutation.clock.wallTime).toISOString(),
+        });
         updatedProgress += 1;
       }
       this.markRemoteProgress(mutation);
