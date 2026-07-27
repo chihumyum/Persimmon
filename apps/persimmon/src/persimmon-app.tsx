@@ -1,7 +1,8 @@
 import { NotoSansSC_400Regular } from "@expo-google-fonts/noto-sans-sc/400Regular";
-import type { ReaderProgress } from "@persimmon/reader-skia";
+import type { ReaderProgress, ReaderTheme } from "@persimmon/reader-skia";
 import { EpubImportError } from "@persimmon/epub-import";
 import { useFonts } from "expo-font";
+import * as SystemUI from "expo-system-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -10,9 +11,11 @@ import {
   Platform,
   StyleSheet,
   Text,
+  useColorScheme,
   View,
 } from "react-native";
 
+import { resolveAppTheme } from "./app-theme";
 import { demoSummary } from "./library/demo";
 import {
   libraryRepository,
@@ -55,18 +58,19 @@ function userFacingError(error: unknown): string {
   return error instanceof Error ? error.message : "发生未知错误。";
 }
 
-function LoadingScreen() {
+function LoadingScreen({ theme }: { readonly theme: ReaderTheme }) {
   return (
-    <View style={styles.loadingScreen}>
-      <View style={styles.brandMark}>
+    <View style={[styles.loadingScreen, { backgroundColor: theme.paper }]}>
+      <View style={[styles.brandMark, { backgroundColor: theme.accent }]}>
         <Text style={styles.brandMarkText}>柿</Text>
       </View>
-      <ActivityIndicator color="#d95f2b" />
+      <ActivityIndicator color={theme.accent} />
     </View>
   );
 }
 
 export function PersimmonApp() {
+  const systemColorScheme = useColorScheme();
   const [readerUiFontLoaded, readerUiFontError] = useFonts({
     [READER_UI_FONT_FAMILY]: NotoSansSC_400Regular,
   });
@@ -93,6 +97,14 @@ export function PersimmonApp() {
   const settingsTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
+  const theme = useMemo(
+    () => resolveAppTheme(readerSettings.appearance, systemColorScheme),
+    [readerSettings.appearance, systemColorScheme],
+  );
+
+  useEffect(() => {
+    void SystemUI.setBackgroundColorAsync(theme.paper);
+  }, [theme.paper]);
 
   const refreshLibrary = useCallback(async () => {
     setEntries(await libraryRepository.listBooks());
@@ -312,7 +324,7 @@ export function PersimmonApp() {
   );
 
   if (!hydrated || (!readerUiFontLoaded && !readerUiFontError)) {
-    return <LoadingScreen />;
+    return <LoadingScreen theme={theme} />;
   }
 
   if (screen.kind === "reader" && activeEntry && activeBook) {
@@ -324,6 +336,7 @@ export function PersimmonApp() {
         pageTurnAnimation={readerSettings.pageTurnAnimation}
         pageTurnTuning={readerSettings.pageTurnTuning}
         opened={activeBook}
+        theme={theme}
         onBack={() => {
           setActiveBook(null);
           setScreen({ kind: "library" });
@@ -344,6 +357,7 @@ export function PersimmonApp() {
       importing={importing}
       openingBookId={openingBookId}
       syncStatus={syncStatus}
+      theme={theme}
       onConnectGoogleDrive={() => {
         void googleDriveSyncService.connectAndSync();
       }}
@@ -364,7 +378,6 @@ export function PersimmonApp() {
 const styles = StyleSheet.create({
   brandMark: {
     alignItems: "center",
-    backgroundColor: "#df5d2c",
     borderRadius: 25,
     height: 78,
     justifyContent: "center",
@@ -378,7 +391,6 @@ const styles = StyleSheet.create({
   },
   loadingScreen: {
     alignItems: "center",
-    backgroundColor: "#f7f1e8",
     flex: 1,
     justifyContent: "center",
   },

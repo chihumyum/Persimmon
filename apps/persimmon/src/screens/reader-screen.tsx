@@ -1,6 +1,9 @@
 import type { BookNavigationItem, BookPosition } from "@persimmon/book-core";
-import type { ReaderLayoutMode, ReaderProgress } from "@persimmon/reader-skia";
-import { resolveReaderTheme } from "@persimmon/reader-skia/theme";
+import type {
+  ReaderLayoutMode,
+  ReaderProgress,
+  ReaderTheme,
+} from "@persimmon/reader-skia";
 import React, {
   Suspense,
   useCallback,
@@ -17,7 +20,6 @@ import {
   StatusBar,
   StyleSheet,
   Text,
-  useColorScheme,
   View,
   type LayoutChangeEvent,
 } from "react-native";
@@ -73,6 +75,7 @@ export interface ReaderScreenProps {
   readonly pageTurnAnimation: ReaderPageTurnAnimation;
   readonly pageTurnTuning: ReaderPageTurnTuning;
   readonly opened: OpenedLibraryBook;
+  readonly theme: ReaderTheme;
   readonly onBack: () => void;
   readonly onAppearanceChange: (appearance: ReaderAppearanceSettings) => void;
   readonly onLayoutChange: (layout: ReaderLayoutMode) => void;
@@ -90,6 +93,7 @@ export function ReaderScreen({
   pageTurnAnimation,
   pageTurnTuning,
   opened,
+  theme,
   onBack,
   onAppearanceChange,
   onLayoutChange,
@@ -98,17 +102,6 @@ export function ReaderScreen({
   onProgress,
 }: ReaderScreenProps) {
   const insets = useSafeAreaInsets();
-  const systemColorScheme = useColorScheme();
-  const resolvedColorScheme =
-    appearance.colorMode === "system"
-      ? systemColorScheme === "dark"
-        ? "dark"
-        : "light"
-      : appearance.colorMode;
-  const theme = useMemo(
-    () => resolveReaderTheme(appearance.theme, resolvedColorScheme),
-    [appearance.theme, resolvedColorScheme],
-  );
   const [readerFrame, setReaderFrame] = useState<ReaderFrame | null>(null);
   const measuredViewportRef = useRef<Viewport | null>(null);
   const [tocVisible, setTocVisible] = useState(false);

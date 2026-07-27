@@ -1,3 +1,4 @@
+import type { ReaderTheme } from "@persimmon/reader-skia";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -37,7 +38,13 @@ function base64Of(bytes: Uint8Array): string {
   return output;
 }
 
-function BookCover({ entry }: { readonly entry: LibraryBookSummary }) {
+function BookCover({
+  entry,
+  theme,
+}: {
+  readonly entry: LibraryBookSummary;
+  readonly theme: ReaderTheme;
+}) {
   const [uri, setUri] = useState<string>();
 
   useEffect(() => {
@@ -70,10 +77,13 @@ function BookCover({ entry }: { readonly entry: LibraryBookSummary }) {
   }
   return (
     <>
-      <View style={styles.coverFruit}>
+      <View style={[styles.coverFruit, { backgroundColor: theme.accent }]}>
         <Text style={styles.coverFruitText}>柿</Text>
       </View>
-      <Text numberOfLines={3} style={styles.coverTitle}>
+      <Text
+        numberOfLines={3}
+        style={[styles.coverTitle, { color: theme.controlText }]}
+      >
         {entry.title}
       </Text>
     </>
@@ -83,11 +93,12 @@ function BookCover({ entry }: { readonly entry: LibraryBookSummary }) {
 interface BookCardProps {
   readonly entry: LibraryBookSummary;
   readonly opening: boolean;
+  readonly theme: ReaderTheme;
   readonly onOpen: () => void;
   readonly onDelete: () => void;
 }
 
-function BookCard({ entry, opening, onOpen, onDelete }: BookCardProps) {
+function BookCard({ entry, opening, theme, onOpen, onDelete }: BookCardProps) {
   const progress =
     entry.status === "needs-reimport"
       ? "需要重新导入"
@@ -107,25 +118,44 @@ function BookCard({ entry, opening, onOpen, onDelete }: BookCardProps) {
           pressed && styles.bookCardPressed,
         ]}
       >
-        <View style={styles.cover}>
+        <View
+          style={[
+            styles.cover,
+            {
+              backgroundColor: theme.imagePlaceholder,
+              shadowColor: theme.shadow,
+            },
+          ]}
+        >
           {opening ? (
             <View style={styles.coverLoading}>
-              <ActivityIndicator color="#fff6e9" size="small" />
+              <ActivityIndicator color={theme.accentStrong} size="small" />
             </View>
           ) : (
-            <BookCover entry={entry} />
+            <BookCover entry={entry} theme={theme} />
           )}
         </View>
-        <Text numberOfLines={1} style={styles.bookTitle}>
+        <Text
+          numberOfLines={1}
+          style={[styles.bookTitle, { color: theme.text }]}
+        >
           {entry.title}
         </Text>
-        <Text numberOfLines={1} style={styles.bookMeta}>
+        <Text
+          numberOfLines={1}
+          style={[styles.bookMeta, { color: theme.secondaryText }]}
+        >
           {entry.author ?? entry.sourceName}
         </Text>
         <Text
           style={[
             styles.bookProgress,
-            entry.status === "needs-reimport" && styles.reimportText,
+            {
+              color:
+                entry.status === "needs-reimport"
+                  ? theme.accentStrong
+                  : theme.accent,
+            },
           ]}
         >
           {progress}
@@ -138,7 +168,11 @@ function BookCard({ entry, opening, onOpen, onDelete }: BookCardProps) {
           onPress={onDelete}
           style={styles.deleteButton}
         >
-          <Text style={styles.deleteButtonText}>删除</Text>
+          <Text
+            style={[styles.deleteButtonText, { color: theme.secondaryText }]}
+          >
+            删除
+          </Text>
         </Pressable>
       ) : null}
     </View>
@@ -151,6 +185,7 @@ export interface LibraryScreenProps {
   readonly importing: boolean;
   readonly openingBookId: string | null;
   readonly syncStatus: GoogleDriveSyncStatus;
+  readonly theme: ReaderTheme;
   readonly onConnectGoogleDrive: () => void;
   readonly onDelete: (entry: LibraryBookSummary) => void;
   readonly onDisconnectGoogleDrive: () => void;
@@ -189,11 +224,13 @@ function syncDescription(status: GoogleDriveSyncStatus): string {
 
 function GoogleDriveSyncCard({
   status,
+  theme,
   onConnect,
   onDisconnect,
   onSync,
 }: {
   readonly status: GoogleDriveSyncStatus;
+  readonly theme: ReaderTheme;
   readonly onConnect: () => void;
   readonly onDisconnect: () => void;
   readonly onSync: () => void;
@@ -205,20 +242,35 @@ function GoogleDriveSyncCard({
     status.phase === "reauthorization-required";
 
   return (
-    <View style={styles.syncCard}>
+    <View
+      style={[
+        styles.syncCard,
+        {
+          backgroundColor: theme.panel,
+          borderColor: theme.border,
+        },
+      ]}
+    >
       <View style={styles.syncCopy}>
-        <Text style={styles.syncTitle}>Google Drive 云同步</Text>
-        <Text style={styles.syncDescription}>{syncDescription(status)}</Text>
+        <Text style={[styles.syncTitle, { color: theme.controlText }]}>
+          Google Drive 云同步
+        </Text>
+        <Text style={[styles.syncDescription, { color: theme.secondaryText }]}>
+          {syncDescription(status)}
+        </Text>
       </View>
       <View style={styles.syncActions}>
         {busy || status.phase === "syncing" ? (
-          <ActivityIndicator color="#c65125" size="small" />
+          <ActivityIndicator color={theme.accent} size="small" />
         ) : null}
         {canConnect ? (
           <Pressable
             accessibilityRole="button"
             onPress={onConnect}
-            style={styles.syncPrimaryButton}
+            style={[
+              styles.syncPrimaryButton,
+              { backgroundColor: theme.accent },
+            ]}
           >
             <Text style={styles.syncPrimaryButtonText}>
               {status.phase === "disconnected" ? "连接" : "重新连接"}
@@ -229,9 +281,16 @@ function GoogleDriveSyncCard({
           <Pressable
             accessibilityRole="button"
             onPress={onSync}
-            style={styles.syncSecondaryButton}
+            style={[styles.syncSecondaryButton, { borderColor: theme.accent }]}
           >
-            <Text style={styles.syncSecondaryButtonText}>立即同步</Text>
+            <Text
+              style={[
+                styles.syncSecondaryButtonText,
+                { color: theme.accentStrong },
+              ]}
+            >
+              立即同步
+            </Text>
           </Pressable>
         ) : null}
         {connected ? (
@@ -240,7 +299,14 @@ function GoogleDriveSyncCard({
             onPress={onDisconnect}
             style={styles.syncDisconnectButton}
           >
-            <Text style={styles.syncDisconnectText}>断开</Text>
+            <Text
+              style={[
+                styles.syncDisconnectText,
+                { color: theme.secondaryText },
+              ]}
+            >
+              断开
+            </Text>
           </Pressable>
         ) : null}
       </View>
@@ -254,6 +320,7 @@ export function LibraryScreen({
   importing,
   openingBookId,
   syncStatus,
+  theme,
   onConnectGoogleDrive,
   onDelete,
   onDisconnectGoogleDrive,
@@ -263,20 +330,30 @@ export function LibraryScreen({
   onSyncNow,
 }: LibraryScreenProps) {
   return (
-    <View style={styles.libraryScreen}>
-      <StatusBar barStyle="dark-content" />
+    <View style={[styles.libraryScreen, { backgroundColor: theme.paper }]}>
+      <StatusBar
+        backgroundColor="transparent"
+        barStyle={
+          theme.colorScheme === "dark" ? "light-content" : "dark-content"
+        }
+        translucent
+      />
       <ScrollView
         contentContainerStyle={styles.libraryContent}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.libraryHeader}>
           <View style={styles.brandRow}>
-            <View style={styles.smallBrandMark}>
+            <View
+              style={[styles.smallBrandMark, { backgroundColor: theme.accent }]}
+            >
               <Text style={styles.smallBrandText}>柿</Text>
             </View>
             <View>
-              <Text style={styles.appName}>Persimmon</Text>
-              <Text style={styles.appTagline}>
+              <Text style={[styles.appName, { color: theme.text }]}>
+                Persimmon
+              </Text>
+              <Text style={[styles.appTagline, { color: theme.secondaryText }]}>
                 一本轻快、安静的 EPUB 阅读器
               </Text>
             </View>
@@ -288,7 +365,9 @@ export function LibraryScreen({
             onPress={onImport}
             style={({ pressed }) => [
               styles.importButton,
-              pressed && styles.importButtonPressed,
+              {
+                backgroundColor: pressed ? theme.accentStrong : theme.accent,
+              },
             ]}
           >
             {importing ? (
@@ -300,39 +379,59 @@ export function LibraryScreen({
         </View>
 
         {error ? (
-          <View accessibilityRole="alert" style={styles.errorCard}>
-            <Text style={styles.errorText}>{error}</Text>
+          <View
+            accessibilityRole="alert"
+            style={[styles.errorCard, { backgroundColor: theme.panelMuted }]}
+          >
+            <Text style={[styles.errorText, { color: theme.accentStrong }]}>
+              {error}
+            </Text>
             <Pressable onPress={onDismissError}>
-              <Text style={styles.dismissText}>知道了</Text>
+              <Text style={[styles.dismissText, { color: theme.accentStrong }]}>
+                知道了
+              </Text>
             </Pressable>
           </View>
         ) : null}
 
         <GoogleDriveSyncCard
           status={syncStatus}
+          theme={theme}
           onConnect={onConnectGoogleDrive}
           onDisconnect={onDisconnectGoogleDrive}
           onSync={onSyncNow}
         />
 
-        <Text style={styles.sectionTitle}>我的书架</Text>
+        <Text style={[styles.sectionTitle, { color: theme.controlText }]}>
+          我的书架
+        </Text>
         <View style={styles.bookGrid}>
           {entries.map((entry) => (
             <BookCard
               key={entry.id}
               entry={entry}
               opening={openingBookId === entry.id}
+              theme={theme}
               onDelete={() => onDelete(entry)}
               onOpen={() => onOpen(entry.id)}
             />
           ))}
         </View>
 
-        <View style={styles.architectureNote}>
-          <Text style={styles.architectureTitle}>
+        <View
+          style={[
+            styles.architectureNote,
+            { backgroundColor: theme.panelMuted },
+          ]}
+        >
+          <Text
+            style={[styles.architectureTitle, { color: theme.controlText }]}
+          >
             Live text, native rhythm.
           </Text>
-          <Text style={styles.architectureBody}>
+          <Text
+            style={[styles.architectureBody, { color: theme.secondaryText }]}
+          >
             BookIR → SkParagraph → Skia。没有 WebView；原 EPUB
             与稳定阅读位置可同步，排版与翻页样式只保留在本机。
           </Text>
@@ -344,30 +443,25 @@ export function LibraryScreen({
 
 const styles = StyleSheet.create({
   appName: {
-    color: "#2d2924",
     fontSize: 30,
     fontWeight: "700",
     letterSpacing: -0.8,
   },
   appTagline: {
-    color: "#7b7167",
     fontSize: 14,
     marginTop: 3,
   },
   architectureBody: {
-    color: "#7f756b",
     fontSize: 14,
     lineHeight: 22,
     marginTop: 6,
   },
   architectureNote: {
-    backgroundColor: "#eee4d7",
     borderRadius: 20,
     marginTop: 36,
     padding: 24,
   },
   architectureTitle: {
-    color: "#4a4038",
     fontSize: 18,
     fontWeight: "700",
   },
@@ -388,18 +482,15 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   bookMeta: {
-    color: "#887e74",
     fontSize: 13,
     marginTop: 4,
   },
   bookProgress: {
-    color: "#c65125",
     fontSize: 12,
     fontWeight: "600",
     marginTop: 8,
   },
   bookTitle: {
-    color: "#342f2a",
     fontSize: 16,
     fontWeight: "600",
     marginTop: 13,
@@ -410,11 +501,9 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   cover: {
-    backgroundColor: "#e8d4bd",
     ...(Platform.OS === "web"
       ? { boxShadow: "0 10px 16px rgba(62, 44, 32, 0.16)" }
       : {
-          shadowColor: "#3e2c20",
           shadowOffset: { width: 0, height: 10 },
           shadowOpacity: 0.16,
           shadowRadius: 16,
@@ -428,7 +517,6 @@ const styles = StyleSheet.create({
   coverFruit: {
     alignItems: "center",
     alignSelf: "flex-end",
-    backgroundColor: "#dd5a29",
     borderRadius: 18,
     height: 48,
     justifyContent: "center",
@@ -452,7 +540,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   coverTitle: {
-    color: "#46382d",
     fontSize: 25,
     fontWeight: "700",
     lineHeight: 33,
@@ -463,37 +550,29 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   deleteButtonText: {
-    color: "#9b7567",
     fontSize: 12,
   },
   dismissText: {
-    color: "#b54620",
     fontSize: 13,
     fontWeight: "700",
     marginTop: 10,
   },
   errorCard: {
-    backgroundColor: "#f5dfd5",
     borderRadius: 14,
     marginBottom: 28,
     padding: 16,
   },
   errorText: {
-    color: "#7d321c",
     fontSize: 14,
     lineHeight: 21,
   },
   importButton: {
     alignItems: "center",
-    backgroundColor: "#d95f2b",
     borderRadius: 999,
     justifyContent: "center",
     minHeight: 44,
     minWidth: 136,
     paddingHorizontal: 18,
-  },
-  importButtonPressed: {
-    backgroundColor: "#bd4d21",
   },
   importButtonText: {
     color: "#fffaf3",
@@ -515,14 +594,9 @@ const styles = StyleSheet.create({
     marginBottom: 48,
   },
   libraryScreen: {
-    backgroundColor: "#f7f1e8",
     flex: 1,
   },
-  reimportText: {
-    color: "#a54028",
-  },
   sectionTitle: {
-    color: "#4b443d",
     fontSize: 14,
     fontWeight: "700",
     letterSpacing: 1.4,
@@ -537,8 +611,6 @@ const styles = StyleSheet.create({
   },
   syncCard: {
     alignItems: "center",
-    backgroundColor: "#f0e6da",
-    borderColor: "rgba(112, 82, 58, 0.10)",
     borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
@@ -555,7 +627,6 @@ const styles = StyleSheet.create({
     paddingRight: 18,
   },
   syncDescription: {
-    color: "#7f756b",
     fontSize: 13,
     lineHeight: 19,
     marginTop: 4,
@@ -565,11 +636,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   syncDisconnectText: {
-    color: "#96786a",
     fontSize: 12,
   },
   syncPrimaryButton: {
-    backgroundColor: "#d95f2b",
     borderRadius: 999,
     paddingHorizontal: 17,
     paddingVertical: 9,
@@ -580,25 +649,21 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   syncSecondaryButton: {
-    borderColor: "rgba(185, 75, 36, 0.28)",
     borderRadius: 999,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
   syncSecondaryButtonText: {
-    color: "#b94b24",
     fontSize: 12,
     fontWeight: "600",
   },
   syncTitle: {
-    color: "#4a4038",
     fontSize: 15,
     fontWeight: "700",
   },
   smallBrandMark: {
     alignItems: "center",
-    backgroundColor: "#df5d2c",
     borderRadius: 16,
     height: 52,
     justifyContent: "center",
