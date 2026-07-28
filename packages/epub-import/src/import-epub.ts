@@ -799,10 +799,15 @@ function appendTextToken(
 function appendBreakToken(tokens: InlineToken[], context: InlineContext) {
   const previous = tokens.at(-1);
   if (previous?.kind === "text" && previous.run.text.endsWith(" ")) {
-    previous.run = {
-      ...previous.run,
-      text: previous.run.text.replace(/ +$/, ""),
-    };
+    const trimmedText = previous.run.text.replace(/ +$/, "");
+    if (trimmedText.length === 0) {
+      tokens.pop();
+    } else {
+      previous.run = {
+        ...previous.run,
+        text: trimmedText,
+      };
+    }
   }
 
   const orderedMarks = MARK_ORDER.filter((mark) => context.marks.has(mark));
@@ -956,6 +961,10 @@ class SectionCompiler {
   private readonly resources: Record<string, Uint8Array>;
   private readonly fragmentBlockIds = new Map<string, string>();
   private readonly fragmentNoteKinds = new Map<string, NoteKind>();
+  private readonly pendingFragmentAnchors = new Map<
+    string,
+    NoteKind | undefined
+  >();
   private blockCounter = 0;
 
   constructor(
@@ -980,6 +989,10 @@ class SectionCompiler {
       return [];
     }
     this.processContainer(body, this.contextForElement(body, {}));
+    const finalBlock = this.blocks.at(-1);
+    if (finalBlock) {
+      this.bindPendingAnchors(finalBlock.id);
+    }
     return this.blocks;
   }
 
@@ -1094,6 +1107,46 @@ class SectionCompiler {
     }
   }
 
+  private queueElementAnchors(
+    element: ContentElement,
+    inheritedNoteKind?: NoteKind,
+  ): void {
+    const noteKind =
+      (element.name === "a" ? undefined : noteKindForElement(element)) ??
+      inheritedNoteKind;
+    const anchorNames = [
+      contentAttribute(element, "id")?.trim(),
+      element.name === "a"
+        ? contentAttribute(element, "name")?.trim()
+        : undefined,
+    ].filter((value): value is string => Boolean(value));
+    for (const anchorName of anchorNames) {
+      if (
+        !this.fragmentBlockIds.has(anchorName) &&
+        !this.pendingFragmentAnchors.has(anchorName)
+      ) {
+        this.pendingFragmentAnchors.set(anchorName, noteKind);
+      }
+    }
+    for (const child of element.children) {
+      if (child.kind === "element") {
+        this.queueElementAnchors(child, noteKind);
+      }
+    }
+  }
+
+  private bindPendingAnchors(blockId: string): void {
+    for (const [anchorName, noteKind] of this.pendingFragmentAnchors) {
+      if (!this.fragmentBlockIds.has(anchorName)) {
+        this.fragmentBlockIds.set(anchorName, blockId);
+      }
+      if (noteKind && !this.fragmentNoteKinds.has(anchorName)) {
+        this.fragmentNoteKinds.set(anchorName, noteKind);
+      }
+    }
+    this.pendingFragmentAnchors.clear();
+  }
+
   private processContainer(
     container: ContentElement,
     context: NoteContext,
@@ -1166,6 +1219,7 @@ class SectionCompiler {
     }
 
     if (name === "p") {
+      const firstBlockIndex = this.blocks.length;
       const tokens: InlineToken[] = [];
       collectInlineTokens(
         element,
@@ -1180,10 +1234,17 @@ class SectionCompiler {
         (candidate) => this.styleFor(candidate),
       );
       this.emitTokens(element, tokens, "paragraph", 1, context.noteKind);
+      const firstBlock = this.blocks[firstBlockIndex];
+      if (firstBlock) {
+        this.recordElementAnchors(element, firstBlock.id, context.noteKind);
+      } else {
+        this.queueElementAnchors(element, context.noteKind);
+      }
       return;
     }
 
     if (/^h[1-6]$/.test(name)) {
+      const firstBlockIndex = this.blocks.length;
       const tokens: InlineToken[] = [];
       collectInlineTokens(
         element,
@@ -1200,6 +1261,12 @@ class SectionCompiler {
       const rawLevel = Number(name.slice(1));
       const level = Math.min(rawLevel, 3) as 1 | 2 | 3;
       this.emitTokens(element, tokens, "heading", level, context.noteKind);
+      const firstBlock = this.blocks[firstBlockIndex];
+      if (firstBlock) {
+        this.recordElementAnchors(element, firstBlock.id, context.noteKind);
+      } else {
+        this.queueElementAnchors(element, context.noteKind);
+      }
       return;
     }
 
@@ -1213,6 +1280,8 @@ class SectionCompiler {
     const firstBlock = this.blocks[firstBlockIndex];
     if (firstBlock) {
       this.recordElementAnchors(element, firstBlock.id, context.noteKind);
+    } else {
+      this.queueElementAnchors(element, context.noteKind);
     }
   }
 
@@ -1234,6 +1303,7 @@ class SectionCompiler {
       const normalizedRuns = normalizedTokens.map((token) => token.run);
 
       const id = this.nextBlockId();
+      this.bindPendingAnchors(id);
       if (kind === "heading") {
         this.blocks.push({
           kind: "heading",
@@ -1349,6 +1419,7 @@ class SectionCompiler {
     this.resources[assetId] ??= bytes;
 
     const id = this.nextBlockId();
+    this.bindPendingAnchors(id);
     const intrinsicSize = detectImageSize(bytes, manifestAsset.mediaType);
     this.blocks.push({
       kind: "image",

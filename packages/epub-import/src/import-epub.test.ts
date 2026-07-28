@@ -183,6 +183,60 @@ describe("importEpub", () => {
     });
   });
 
+  it("drops styled whitespace before a line break without emitting an empty run", () => {
+    const bytes = fixtureBytes({
+      packageXml: minimalPackage(),
+      resources: {
+        "EPUB/chapter.xhtml": `<?xml version="1.0"?>
+          <html xmlns="http://www.w3.org/1999/xhtml">
+            <body>
+              <p>left<em> </em><br/>right</p>
+            </body>
+          </html>`,
+      },
+    });
+
+    const result = importEpub(bytes);
+    const block = result.book.sections[0].blocks[0];
+
+    expect(block).toMatchObject({
+      kind: "paragraph",
+      runs: [{ text: "left\nright" }],
+    });
+  });
+
+  it("binds an empty fragment anchor to the next readable block", () => {
+    const bytes = fixtureBytes({
+      packageXml: minimalPackage(),
+      resources: {
+        "EPUB/chapter.xhtml": `<?xml version="1.0"?>
+          <html xmlns="http://www.w3.org/1999/xhtml">
+            <body>
+              <p><a href="#note-1">1</a></p>
+              <div><a id="note-1"/></div>
+              <p>Footnote body</p>
+            </body>
+          </html>`,
+      },
+    });
+
+    const result = importEpub(bytes);
+    const [referenceBlock, footnoteBlock] = result.book.sections[0].blocks;
+    const referenceRun =
+      referenceBlock?.kind === "paragraph" ? referenceBlock.runs[0] : undefined;
+
+    expect(referenceRun?.link?.target).toEqual({
+      sectionId: result.book.sections[0].id,
+      blockId: footnoteBlock?.id,
+      offset: 0,
+    });
+    expect(
+      result.warnings.filter(
+        (warning) => warning.code === "internal-link-skipped",
+      ),
+    ).toEqual([]);
+  });
+
   it("applies the safe EPUB author-style whitelist and skips hidden content", () => {
     const bytes = fixtureBytes({
       packageXml: minimalPackage(
