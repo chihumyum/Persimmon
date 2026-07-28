@@ -15,12 +15,12 @@ describe("page capture quality policy", () => {
 
     expect(quality).toMatchObject({
       desiredScale: 3,
-      minimumScale: 1,
+      minimumScale: 3,
     });
     expect(quality.idealPerspectiveScale).toBeCloseTo(4.02);
   });
 
-  it("reduces only newly requested tap captures as real pressure rises", () => {
+  it("keeps tap captures at device scale as pressure rises", () => {
     expect(
       selectPageCaptureQuality({
         tier: "active",
@@ -28,8 +28,8 @@ describe("page capture quality policy", () => {
         devicePixelRatio: 3,
         recentStartsPerSecond: 1,
         activeTurnCount: 1,
-      }).desiredScale,
-    ).toBe(2.5);
+      }),
+    ).toMatchObject({ desiredScale: 3, minimumScale: 3 });
     expect(
       selectPageCaptureQuality({
         tier: "active",
@@ -37,8 +37,8 @@ describe("page capture quality policy", () => {
         devicePixelRatio: 3,
         recentStartsPerSecond: 3,
         activeTurnCount: 2,
-      }).desiredScale,
-    ).toBe(2);
+      }),
+    ).toMatchObject({ desiredScale: 3, minimumScale: 3 });
     expect(
       selectPageCaptureQuality({
         tier: "active",
@@ -46,8 +46,8 @@ describe("page capture quality policy", () => {
         devicePixelRatio: 3,
         recentStartsPerSecond: 5,
         activeTurnCount: 4,
-      }).desiredScale,
-    ).toBe(1.5);
+      }),
+    ).toMatchObject({ desiredScale: 3, minimumScale: 3 });
   });
 
   it("caps the two opportunistic tiers without guaranteeing residency", () => {
@@ -92,7 +92,7 @@ describe("page capture quality policy", () => {
       }),
     ).toEqual({
       desiredScale: 2,
-      minimumScale: 1,
+      minimumScale: 2,
       idealPerspectiveScale: 2.68,
     });
   });

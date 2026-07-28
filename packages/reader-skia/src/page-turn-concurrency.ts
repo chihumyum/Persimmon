@@ -5,9 +5,11 @@ import {
   type AutomaticPageTurnTuning,
 } from "./automatic-page-turn-tuning";
 
-export const PAGE_TURN_LANE_HARD_LIMIT = 8;
+export const PAGE_TURN_LANE_HARD_LIMIT = 11;
 export const PAGE_TURN_GESTURE_LANE_RESERVE = 1;
-export const PAGE_TURN_TAP_LANE_HEADROOM = 2;
+export const PAGE_TURN_TAP_LANE_HEADROOM = 8;
+export const PAGE_TURN_BURST_TARGET_DURATION_MS = 160;
+const PAGE_TURN_BURST_MAX_PLAYBACK_SPEED = 8;
 
 export interface PageTurnConcurrency {
   readonly estimatedTapDurationMs: number;
@@ -17,18 +19,24 @@ export interface PageTurnConcurrency {
 }
 
 /**
- * Sizes the active part of the fixed native lane pool from the amount of time
- * that successive click turns can overlap. Two extra tap lanes absorb delayed
- * completion without doubling the whole pool, and one lane stays outside the
- * click allowance so a released gesture or native handoff is not starved. If
- * slow tuning would overflow that fixed pool, spread starts uniformly over the
- * animation duration instead of accepting a burst and then stalling.
+ * Sizes the active part of the fixed native lane pool for burst-compressed tap
+ * animations. A lone turn still honors the reader's requested playback speed,
+ * but once taps overlap the native drivers give every sheet the same
+ * PAGE_TURN_BURST_TARGET_DURATION_MS visual lifetime. A 160 ms sheet remains
+ * visible for roughly ten 60 Hz frames while overlapping the next 100 ms
+ * launch. Eight headroom lanes absorb cold
+ * texture, presentation, and RN outcome tail latency, and one lane stays
+ * reserved for a gesture.
  */
 export function calculatePageTurnConcurrency(
   tuning: AutomaticPageTurnTuning,
   startIntervalMs: number,
 ): PageTurnConcurrency {
   const estimatedTapDurationMs = estimateAutomaticPageTurnDurationMs(tuning);
+  const burstTapDurationMs = Math.min(
+    estimatedTapDurationMs,
+    PAGE_TURN_BURST_TARGET_DURATION_MS,
+  );
   const requestedIntervalMs =
     Number.isFinite(startIntervalMs) && startIntervalMs > 0
       ? startIntervalMs
@@ -41,13 +49,13 @@ export function calculatePageTurnConcurrency(
   );
   const minimumTurnIntervalMs = Math.max(
     requestedIntervalMs,
-    Math.ceil(estimatedTapDurationMs / steadyStateTapLanes),
+    Math.ceil(burstTapDurationMs / steadyStateTapLanes),
   );
   const maximumConcurrentTapTurns = Math.min(
     tapLaneLimit,
     Math.max(
       1,
-      Math.ceil(estimatedTapDurationMs / minimumTurnIntervalMs) +
+      Math.ceil(burstTapDurationMs / minimumTurnIntervalMs) +
         PAGE_TURN_TAP_LANE_HEADROOM,
     ),
   );
@@ -60,6 +68,25 @@ export function calculatePageTurnConcurrency(
       maximumConcurrentTapTurns + PAGE_TURN_GESTURE_LANE_RESERVE,
     ),
   };
+}
+
+/**
+ * Effective playback speed used only while two or more automatic turns
+ * overlap. It never slows a fast custom animation down.
+ */
+export function burstPageTurnPlaybackSpeed(
+  tuning: AutomaticPageTurnTuning,
+  _olderTurnDepth = 0,
+): number {
+  const estimatedDurationMs = estimateAutomaticPageTurnDurationMs(tuning);
+  if (estimatedDurationMs <= PAGE_TURN_BURST_TARGET_DURATION_MS) {
+    return tuning.playbackSpeed;
+  }
+  return Math.min(
+    PAGE_TURN_BURST_MAX_PLAYBACK_SPEED,
+    tuning.playbackSpeed *
+      (estimatedDurationMs / PAGE_TURN_BURST_TARGET_DURATION_MS),
+  );
 }
 
 export function estimateAutomaticPageTurnDurationMs(

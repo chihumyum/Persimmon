@@ -19,6 +19,7 @@ import {
   Canvas,
   Fill,
   Rect,
+  useCanvasRef,
   type SkImage,
   type SkParagraph,
   type SkTypefaceFontProvider,
@@ -34,6 +35,7 @@ import {
   PixelRatio,
   Platform,
   Pressable,
+  processColor,
   StyleSheet,
   Text,
   View,
@@ -49,10 +51,11 @@ import {
 } from "./section-navigation";
 import { DecodedImageCache, type ResourceLoader } from "./image-cache";
 import {
-  capturePage,
   disposeCapturedPageAfterPaint,
   pageImagesSettledForCapture,
+  recordPageCapture,
   type CapturedPage,
+  type RecordedPageCapture,
 } from "./page-capture";
 import {
   CapturedPageCache,
@@ -62,7 +65,16 @@ import {
 import {
   PAGE_CAPTURE_CACHE_HARD_BYTE_BUDGET,
   PAGE_CAPTURE_CACHE_TARGET_BYTE_BUDGET,
+  pageCapturePixelSize,
 } from "./page-capture-budget";
+import {
+  PageCaptureFeeder,
+  type PageCaptureFeedRequest,
+} from "./page-capture-feeder";
+import {
+  PAGE_CAPTURE_RASTER_WORKER_COUNT,
+  rasterizePageCaptureOffThread,
+} from "./page-capture-rasterizer";
 import { selectPageCaptureQuality } from "./page-capture-quality";
 import { buildPageCapturePlan } from "./page-capture-plan";
 import {
@@ -82,7 +94,9 @@ import {
 import { bookXForGestureTravel } from "./page-turn-gesture-direction";
 import {
   PAGE_TURN_LANE_HARD_LIMIT,
+  burstPageTurnPlaybackSpeed,
   calculatePageTurnConcurrency,
+  estimateAutomaticPageTurnDurationMs,
 } from "./page-turn-concurrency";
 import {
   pageTurnBackgroundSlots,
@@ -134,6 +148,7 @@ import {
 } from "./skia-page-decoration";
 import {
   useNativePageTurnDriver,
+  type NativePageTurnBenchmarkCommand,
   type PageGestureReleaseInput,
 } from "./native-page-turn-driver";
 import {
@@ -153,12 +168,29 @@ import {
   type NativeProgrammaticPageTurnCommand,
 } from "./native-page-turn-pool";
 import {
+  configureNativePagerInput,
+  enqueueNativePagerPictureTurn,
+  nativePagerCompositorAvailable,
+  resetNativePagerCompositor,
+  runNativePagerBenchmark,
+  setNativePagerAnchor,
+  stockNativePagerPicture,
+  takeNativePagerEvents,
+  type NativePagerEvent,
+} from "./native-pager-compositor";
+import {
+  buildNativePagerStockPlan,
+  nativePagerPageKey,
+  trimNativePagerReconciliationEntries,
+} from "./native-pager-stock";
+import {
   PAGE_TURN_START_INTERVAL_MS,
   beginScheduledInteractivePageTurn,
   createPageTurnSchedulerState,
   handoffScheduledInteractivePageTurn,
   hasRunningPageTurns,
   markScheduledPageTurnLaneReady,
+  markScheduledPageTurnsPresented,
   requestScheduledPageTurn,
   requestScheduledGesturePageTurn,
   resolveScheduledPageTurn,
@@ -168,6 +200,7 @@ import {
   type PageTurnSchedulerState,
   type ScheduledPageTurn,
 } from "./page-turn-scheduler";
+import { afterSkiaPaint } from "./skia-lifecycle";
 import {
   spreadPageTurnPaintPasses,
   type PageTurnFace,
@@ -185,6 +218,7 @@ import {
   type TextSelectionGeometry,
   type TextSelectionHandle,
 } from "./text-selection";
+import { useStableRNDispatcher } from "./use-stable-rn-dispatcher";
 
 export interface ReaderProgress {
   locator: BookLocator;
@@ -254,7 +288,32 @@ interface CachedPageDecoration {
   readonly decoration: SkiaPageDecoration;
 }
 
+interface PersimmonPageTurnBenchmarkGlobal {
+  __persimmonRun10Pps?: (
+    count?: number,
+    intervalMs?: number,
+    direction?: 1 | -1,
+  ) => boolean;
+}
+
+interface PageTurnRejectionCounts {
+  capacity: number;
+  boundary: number;
+  direction: number;
+  capture: number;
+  other: number;
+}
+
+interface NativePagerStockEntryRecord {
+  readonly from: PageAddress;
+  readonly to: PageAddress;
+  readonly direction: 1 | -1;
+  readonly playbackSpeed: number;
+}
+
 const PAGE_DECORATION_CACHE_LIMIT = 32;
+const PAGE_CAPTURE_MAX_DIRECTIONAL_VIEWS = 12;
+const PAGE_CAPTURE_MIN_DIRECTIONAL_VIEWS = 3;
 
 interface RunningPageTurn {
   readonly turnId: string;
@@ -400,6 +459,11 @@ function LazyReaderEngine({
       ),
     [automaticPageTurnTuning],
   );
+  const nativePagerCompositorEnabled =
+    Platform.OS === "android" &&
+    layout === "single" &&
+    pageTurnAnimation === "natural" &&
+    nativePagerCompositorAvailable();
   const pagesPerView = layout === "spread" ? 2 : 1;
   const physicalPageWidth = layout === "spread" ? width * 0.5 : width;
   const progressPresentation: PageProgressPresentation = toolbarVisible
@@ -483,7 +547,52 @@ function LazyReaderEngine({
   const turnCaptureLeasesRef = useRef(
     new Map<string, TurnCaptureLease<CapturedPage>>(),
   );
+  const prepareScheduledTurnCaptureRef = useRef<
+    (turn: ScheduledPageTurn) => "acquired" | "waiting" | "hard-capacity"
+  >(() => "waiting");
+  const authorizeScheduledTurnStartRef = useRef<
+    (lane: number, turnId: string, startAtMs: number) => void
+  >(() => {});
   const captureStartTimesRef = useRef(new Map<string, number>());
+  const captureFeedDirectionRef = useRef<1 | -1 | undefined>(undefined);
+  const deliveredTurnStartsRef = useRef<number[]>([]);
+  const requestedTurnStartsRef = useRef<number[]>([]);
+  const acceptedTurnStartsRef = useRef<number[]>([]);
+  const laneTurnStartsRef = useRef<number[]>([]);
+  const laneTurnStartedAtRef = useRef(new Map<string, number>());
+  const laneTurnDurationsRef = useRef<number[]>([]);
+  const lanePlaybackSpeedsRef = useRef<number[]>([]);
+  const laneOutcomeDispatchLagsRef = useRef<number[]>([]);
+  const pendingPresentationTurnIdsRef = useRef(new Set<string>());
+  const presentationRequiredTurnIdsRef = useRef(new Set<string>());
+  const presentedTurnIdsRef = useRef(new Set<string>());
+  const presentationAckCountRef = useRef(0);
+  const prematureLaneStartCountRef = useRef(0);
+  const rejectedTurnCountsRef = useRef<PageTurnRejectionCounts>({
+    capacity: 0,
+    boundary: 0,
+    direction: 0,
+    capture: 0,
+    other: 0,
+  });
+  const burstCompressedTurnIdsRef = useRef(new Set<string>());
+  const nativePagerSubmittedTurnIdsRef = useRef(new Set<string>());
+  const nativePagerPlaybackSpeedsRef = useRef(new Map<string, number>());
+  const nativePagerStockedEntryIdsRef = useRef(new Set<string>());
+  const nativePagerStockEntriesRef = useRef(
+    new Map<string, NativePagerStockEntryRecord>(),
+  );
+  const nativePagerDirectTurnIdsRef = useRef(new Set<string>());
+  const nativePagerAcknowledgedPageKeyRef = useRef<string | undefined>(
+    undefined,
+  );
+  const nativePagerReconciliationEpochsRef = useRef(new Set<string>());
+  const [nativePagerDirectActiveCount, setNativePagerDirectActiveCount] =
+    useState(0);
+  const nativeBenchmarkRevisionRef = useRef(0);
+  const nativeBenchmarkActiveRef = useRef(false);
+  const [nativeBenchmarkCommand, setNativeBenchmarkCommand] =
+    useState<NativePageTurnBenchmarkCommand>();
   const [pageCaptureVersion, setPageCaptureVersion] = useState(0);
   const [imageVersion, setImageVersion] = useState(0);
   const ensurePagination = useCallback(
@@ -851,6 +960,7 @@ function LazyReaderEngine({
       if (!target) {
         return false;
       }
+      captureFeedDirectionRef.current = undefined;
       mutateReaderState(() => createPageTurnSchedulerState(target));
       return true;
     },
@@ -949,6 +1059,7 @@ function LazyReaderEngine({
   );
 
   const activeTurns = readerState.turns;
+  const hasActivePageTurns = hasRunningPageTurns(readerState);
   const driverTurn = activeTurns.find(
     (turn) => turn.interactive || turn.handoffPending,
   );
@@ -959,26 +1070,89 @@ function LazyReaderEngine({
   useEffect(() => {
     handedOffTurnIdsRef.current.clear();
     nativeInteractiveTurnIdRef.current = undefined;
+    captureFeedDirectionRef.current = undefined;
+    deliveredTurnStartsRef.current = [];
+    requestedTurnStartsRef.current = [];
+    acceptedTurnStartsRef.current = [];
+    laneTurnStartsRef.current = [];
+    laneTurnStartedAtRef.current.clear();
+    laneTurnDurationsRef.current = [];
+    lanePlaybackSpeedsRef.current = [];
+    laneOutcomeDispatchLagsRef.current = [];
+    pendingPresentationTurnIdsRef.current.clear();
+    presentationRequiredTurnIdsRef.current.clear();
+    presentedTurnIdsRef.current.clear();
+    presentationAckCountRef.current = 0;
+    prematureLaneStartCountRef.current = 0;
+    rejectedTurnCountsRef.current = {
+      capacity: 0,
+      boundary: 0,
+      direction: 0,
+      capture: 0,
+      other: 0,
+    };
+    burstCompressedTurnIdsRef.current.clear();
+    nativePagerSubmittedTurnIdsRef.current.clear();
+    nativePagerPlaybackSpeedsRef.current.clear();
+    nativePagerStockedEntryIdsRef.current.clear();
+    nativePagerStockEntriesRef.current.clear();
+    nativePagerDirectTurnIdsRef.current.clear();
+    nativePagerAcknowledgedPageKeyRef.current = undefined;
+    nativePagerReconciliationEpochsRef.current.clear();
+    setNativePagerDirectActiveCount(0);
+    nativeBenchmarkActiveRef.current = false;
   }, [readerGeneration]);
   useEffect(() => {
     const retainedTurnIds = new Set(activeTurns.map((turn) => turn.id));
+    const retainedDiagnosticTurnIds = new Set([
+      ...retainedTurnIds,
+      ...nativePagerDirectTurnIdsRef.current,
+    ]);
     for (const turnId of handedOffTurnIdsRef.current) {
       if (!retainedTurnIds.has(turnId)) {
         handedOffTurnIdsRef.current.delete(turnId);
       }
     }
-  }, [activeTurns]);
+    for (const turnId of pendingPresentationTurnIdsRef.current) {
+      if (!retainedTurnIds.has(turnId)) {
+        pendingPresentationTurnIdsRef.current.delete(turnId);
+      }
+    }
+    for (const turnId of presentationRequiredTurnIdsRef.current) {
+      if (!retainedDiagnosticTurnIds.has(turnId)) {
+        presentationRequiredTurnIdsRef.current.delete(turnId);
+      }
+    }
+    for (const turnId of presentedTurnIdsRef.current) {
+      if (!retainedDiagnosticTurnIds.has(turnId)) {
+        presentedTurnIdsRef.current.delete(turnId);
+      }
+    }
+    for (const turnId of laneTurnStartedAtRef.current.keys()) {
+      if (!retainedDiagnosticTurnIds.has(turnId)) {
+        laneTurnStartedAtRef.current.delete(turnId);
+      }
+    }
+    for (const turnId of nativePagerSubmittedTurnIdsRef.current) {
+      if (!retainedTurnIds.has(turnId)) {
+        nativePagerSubmittedTurnIdsRef.current.delete(turnId);
+        nativePagerPlaybackSpeedsRef.current.delete(turnId);
+      }
+    }
+  }, [activeTurns, nativePagerDirectActiveCount]);
+  const hasAnyActivePageTurns =
+    hasActivePageTurns || nativePagerDirectActiveCount > 0;
   useEffect(() => {
-    onTurningChange?.(hasRunningPageTurns(readerState));
-  }, [onTurningChange, readerState]);
+    onTurningChange?.(hasAnyActivePageTurns);
+  }, [hasAnyActivePageTurns, onTurningChange]);
   useEffect(() => {
     onSelectionChange?.(selectingText);
   }, [onSelectionChange, selectingText]);
   useEffect(() => {
-    if (activeTurns.length > 0 && textSelectionRef.current) {
+    if (hasAnyActivePageTurns && textSelectionRef.current) {
       clearTextSelection();
     }
-  }, [activeTurns.length, clearTextSelection]);
+  }, [clearTextSelection, hasAnyActivePageTurns]);
   useEffect(
     () => () => {
       onTurningChange?.(false);
@@ -1038,6 +1212,8 @@ function LazyReaderEngine({
     [],
   );
   const readerViewRef = useRef<View>(null);
+  const readerCanvasRef = useCanvasRef();
+  const [nativePagerCanvasId, setNativePagerCanvasId] = useState<number>();
   const readerOriginRef = useRef({ x: 0, y: 0 });
   const measureReaderOrigin = useCallback(() => {
     readerViewRef.current?.measureInWindow((x, y) => {
@@ -1084,10 +1260,22 @@ function LazyReaderEngine({
     [cancelInteractiveTurn, readerGenerationIsCurrent, settleTurn],
   );
   const completeScheduledTurn = useCallback(
-    (turnId: string, outcome: number) => {
+    (turnId: string, outcome: number, completedAtMs: number) => {
       if (!readerGenerationIsCurrent()) {
         return;
       }
+      const startedAtMs = laneTurnStartedAtRef.current.get(turnId);
+      laneTurnStartedAtRef.current.delete(turnId);
+      if (startedAtMs !== undefined) {
+        laneTurnDurationsRef.current.push(
+          Math.max(0, completedAtMs - startedAtMs),
+        );
+      }
+      laneOutcomeDispatchLagsRef.current.push(
+        Math.max(0, Date.now() - completedAtMs),
+      );
+      presentationRequiredTurnIdsRef.current.delete(turnId);
+      presentedTurnIdsRef.current.delete(turnId);
       handedOffTurnIdsRef.current.delete(turnId);
       if (outcome > 0) {
         settleTurn(turnId);
@@ -1097,13 +1285,28 @@ function LazyReaderEngine({
     },
     [cancelInteractiveTurn, readerGenerationIsCurrent, settleTurn],
   );
-  const markScheduledTurnLaneStarted = useCallback(
+  const markScheduledTurnLanePrepared = useCallback(
     (turnId: string) => {
       mutateReaderState((current) =>
         markScheduledPageTurnLaneReady(current, turnId),
       );
     },
     [mutateReaderState],
+  );
+  const recordScheduledTurnLaneStarted = useCallback(
+    (turnId: string, startedAtMs: number, playbackSpeed: number) => {
+      if (!presentationRequiredTurnIdsRef.current.has(turnId)) {
+        return;
+      }
+      if (!presentedTurnIdsRef.current.has(turnId)) {
+        prematureLaneStartCountRef.current += 1;
+      }
+      presentedTurnIdsRef.current.delete(turnId);
+      laneTurnStartedAtRef.current.set(turnId, startedAtMs);
+      laneTurnStartsRef.current.push(startedAtMs);
+      lanePlaybackSpeedsRef.current.push(playbackSpeed);
+    },
+    [],
   );
   const publishTurnFrame = useCallback(
     (
@@ -1192,7 +1395,7 @@ function LazyReaderEngine({
   useEffect(() => stopRunningTurn, [stopRunningTurn]);
 
   const requestTurn = useCallback(
-    (requestedDirection: 1 | -1) => {
+    (requestedDirection: 1 | -1, requestedAtMs = Date.now()) => {
       if (!readerGenerationIsCurrent()) {
         return;
       }
@@ -1214,18 +1417,230 @@ function LazyReaderEngine({
         }
         return;
       }
-      mutateReaderState((current) =>
-        requestScheduledPageTurn(current, requestedDirection, turnScheduler),
-      );
+      deliveredTurnStartsRef.current.push(Date.now());
+      requestedTurnStartsRef.current.push(requestedAtMs);
+      let accepted = false;
+      mutateReaderState((current) => {
+        const next = requestScheduledPageTurn(
+          current,
+          requestedDirection,
+          turnScheduler,
+          requestedAtMs,
+        );
+        if (next.turns.length <= current.turns.length) {
+          const lastTurn = current.turns.at(-1);
+          const activeTapTurns = current.turns.filter(
+            (turn) => turn.motion === "tap",
+          ).length;
+          if (
+            current.turns.length >= turnConcurrency.maximumConcurrentTurns ||
+            activeTapTurns >= turnConcurrency.maximumConcurrentTapTurns
+          ) {
+            rejectedTurnCountsRef.current.capacity += 1;
+          } else if (
+            lastTurn !== undefined &&
+            lastTurn.direction !== requestedDirection
+          ) {
+            rejectedTurnCountsRef.current.direction += 1;
+          } else {
+            const source = lastTurn?.to ?? current.settled;
+            if (samePageAddress(adjacent(source, requestedDirection), source)) {
+              rejectedTurnCountsRef.current.boundary += 1;
+            } else {
+              rejectedTurnCountsRef.current.other += 1;
+            }
+          }
+          return next;
+        }
+        const addedTurn = next.turns.at(-1)!;
+        if (
+          !nativePagerCompositorEnabled &&
+          prepareScheduledTurnCaptureRef.current(addedTurn) === "hard-capacity"
+        ) {
+          rejectedTurnCountsRef.current.capture += 1;
+          return current;
+        }
+        accepted = true;
+        return next;
+      });
+      if (accepted) {
+        captureFeedDirectionRef.current = requestedDirection;
+        acceptedTurnStartsRef.current.push(requestedAtMs);
+      }
     },
     [
       adjacent,
       mutateReaderState,
+      nativePagerCompositorEnabled,
       pageTurnAnimation,
       readerGenerationIsCurrent,
+      turnConcurrency.maximumConcurrentTapTurns,
+      turnConcurrency.maximumConcurrentTurns,
       turnScheduler,
     ],
   );
+  useEffect(() => {
+    if (!__DEV__ || Platform.OS === "web") {
+      return;
+    }
+    const benchmarkGlobal = globalThis as typeof globalThis &
+      PersimmonPageTurnBenchmarkGlobal;
+    let startupTimer: ReturnType<typeof setTimeout> | undefined;
+    let summaryTimer: ReturnType<typeof setTimeout> | undefined;
+    const runBenchmark = (
+      count = 50,
+      intervalMs = 100,
+      direction: 1 | -1 = 1,
+    ): boolean => {
+      if (readerStateRef.current.turns.length > 0) {
+        return false;
+      }
+      const turnCount = Math.min(200, Math.max(1, Math.floor(count)));
+      const cadenceMs = Math.max(1, Math.floor(intervalMs));
+      const turnDirection: 1 | -1 = direction < 0 ? -1 : 1;
+      const nativeCanvas = readerCanvasRef.current;
+      if (nativePagerCompositorEnabled && !nativeCanvas) {
+        return false;
+      }
+      if (nativePagerCompositorEnabled) {
+        configureNativePagerInput(nativeCanvas, false);
+      }
+      nativeBenchmarkActiveRef.current = true;
+      requestedTurnStartsRef.current = [];
+      acceptedTurnStartsRef.current = [];
+      laneTurnStartsRef.current = [];
+      laneTurnStartedAtRef.current.clear();
+      laneTurnDurationsRef.current = [];
+      lanePlaybackSpeedsRef.current = [];
+      laneOutcomeDispatchLagsRef.current = [];
+      deliveredTurnStartsRef.current = [];
+      presentationRequiredTurnIdsRef.current.clear();
+      presentedTurnIdsRef.current.clear();
+      presentationAckCountRef.current = 0;
+      prematureLaneStartCountRef.current = 0;
+      rejectedTurnCountsRef.current = {
+        capacity: 0,
+        boundary: 0,
+        direction: 0,
+        capture: 0,
+        other: 0,
+      };
+      if (summaryTimer !== undefined) {
+        clearTimeout(summaryTimer);
+      }
+      nativeBenchmarkRevisionRef.current += 1;
+      setNativeBenchmarkCommand({
+        revision: nativeBenchmarkRevisionRef.current,
+        count: turnCount,
+        intervalMs: cadenceMs,
+        direction: turnDirection,
+      });
+      if (
+        nativePagerCompositorEnabled &&
+        !runNativePagerBenchmark(
+          nativeCanvas,
+          turnCount,
+          cadenceMs,
+          turnDirection,
+        )
+      ) {
+        nativeBenchmarkActiveRef.current = false;
+        setNativeBenchmarkCommand(undefined);
+        return false;
+      }
+      summaryTimer = setTimeout(
+        () => {
+          summaryTimer = undefined;
+          const laneStarts = laneTurnStartsRef.current;
+          const laneSpanMs =
+            laneStarts.length > 1 ? laneStarts.at(-1)! - laneStarts[0]! : 0;
+          const laneGapStats = sampleDurationStats(
+            laneStarts
+              .slice(1)
+              .map((startedAt, index) => startedAt - laneStarts[index]!),
+          );
+          const laneGaps = laneStarts
+            .slice(1)
+            .map((startedAt, index) => startedAt - laneStarts[index]!);
+          const deliveryGaps = deliveredTurnStartsRef.current
+            .slice(1)
+            .map(
+              (deliveredAt, index) =>
+                deliveredAt - deliveredTurnStartsRef.current[index]!,
+            );
+          const maximumLaneGapMs =
+            laneStarts.length > 1
+              ? Math.max(
+                  ...laneStarts
+                    .slice(1)
+                    .map((startedAt, index) => startedAt - laneStarts[index]!),
+                )
+              : 0;
+          const durationStats = sampleDurationStats(
+            laneTurnDurationsRef.current,
+          );
+          const outcomeDispatchLagStats = sampleDurationStats(
+            laneOutcomeDispatchLagsRef.current,
+          );
+          const playbackSpeedStats = sampleDurationStats(
+            lanePlaybackSpeedsRef.current,
+          );
+          const minimumPlaybackSpeed =
+            lanePlaybackSpeedsRef.current.length > 0
+              ? Math.min(...lanePlaybackSpeedsRef.current)
+              : 0;
+          const rejected = rejectedTurnCountsRef.current;
+          console.info(
+            `[Persimmon][10pps-summary] requested=${requestedTurnStartsRef.current.length}/${turnCount} delivered=${deliveredTurnStartsRef.current.length}/${turnCount} accepted=${acceptedTurnStartsRef.current.length}/${turnCount} presented=${presentationAckCountRef.current}/${turnCount} animations=${laneStarts.length}/${turnCount} premature=${prematureLaneStartCountRef.current} rejected=capacity:${rejected.capacity},boundary:${rejected.boundary},direction:${rejected.direction},capture:${rejected.capture},other:${rejected.other} durationAvg=${durationStats.averageMs.toFixed(1)}ms durationP95=${durationStats.p95Ms.toFixed(1)}ms speedMin=${minimumPlaybackSpeed.toFixed(2)}x speedAvg=${playbackSpeedStats.averageMs.toFixed(2)}x rnTailAvg=${outcomeDispatchLagStats.averageMs.toFixed(1)}ms rnTailP95=${outcomeDispatchLagStats.p95Ms.toFixed(1)}ms laneGapP95=${laneGapStats.p95Ms.toFixed(1)}ms laneGapMax=${maximumLaneGapMs.toFixed(1)}ms laneSpan=${laneSpanMs.toFixed(1)}ms`,
+          );
+          console.info(
+            `[Persimmon][10pps-gaps] delivered=${deliveryGaps.map((gap) => gap.toFixed(1)).join(",")} native=${laneGaps.map((gap) => gap.toFixed(1)).join(",")}`,
+          );
+          nativeBenchmarkActiveRef.current = false;
+          // Keep physical gestures disabled until the measurement snapshot is
+          // complete so device taps cannot contaminate benchmark counters.
+          setNativeBenchmarkCommand(undefined);
+        },
+        turnCount * cadenceMs + 2_000,
+      );
+      return true;
+    };
+    benchmarkGlobal.__persimmonRun10Pps = runBenchmark;
+    const configuredTurnCount = Number(
+      process.env.EXPO_PUBLIC_PERSIMMON_10PPS_BENCHMARK_TURNS ?? 0,
+    );
+    if (Number.isFinite(configuredTurnCount) && configuredTurnCount > 0) {
+      const configuredIntervalMs = Number(
+        process.env.EXPO_PUBLIC_PERSIMMON_10PPS_BENCHMARK_INTERVAL_MS ?? 100,
+      );
+      const configuredDirection =
+        Number(
+          process.env.EXPO_PUBLIC_PERSIMMON_10PPS_BENCHMARK_DIRECTION ?? 1,
+        ) < 0
+          ? -1
+          : 1;
+      startupTimer = setTimeout(() => {
+        startupTimer = undefined;
+        runBenchmark(
+          configuredTurnCount,
+          configuredIntervalMs,
+          configuredDirection,
+        );
+      }, 2_000);
+    }
+    return () => {
+      if (startupTimer !== undefined) {
+        clearTimeout(startupTimer);
+      }
+      if (summaryTimer !== undefined) {
+        clearTimeout(summaryTimer);
+      }
+      nativeBenchmarkActiveRef.current = false;
+      if (benchmarkGlobal.__persimmonRun10Pps === runBenchmark) {
+        delete benchmarkGlobal.__persimmonRun10Pps;
+      }
+    };
+  }, []);
   const requestGestureTurn = useCallback(
     (input: PageGestureReleaseInput) => {
       if (!readerGenerationIsCurrent()) {
@@ -1270,6 +1685,7 @@ function LazyReaderEngine({
       if (!release) {
         return;
       }
+      captureFeedDirectionRef.current = input.direction;
       if (pageTurnAnimation === "none") {
         requestTurn(input.direction);
         return true;
@@ -1337,6 +1753,9 @@ function LazyReaderEngine({
         active?.interactive && active.direction === requestedDirection
           ? active.id
           : undefined;
+      if (nativeInteractiveTurnIdRef.current) {
+        captureFeedDirectionRef.current = requestedDirection;
+      }
     },
     [mutateReaderState, readerGenerationIsCurrent, turnScheduler],
   );
@@ -2008,11 +2427,8 @@ function LazyReaderEngine({
       typographyAppearance,
     ],
   );
-  const createPageCapture = useCallback(
-    (
-      identity: PageCaptureIdentity<PageCaptureMetadata>,
-      scale: number,
-    ): CapturedPage | null => {
+  const createRecordedPageCapture = useCallback(
+    (identity: PageCaptureIdentity<PageCaptureMetadata>, scale: number) => {
       const metadata = identity.metadata;
       if (!metadata) {
         return null;
@@ -2023,7 +2439,7 @@ function LazyReaderEngine({
       if (!page) {
         return null;
       }
-      return capturePage(
+      return recordPageCapture(
         page,
         pagination,
         imageCache,
@@ -2051,6 +2467,46 @@ function LazyReaderEngine({
       theme,
     ],
   );
+  const pageCaptureFeeder = useMemo(
+    () =>
+      new PageCaptureFeeder<PageCaptureMetadata>({
+        maximumConcurrentJobs: PAGE_CAPTURE_RASTER_WORKER_COUNT,
+        hasResidentCapture: (identity, minimumScale) =>
+          pageCaptureCache.hasResident(identity, minimumScale),
+        record: createRecordedPageCapture,
+        rasterize: rasterizePageCaptureOffThread,
+        install: (request, capture) => {
+          pageCaptureCache.installPrepared(
+            request.identity,
+            request.tier,
+            capture,
+          );
+          // Directional stock is not visible yet. Publishing every background
+          // completion would re-render the entire reader 20-30 times/second
+          // while a burst is already animating. Active misses wake React
+          // immediately; prefetched pages become visible on the next tap
+          // state update.
+          if (request.tier === "active") {
+            setPageCaptureVersion((version) => version + 1);
+          }
+        },
+      }),
+    [createRecordedPageCapture, pageCaptureCache],
+  );
+  useEffect(() => () => pageCaptureFeeder.dispose(), [pageCaptureFeeder]);
+  useEffect(() => {
+    if (!nativePagerCompositorEnabled) {
+      return;
+    }
+    pageCaptureFeeder.synchronize([]);
+    pageCaptureCache.clear();
+    setPageCaptureVersion((version) => version + 1);
+  }, [
+    nativePagerCompositorEnabled,
+    pageCaptureCache,
+    pageCaptureFeeder,
+    readerGeneration,
+  ]);
   const pageReadyForCapture = useCallback(
     (address: PageAddress): boolean => {
       const pagination = ensurePagination(address.sectionIndex);
@@ -2078,42 +2534,21 @@ function LazyReaderEngine({
     [captureSlotsForView, layout],
   );
 
-  useEffect(() => {
-    void pageCaptureVersion;
-    const retainedTurnIds = new Set(activeTurns.map((turn) => turn.id));
-    let leasesChanged = false;
-    for (const [turnId, lease] of turnCaptureLeasesRef.current) {
-      if (retainedTurnIds.has(turnId)) {
-        continue;
-      }
-      lease.release("prefetch");
-      turnCaptureLeasesRef.current.delete(turnId);
-      leasesChanged = true;
-    }
-
-    const now = performanceNow();
-    for (const [turnId, startedAt] of captureStartTimesRef.current) {
-      if (now - startedAt > 1000 && !retainedTurnIds.has(turnId)) {
-        captureStartTimesRef.current.delete(turnId);
-      }
-    }
-    for (const turn of activeTurns) {
-      if (!captureStartTimesRef.current.has(turn.id)) {
-        captureStartTimesRef.current.set(turn.id, now);
-      }
-    }
-
-    let failedTurnId: string | undefined;
-    for (const turn of activeTurns) {
+  const prepareScheduledTurnCapture = useCallback(
+    (turn: ScheduledPageTurn): "acquired" | "waiting" | "hard-capacity" => {
       if (turnCaptureLeasesRef.current.has(turn.id)) {
-        continue;
+        return "acquired";
       }
       const addresses = captureAddressesForTurn(turn);
       if (
         (addresses.front && !pageReadyForCapture(addresses.front.address)) ||
         (addresses.back && !pageReadyForCapture(addresses.back.address))
       ) {
-        break;
+        return "waiting";
+      }
+      const now = performanceNow();
+      if (!captureStartTimesRef.current.has(turn.id)) {
+        captureStartTimesRef.current.set(turn.id, now);
       }
       const recentStartsPerSecond = [
         ...captureStartTimesRef.current.values(),
@@ -2144,138 +2579,332 @@ function LazyReaderEngine({
               }
             : undefined,
         },
-        createPageCapture,
+        () => null,
       );
       if (result.ok) {
         turnCaptureLeasesRef.current.set(turn.id, result.lease);
-        leasesChanged = true;
-      } else {
-        failedTurnId = turn.id;
+        return "acquired";
       }
-      // The renderer consumes a strict prefix. Admit at most its first missing
-      // lease per commit so a batched burst cannot rasterize many hidden pages
-      // synchronously on Android.
+      return result.reason === "hard-capacity" ? "hard-capacity" : "waiting";
+    },
+    [
+      captureAddressesForTurn,
+      devicePixelRatio,
+      pageCaptureCache,
+      pageCaptureIdentity,
+      pageReadyForCapture,
+    ],
+  );
+  prepareScheduledTurnCaptureRef.current = prepareScheduledTurnCapture;
+
+  useEffect(() => {
+    void pageCaptureVersion;
+    const retainedTurnIds = new Set(activeTurns.map((turn) => turn.id));
+    let leasesChanged = false;
+    for (const [turnId, lease] of turnCaptureLeasesRef.current) {
+      if (retainedTurnIds.has(turnId)) {
+        continue;
+      }
+      lease.release("prefetch");
+      turnCaptureLeasesRef.current.delete(turnId);
+      leasesChanged = true;
+    }
+
+    const now = performanceNow();
+    for (const [turnId, startedAt] of captureStartTimesRef.current) {
+      if (now - startedAt > 1000 && !retainedTurnIds.has(turnId)) {
+        captureStartTimesRef.current.delete(turnId);
+      }
+    }
+    let capacityFailedTurnId: string | undefined;
+    for (const turn of activeTurns) {
+      if (
+        nativePagerCompositorEnabled &&
+        !turn.interactive &&
+        turn.motion === "tap"
+      ) {
+        continue;
+      }
+      if (turnCaptureLeasesRef.current.has(turn.id)) {
+        continue;
+      }
+      const result = prepareScheduledTurnCapture(turn);
+      if (result === "acquired") {
+        leasesChanged = true;
+        continue;
+      }
+      if (result === "hard-capacity") {
+        capacityFailedTurnId = turn.id;
+      }
+      // The renderer consumes a strict prefix. Wait for the feeder to install
+      // the first missing immutable texture before considering later paper.
       break;
     }
     if (leasesChanged) {
       setPageCaptureVersion((version) => version + 1);
     }
-    if (failedTurnId) {
+    if (capacityFailedTurnId) {
       mutateReaderState((current) =>
-        resolveScheduledPageTurn(current, failedTurnId, false),
+        resolveScheduledPageTurn(current, capacityFailedTurnId, false),
       );
     }
   }, [
     activeTurns,
-    captureAddressesForTurn,
-    createPageCapture,
-    devicePixelRatio,
     imageVersion,
     mutateReaderState,
-    pageCaptureCache,
-    pageCaptureIdentity,
+    nativePagerCompositorEnabled,
     pageCaptureVersion,
-    pageReadyForCapture,
+    prepareScheduledTurnCapture,
   ]);
 
+  const crispTapCaptureQuality = selectPageCaptureQuality({
+    tier: "active",
+    devicePixelRatio,
+    inputKind: "tap",
+    maxPerspectiveScale: PAGE_TURN_MAX_PERSPECTIVE_SCALE,
+  });
+  const directionalViewDepth = (() => {
+    const size = pageCapturePixelSize(
+      physicalPageWidth,
+      height,
+      crispTapCaptureQuality.desiredScale,
+    );
+    const budgetedViews = size
+      ? Math.floor(
+          PAGE_CAPTURE_CACHE_TARGET_BYTE_BUDGET / size.byteSize / pagesPerView,
+        )
+      : PAGE_CAPTURE_MIN_DIRECTIONAL_VIEWS;
+    return Math.max(
+      PAGE_CAPTURE_MIN_DIRECTIONAL_VIEWS,
+      Math.min(PAGE_CAPTURE_MAX_DIRECTIONAL_VIEWS, budgetedViews),
+    );
+  })();
+  const passiveCaptureRadius = Math.max(
+    1,
+    Math.floor((directionalViewDepth - 1) / 2),
+  );
   const passiveCapturePlan = useMemo(
     () =>
       buildPageCapturePlan({
         settled: readerState.settled,
         adjacent,
         addressesForView,
+        radius: passiveCaptureRadius,
       }),
-    [adjacent, addressesForView, readerState.settled],
+    [adjacent, addressesForView, passiveCaptureRadius, readerState.settled],
+  );
+  const captureFeedDirection =
+    activeTurns.at(-1)?.direction ?? captureFeedDirectionRef.current;
+  const directionalCapturePlan = useMemo(() => {
+    if (captureFeedDirection === undefined) {
+      return [];
+    }
+    const plan: {
+      readonly metadata: PageCaptureMetadata;
+      readonly tier: "prefetch" | "background";
+      readonly priority: number;
+    }[] = [];
+    const seen = new Set<string>();
+    let viewStart = readerState.desired;
+    for (let depth = 0; depth < directionalViewDepth; depth += 1) {
+      for (const metadata of captureSlotsForView(viewStart)) {
+        if (!metadata) {
+          continue;
+        }
+        const key = `${metadata.address.sectionIndex}:${metadata.address.pageIndex}:${metadata.decorationAddress.sectionIndex}:${metadata.decorationAddress.pageIndex}:${metadata.slot}`;
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        plan.push({
+          metadata,
+          tier:
+            depth <= turnConcurrency.maximumConcurrentTapTurns
+              ? "prefetch"
+              : "background",
+          priority: 5_000 - depth * 10 - metadata.slot,
+        });
+      }
+      const next = adjacent(viewStart, captureFeedDirection);
+      if (samePageAddress(next, viewStart)) {
+        break;
+      }
+      viewStart = next;
+    }
+    return plan;
+  }, [
+    adjacent,
+    captureFeedDirection,
+    captureSlotsForView,
+    directionalViewDepth,
+    readerState.desired,
+    turnConcurrency.maximumConcurrentTapTurns,
+  ]);
+  const captureInventoryPlan = useMemo(
+    () =>
+      captureFeedDirection === undefined
+        ? passiveCapturePlan.map((candidate, index) => ({
+            metadata: {
+              address: candidate.address,
+              decorationAddress: candidate.viewStart,
+              slot: candidate.slot,
+            },
+            tier: candidate.tier,
+            priority:
+              candidate.role === "current"
+                ? 4_000
+                : candidate.role === "neighbor"
+                  ? 3_000 - index
+                  : 2_000 - index,
+          }))
+        : directionalCapturePlan,
+    [captureFeedDirection, directionalCapturePlan, passiveCapturePlan],
   );
 
-  // Passive capture work is shallow, lane-independent, and limited to one page
-  // per paint opportunity. A live turn cancels the remaining work immediately
-  // so Android never rasterizes a theoretical lane pool during an animation.
+  // Publish a continuous wanted inventory. The native raster worker keeps
+  // running during animation; active turn faces borrow the hard reserve while
+  // directional stock stays inside the normal target budget.
   useEffect(() => {
-    const retentions = passiveCapturePlan.map(
-      ({ address, viewStart, slot, tier }) => ({
-        identity: pageCaptureIdentity({
-          address,
-          decorationAddress: viewStart,
-          slot,
-        }),
+    const retainedInventory = nativePagerCompositorEnabled
+      ? []
+      : captureInventoryPlan;
+    const retentions = [
+      ...retainedInventory.map(({ metadata, tier }) => ({
+        identity: pageCaptureIdentity(metadata),
         tier,
+      })),
+      ...activeTurns.flatMap((turn) => {
+        const addresses = captureAddressesForTurn(turn);
+        return [addresses.front, addresses.back]
+          .filter(
+            (metadata): metadata is PageCaptureMetadata =>
+              metadata !== undefined,
+          )
+          .map((metadata) => ({
+            identity: pageCaptureIdentity(metadata),
+            tier: "active" as const,
+          }));
       }),
-    );
+    ];
     pageCaptureCache.reconcileUnpinnedTiers(retentions);
-    if (pageTurnAnimation === "none" || activeTurns.length > 0) {
+    const nativePagerOwnsActiveTapPictures =
+      nativePagerCompositorEnabled &&
+      activeTurns.some(
+        (turn) => !turn.completed && !turn.interactive && turn.motion === "tap",
+      );
+    if (pageTurnAnimation === "none" || nativePagerOwnsActiveTapPictures) {
+      pageCaptureFeeder.synchronize([]);
       return;
     }
-    let cancelled = false;
-    let frame = 0;
-    let index = 0;
-    const captureNext = () => {
-      if (
-        cancelled ||
-        readerStateRef.current.turns.length > 0 ||
-        index >= passiveCapturePlan.length
-      ) {
-        return;
+    const requests: PageCaptureFeedRequest<PageCaptureMetadata>[] = [];
+    for (const [index, turn] of activeTurns.entries()) {
+      if (nativePagerCompositorEnabled && turn.motion === "tap") {
+        continue;
       }
-      const candidate = passiveCapturePlan[index++]!;
-      if (!pageReadyForCapture(candidate.address)) {
-        frame = requestAnimationFrame(captureNext);
-        return;
+      const addresses = captureAddressesForTurn(turn);
+      const quality = selectPageCaptureQuality({
+        tier: "active",
+        devicePixelRatio,
+        inputKind: turn.motion,
+        maxPerspectiveScale: PAGE_TURN_MAX_PERSPECTIVE_SCALE,
+      });
+      for (const metadata of [addresses.front, addresses.back]) {
+        if (!metadata || !pageReadyForCapture(metadata.address)) {
+          continue;
+        }
+        requests.push({
+          identity: pageCaptureIdentity(metadata),
+          scale: quality.desiredScale,
+          tier: "active",
+          priority: 10_000 - index,
+        });
       }
-      // Current and adjacent pages are likely to enter the next turn, so build
-      // them once at low-frequency tap quality while they are still unpinned.
-      // The active path then leases this resident variant without recapturing.
-      const quality =
-        candidate.tier === "prefetch"
-          ? selectPageCaptureQuality({
-              tier: "active",
-              devicePixelRatio,
-              inputKind: "tap",
-              maxPerspectiveScale: PAGE_TURN_MAX_PERSPECTIVE_SCALE,
-            })
-          : selectPageCaptureQuality({
-              tier: candidate.tier,
-              devicePixelRatio,
-              maxPerspectiveScale: PAGE_TURN_MAX_PERSPECTIVE_SCALE,
-            });
-      const before = pageCaptureCache.getStats();
-      pageCaptureCache.prefetch(
-        {
-          identity: pageCaptureIdentity({
-            address: candidate.address,
-            decorationAddress: candidate.viewStart,
-            slot: candidate.slot,
-          }),
-          tier: candidate.tier,
-          desiredScale: quality.desiredScale,
-          minimumScale: quality.minimumScale,
-        },
-        createPageCapture,
-      );
-      const after = pageCaptureCache.getStats();
-      if (
-        after.residentBytes !== before.residentBytes ||
-        after.entryCount !== before.entryCount
-      ) {
-        setPageCaptureVersion((version) => version + 1);
+    }
+    if (!nativePagerCompositorEnabled) {
+      for (const { metadata, tier, priority } of captureInventoryPlan) {
+        if (!pageReadyForCapture(metadata.address)) {
+          continue;
+        }
+        requests.push({
+          identity: pageCaptureIdentity(metadata),
+          scale: crispTapCaptureQuality.desiredScale,
+          tier,
+          priority,
+        });
       }
-      frame = requestAnimationFrame(captureNext);
-    };
-    frame = requestAnimationFrame(captureNext);
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(frame);
-    };
+    }
+    pageCaptureFeeder.synchronize(requests);
   }, [
-    activeTurns.length,
-    createPageCapture,
+    activeTurns,
+    captureAddressesForTurn,
+    captureInventoryPlan,
+    crispTapCaptureQuality.desiredScale,
     devicePixelRatio,
     imageVersion,
+    nativePagerCompositorEnabled,
     pageCaptureCache,
+    pageCaptureFeeder,
     pageCaptureIdentity,
+    pageCaptureVersion,
     pageReadyForCapture,
     pageTurnAnimation,
-    passiveCapturePlan,
+  ]);
+
+  useEffect(() => {
+    if (!__DEV__ || Platform.OS === "web" || pageTurnAnimation === "none") {
+      return;
+    }
+    const interval = setInterval(() => {
+      const now = Date.now();
+      if (!nativeBenchmarkActiveRef.current) {
+        acceptedTurnStartsRef.current = acceptedTurnStartsRef.current.filter(
+          (startedAt) => now - startedAt <= 10_000,
+        );
+        requestedTurnStartsRef.current = requestedTurnStartsRef.current.filter(
+          (startedAt) => now - startedAt <= 10_000,
+        );
+        deliveredTurnStartsRef.current = deliveredTurnStartsRef.current.filter(
+          (startedAt) => now - startedAt <= 10_000,
+        );
+        laneTurnStartsRef.current = laneTurnStartsRef.current.filter(
+          (startedAt) => now - startedAt <= 10_000,
+        );
+      }
+      const feeder = pageCaptureFeeder.getStats();
+      const active = readerStateRef.current.turns.length;
+      const lastAccepted = acceptedTurnStartsRef.current.at(-1);
+      if (
+        active === 0 &&
+        feeder.inFlight === 0 &&
+        feeder.queued === 0 &&
+        (lastAccepted === undefined || now - lastAccepted > 2_000)
+      ) {
+        return;
+      }
+      const acceptedRate = eventRatePerSecond(
+        acceptedTurnStartsRef.current,
+        now,
+      );
+      const requestedRate = eventRatePerSecond(
+        requestedTurnStartsRef.current,
+        now,
+      );
+      const deliveredRate = eventRatePerSecond(
+        deliveredTurnStartsRef.current,
+        now,
+      );
+      const laneRate = eventRatePerSecond(laneTurnStartsRef.current, now);
+      const cache = pageCaptureCache.getStats();
+      console.info(
+        `[Persimmon][10pps] input=${requestedRate.toFixed(1)}/s delivered=${deliveredRate.toFixed(1)}/s accepted=${acceptedRate.toFixed(1)}/s presented=${presentationAckCountRef.current} lanes=${laneRate.toFixed(1)}/s premature=${prematureLaneStartCountRef.current} active=${active} interval=${turnConcurrency.minimumTurnIntervalMs}ms captureP95=${feeder.p95JobMs.toFixed(1)}ms captureAvg=${feeder.averageJobMs.toFixed(1)}ms queue=${feeder.queued} workers=${feeder.inFlight}/${PAGE_CAPTURE_RASTER_WORKER_COUNT} cache=${(cache.residentBytes / 1_048_576).toFixed(1)}MB pinned=${(cache.pinnedBytes / 1_048_576).toFixed(1)}MB`,
+      );
+    }, 1_000);
+    return () => clearInterval(interval);
+  }, [
+    pageCaptureCache,
+    pageCaptureFeeder,
+    pageTurnAnimation,
+    turnConcurrency.minimumTurnIntervalMs,
   ]);
 
   const turnTextures = useMemo(() => {
@@ -2317,6 +2946,80 @@ function LazyReaderEngine({
     () => pageTurnsReadyForPaint(texturePreparedTurns, Platform.OS !== "web"),
     [texturePreparedTurns],
   );
+  useEffect(() => {
+    if (Platform.OS === "web") {
+      return;
+    }
+    const turnIds = renderableTurns
+      .filter(
+        (turn) =>
+          !turn.completed &&
+          !turn.interactive &&
+          turn.motion === "tap" &&
+          !nativePagerCompositorEnabled &&
+          turn.laneReady &&
+          !turn.presentationReady &&
+          !pendingPresentationTurnIdsRef.current.has(turn.id),
+      )
+      .map((turn) => turn.id);
+    if (turnIds.length === 0) {
+      return;
+    }
+    for (const turnId of turnIds) {
+      pendingPresentationTurnIdsRef.current.add(turnId);
+    }
+    // The lane's initial native frame is already installed. Wait through two
+    // Canvas presentation opportunities before opening its UI-clock gate.
+    afterSkiaPaint(() => {
+      for (const turnId of turnIds) {
+        pendingPresentationTurnIdsRef.current.delete(turnId);
+      }
+      if (!readerGenerationIsCurrent()) {
+        return;
+      }
+      const activeTurnIds = new Set(
+        readerStateRef.current.turns
+          .filter(
+            (turn) =>
+              !turn.completed &&
+              turn.motion === "tap" &&
+              turn.laneReady &&
+              !turn.presentationReady,
+          )
+          .map((turn) => turn.id),
+      );
+      const presentedTurnIds = turnIds.filter((turnId) =>
+        activeTurnIds.has(turnId),
+      );
+      if (presentedTurnIds.length === 0) {
+        return;
+      }
+      for (const turnId of presentedTurnIds) {
+        presentedTurnIdsRef.current.add(turnId);
+      }
+      presentationAckCountRef.current += presentedTurnIds.length;
+      const nextState = mutateReaderState((current) =>
+        markScheduledPageTurnsPresented(current, presentedTurnIds, Date.now()),
+      );
+      for (const turnId of presentedTurnIds) {
+        const turn = nextState.turns.find(
+          (candidate) => candidate.id === turnId,
+        );
+        if (turn) {
+          authorizeScheduledTurnStartRef.current(
+            turn.lane,
+            turn.id,
+            turn.startAtMs,
+          );
+        }
+      }
+    });
+  }, [
+    mutateReaderState,
+    nativePagerCompositorEnabled,
+    readerGenerationIsCurrent,
+    renderableTurns,
+  ]);
   const transitionReady = renderableTurns.length > 0;
   const driverMeshReady =
     driverTurn !== undefined && textureReadyForTurn(driverTurn);
@@ -2339,12 +3042,12 @@ function LazyReaderEngine({
     onCenterPress?.();
   }, [clearTextSelection, onCenterPress, readerGenerationIsCurrent]);
   const handleNativePageTap = useCallback(
-    (direction: 1 | -1) => {
+    (direction: 1 | -1, requestedAtMs: number) => {
       if (textSelectionRef.current) {
         clearTextSelection();
         return;
       }
-      requestTurn(direction);
+      requestTurn(direction, requestedAtMs);
     },
     [clearTextSelection, requestTurn],
   );
@@ -2364,8 +3067,18 @@ function LazyReaderEngine({
         : undefined,
     [driverMeshReady, driverTurn, layout],
   );
+  const nativePagerTapInputEnabled =
+    nativePagerCompositorEnabled &&
+    !selectingText &&
+    nativeBenchmarkCommand === undefined &&
+    activeTurns.length === 0;
   const nativePageTurn = useNativePageTurnDriver({
-    gesturesEnabled: !selectingText,
+    gesturesEnabled:
+      !selectingText &&
+      nativeBenchmarkCommand === undefined &&
+      nativePagerDirectActiveCount === 0,
+    nativePagerTapInputEnabled,
+    nativePagerNativeId: nativePagerCanvasId,
     width,
     height,
     physicalPageWidth,
@@ -2376,9 +3089,13 @@ function LazyReaderEngine({
       pageTurnAnimation === "natural" &&
       !textSelection &&
       driverTurn === undefined &&
+      nativePagerDirectActiveCount === 0 &&
       activeTurns.length < turnConcurrency.maximumConcurrentTurns,
     tuning: gesturePageTurnTuning,
     command: nativeCommand,
+    benchmark: nativePagerCompositorEnabled
+      ? undefined
+      : nativeBenchmarkCommand,
     onCenterTap: handleNativeCenterTap,
     onGestureBegin: beginNativeInteractiveTurn,
     onGestureRelease: requestGestureTurn,
@@ -2388,7 +3105,11 @@ function LazyReaderEngine({
   const selectionLongPressGesture = useMemo(
     () =>
       Gesture.LongPress()
-        .enabled(Platform.OS !== "web" && !transitionReady)
+        .enabled(
+          Platform.OS !== "web" &&
+            !transitionReady &&
+            nativePagerDirectActiveCount === 0,
+        )
         .minDuration(420)
         .maxDistance(12)
         .runOnJS(true)
@@ -2401,12 +3122,22 @@ function LazyReaderEngine({
             showTextSelectionMenu(current);
           }
         }),
-    [selectWordAtPoint, showTextSelectionMenu, transitionReady],
+    [
+      nativePagerDirectActiveCount,
+      selectWordAtPoint,
+      showTextSelectionMenu,
+      transitionReady,
+    ],
   );
   const selectionTapGesture = useMemo(
     () =>
       Gesture.Tap()
-        .enabled(Platform.OS !== "web" && selectingText && !transitionReady)
+        .enabled(
+          Platform.OS !== "web" &&
+            selectingText &&
+            !transitionReady &&
+            nativePagerDirectActiveCount === 0,
+        )
         .maxDistance(8)
         .runOnJS(true)
         .onEnd((event, success) => {
@@ -2419,7 +3150,12 @@ function LazyReaderEngine({
             );
           }
         }),
-    [handleTextSelectionTap, selectingText, transitionReady],
+    [
+      handleTextSelectionTap,
+      nativePagerDirectActiveCount,
+      selectingText,
+      transitionReady,
+    ],
   );
   const createSelectionHandleGesture = useCallback(
     (endpoint: TextSelectionEndpoint) =>
@@ -2465,24 +3201,516 @@ function LazyReaderEngine({
       ),
     [nativePageTurn.gesture, selectionLongPressGesture, selectionTapGesture],
   );
+  const automaticTapPlaybackSpeeds = useMemo(() => {
+    const tapTurns = activeTurns.filter(
+      (turn) => !turn.completed && turn.motion === "tap",
+    );
+    const retainedTurnIds = new Set(tapTurns.map((turn) => turn.id));
+    for (const turnId of burstCompressedTurnIdsRef.current) {
+      if (!retainedTurnIds.has(turnId)) {
+        burstCompressedTurnIdsRef.current.delete(turnId);
+      }
+    }
+    if (tapTurns.length >= 2) {
+      for (const turn of tapTurns) {
+        burstCompressedTurnIdsRef.current.add(turn.id);
+      }
+    }
+    return new Map(
+      tapTurns.map((turn) => [
+        turn.id,
+        burstCompressedTurnIdsRef.current.has(turn.id)
+          ? burstPageTurnPlaybackSpeed(automaticPageTurnTuning)
+          : automaticPageTurnTuning.playbackSpeed,
+      ]),
+    );
+  }, [activeTurns, automaticPageTurnTuning]);
+  const nativePagerStockPlan = useMemo(
+    () => buildNativePagerStockPlan(readerState.settled, adjacent),
+    [adjacent, readerState.settled],
+  );
+  const handleNativePagerEvent = useStableRNDispatcher(
+    (
+      turnId: string,
+      event: NativePagerEvent,
+      eventAtMs: number,
+      eventDirection?: 1 | -1,
+    ) => {
+      if (__DEV__ && nativeBenchmarkActiveRef.current) {
+        console.info(
+          `[Persimmon][native-pager-event] ${event} id=${turnId} direction=${eventDirection ?? 0} at=${eventAtMs.toFixed(1)}`,
+        );
+      }
+      if (event === "stock-miss") {
+        requestedTurnStartsRef.current.push(eventAtMs);
+        deliveredTurnStartsRef.current.push(Date.now());
+        rejectedTurnCountsRef.current.capture += 1;
+        if (!nativeBenchmarkActiveRef.current && eventDirection !== undefined) {
+          requestTurn(eventDirection, eventAtMs);
+        }
+        return;
+      }
+      const directEntry = nativePagerStockEntriesRef.current.get(turnId);
+      if (event === "consumed") {
+        requestedTurnStartsRef.current.push(eventAtMs);
+        deliveredTurnStartsRef.current.push(Date.now());
+        nativePagerStockedEntryIdsRef.current.delete(turnId);
+        nativePagerStockEntriesRef.current.delete(turnId);
+        if (!directEntry || !readerGenerationIsCurrent()) {
+          rejectedTurnCountsRef.current.other += 1;
+          return;
+        }
+        acceptedTurnStartsRef.current.push(eventAtMs);
+        captureFeedDirectionRef.current = directEntry.direction;
+        const acknowledgedEpoch = `${readerGeneration}:${nativePagerPageKey(directEntry.to)}`;
+        nativePagerAcknowledgedPageKeyRef.current = acknowledgedEpoch;
+        nativePagerReconciliationEpochsRef.current.add(acknowledgedEpoch);
+        nativePagerDirectTurnIdsRef.current.add(turnId);
+        setNativePagerDirectActiveCount(
+          nativePagerDirectTurnIdsRef.current.size,
+        );
+        presentationRequiredTurnIdsRef.current.add(turnId);
+        presentedTurnIdsRef.current.add(turnId);
+        nativePagerPlaybackSpeedsRef.current.set(
+          turnId,
+          directEntry.playbackSpeed,
+        );
+        mutateReaderState(() => createPageTurnSchedulerState(directEntry.to));
+        setNoteReturnAnchor((current) =>
+          reduceNoteReturnAnchor(current, { type: "page-turned" }),
+        );
+        return;
+      }
+      const directTurnActive = nativePagerDirectTurnIdsRef.current.has(turnId);
+      if (event === "started") {
+        presentationAckCountRef.current += 1;
+        recordScheduledTurnLaneStarted(
+          turnId,
+          eventAtMs,
+          nativePagerPlaybackSpeedsRef.current.get(turnId) ??
+            automaticPageTurnTuning.playbackSpeed,
+        );
+        return;
+      }
+      if (directTurnActive) {
+        const startedAtMs = laneTurnStartedAtRef.current.get(turnId);
+        laneTurnStartedAtRef.current.delete(turnId);
+        if (startedAtMs !== undefined) {
+          laneTurnDurationsRef.current.push(
+            Math.max(0, eventAtMs - startedAtMs),
+          );
+        }
+        laneOutcomeDispatchLagsRef.current.push(
+          Math.max(0, Date.now() - eventAtMs),
+        );
+        presentationRequiredTurnIdsRef.current.delete(turnId);
+        presentedTurnIdsRef.current.delete(turnId);
+        nativePagerPlaybackSpeedsRef.current.delete(turnId);
+        nativePagerDirectTurnIdsRef.current.delete(turnId);
+        setNativePagerDirectActiveCount(
+          nativePagerDirectTurnIdsRef.current.size,
+        );
+        return;
+      }
+      // Keep the submission tombstone until React has removed the completed
+      // turn from activeTurns. Dropping it before the state update commits
+      // opens a render/effect window in which the same retained texture can be
+      // enqueued a second time.
+      completeScheduledTurn(turnId, 1, eventAtMs);
+    },
+  );
+  useEffect(() => {
+    const canvas = nativePagerCompositorEnabled
+      ? readerCanvasRef.current
+      : null;
+    setNativePagerCanvasId(canvas?.getNativeId());
+  }, [nativePagerCompositorEnabled, readerCanvasRef, readerGeneration]);
+  useEffect(() => {
+    if (!nativePagerCompositorEnabled) {
+      return;
+    }
+    const canvas = readerCanvasRef.current;
+    return () => {
+      configureNativePagerInput(canvas, false);
+      resetNativePagerCompositor(canvas);
+      nativePagerSubmittedTurnIdsRef.current.clear();
+      nativePagerPlaybackSpeedsRef.current.clear();
+      nativePagerStockedEntryIdsRef.current.clear();
+      nativePagerStockEntriesRef.current.clear();
+      nativePagerDirectTurnIdsRef.current.clear();
+      nativePagerAcknowledgedPageKeyRef.current = undefined;
+      nativePagerReconciliationEpochsRef.current.clear();
+    };
+  }, [nativePagerCompositorEnabled, readerCanvasRef, readerGeneration]);
+  useEffect(() => {
+    if (!nativePagerCompositorEnabled || !readerCanvasRef.current) {
+      return;
+    }
+    const settledKey = nativePagerPageKey(readerState.settled);
+    const settledEpoch = `${readerGeneration}:${settledKey}`;
+    if (nativePagerAcknowledgedPageKeyRef.current === settledEpoch) {
+      nativePagerReconciliationEpochsRef.current.clear();
+      nativePagerReconciliationEpochsRef.current.add(settledEpoch);
+      return;
+    }
+    if (nativePagerReconciliationEpochsRef.current.has(settledEpoch)) {
+      return;
+    }
+    nativePagerStockedEntryIdsRef.current.clear();
+    nativePagerStockEntriesRef.current.clear();
+    nativePagerDirectTurnIdsRef.current.clear();
+    nativePagerReconciliationEpochsRef.current.clear();
+    setNativePagerDirectActiveCount(0);
+    if (setNativePagerAnchor(readerCanvasRef.current, settledKey)) {
+      nativePagerAcknowledgedPageKeyRef.current = settledEpoch;
+    } else {
+      nativePagerAcknowledgedPageKeyRef.current = undefined;
+      resetNativePagerCompositor(readerCanvasRef.current);
+    }
+  }, [
+    nativePagerCompositorEnabled,
+    readerCanvasRef,
+    readerGeneration,
+    readerState.settled,
+  ]);
+  useEffect(() => {
+    if (!nativePagerCompositorEnabled || !readerCanvasRef.current) {
+      return;
+    }
+    const canvas = readerCanvasRef.current;
+    const processedPaperColor = processColor(theme.paper);
+    const paperColor =
+      typeof processedPaperColor === "number"
+        ? processedPaperColor >>> 0
+        : 0xffffffff;
+    const durationMs = estimateAutomaticPageTurnDurationMs(
+      automaticPageTurnTuning,
+    );
+    const playbackSpeed = automaticPageTurnTuning.playbackSpeed;
+    const entryIdFor = (
+      from: PageAddress,
+      to: PageAddress,
+      direction: 1 | -1,
+    ) =>
+      `native-stock:${readerGeneration}:${imageVersion}:${nativePagerPageKey(from)}:${direction}:${nativePagerPageKey(to)}`;
+    const retainedEntryIds = new Set(
+      nativePagerStockPlan.map((edge) =>
+        entryIdFor(edge.from, edge.to, edge.direction),
+      ),
+    );
+    for (const entryId of nativePagerStockedEntryIdsRef.current) {
+      if (!retainedEntryIds.has(entryId)) {
+        // Stop scheduling duplicate recordings, but keep the reconciliation
+        // record: native may already have consumed this revision while its
+        // event is still waiting for the next 16 ms RN poll.
+        nativePagerStockedEntryIdsRef.current.delete(entryId);
+      }
+    }
+    const pendingEdges = nativePagerStockPlan.filter(
+      (edge) =>
+        !nativePagerStockedEntryIdsRef.current.has(
+          entryIdFor(edge.from, edge.to, edge.direction),
+        ),
+    );
+    if (pendingEdges.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    let frame = 0;
+    let nextEdgeIndex = 0;
+    const recordings = new Map<string, RecordedPageCapture | null>();
+    const disposeRecordings = () => {
+      for (const recording of recordings.values()) {
+        recording?.dispose();
+      }
+      recordings.clear();
+    };
+    const recordingFor = (
+      metadata: PageCaptureMetadata,
+    ): RecordedPageCapture | null => {
+      const identity = pageCaptureIdentity(metadata);
+      if (recordings.has(identity.key)) {
+        return recordings.get(identity.key) ?? null;
+      }
+      if (!pageReadyForCapture(metadata.address)) {
+        recordings.set(identity.key, null);
+        return null;
+      }
+      const recording = createRecordedPageCapture(
+        identity,
+        crispTapCaptureQuality.desiredScale,
+      );
+      recordings.set(identity.key, recording);
+      return recording;
+    };
+    const feedStock = () => {
+      if (cancelled) {
+        return;
+      }
+      const sliceStartedAt = performanceNow();
+      let attempted = false;
+      while (
+        nextEdgeIndex < pendingEdges.length &&
+        (!attempted || performanceNow() - sliceStartedAt < 4)
+      ) {
+        attempted = true;
+        const edge = pendingEdges[nextEdgeIndex]!;
+        nextEdgeIndex += 1;
+        const currentSlots = captureSlotsForView(edge.from);
+        const targetSlots = captureSlotsForView(edge.to);
+        const frontMetadata = pageTurnCaptureAddresses(
+          "single",
+          edge.direction,
+          currentSlots,
+          targetSlots,
+        ).front;
+        const backgroundMetadata = targetSlots[0];
+        if (!frontMetadata || !backgroundMetadata) {
+          continue;
+        }
+        const frontRecording = recordingFor(frontMetadata);
+        const backgroundRecording = recordingFor(backgroundMetadata);
+        if (!frontRecording || !backgroundRecording) {
+          continue;
+        }
+        const entryId = entryIdFor(edge.from, edge.to, edge.direction);
+        const accepted = stockNativePagerPicture(canvas, {
+          id: entryId,
+          fromPageKey: nativePagerPageKey(edge.from),
+          toPageKey: nativePagerPageKey(edge.to),
+          frontPicture: frontRecording.picture,
+          backgroundPicture: backgroundRecording.picture,
+          pixelWidth: frontRecording.pixelWidth,
+          pixelHeight: frontRecording.pixelHeight,
+          direction: edge.direction,
+          contentRevision: imageVersion,
+          durationMs,
+          launchIntervalMs: turnConcurrency.minimumTurnIntervalMs,
+          paperColor,
+        });
+        if (!accepted) {
+          continue;
+        }
+        nativePagerStockedEntryIdsRef.current.add(entryId);
+        nativePagerStockEntriesRef.current.set(entryId, {
+          from: edge.from,
+          to: edge.to,
+          direction: edge.direction,
+          playbackSpeed,
+        });
+        trimNativePagerReconciliationEntries(
+          nativePagerStockEntriesRef.current,
+          retainedEntryIds,
+          128,
+        );
+      }
+      if (nextEdgeIndex < pendingEdges.length) {
+        frame = requestAnimationFrame(feedStock);
+      } else {
+        disposeRecordings();
+      }
+    };
+    feedStock();
+    return () => {
+      cancelled = true;
+      if (frame) {
+        cancelAnimationFrame(frame);
+      }
+      disposeRecordings();
+    };
+  }, [
+    automaticPageTurnTuning,
+    captureSlotsForView,
+    createRecordedPageCapture,
+    crispTapCaptureQuality.desiredScale,
+    imageVersion,
+    nativePagerCompositorEnabled,
+    nativePagerStockPlan,
+    pageCaptureIdentity,
+    pageCaptureVersion,
+    pageReadyForCapture,
+    readerCanvasRef,
+    readerGeneration,
+    theme.paper,
+    turnConcurrency.minimumTurnIntervalMs,
+  ]);
+  useEffect(() => {
+    if (!nativePagerCompositorEnabled || !readerCanvasRef.current) {
+      return;
+    }
+    configureNativePagerInput(
+      readerCanvasRef.current,
+      nativePagerTapInputEnabled,
+    );
+    return () => {
+      configureNativePagerInput(readerCanvasRef.current, false);
+    };
+  }, [
+    nativePagerCompositorEnabled,
+    nativePagerTapInputEnabled,
+    readerCanvasRef,
+  ]);
+  useEffect(() => {
+    if (!nativePagerCompositorEnabled || !readerCanvasRef.current) {
+      return;
+    }
+    const processedPaperColor = processColor(theme.paper);
+    const paperColor =
+      typeof processedPaperColor === "number"
+        ? processedPaperColor >>> 0
+        : 0xffffffff;
+    const estimatedDurationMs = estimateAutomaticPageTurnDurationMs(
+      automaticPageTurnTuning,
+    );
+    for (const turn of activeTurns) {
+      if (
+        turn.completed ||
+        turn.interactive ||
+        turn.handoffPending ||
+        turn.motion !== "tap" ||
+        nativePagerSubmittedTurnIdsRef.current.has(turn.id)
+      ) {
+        continue;
+      }
+      const addresses = captureAddressesForTurn(turn);
+      if (!addresses.front || !pageReadyForCapture(addresses.front.address)) {
+        continue;
+      }
+      const recording = createRecordedPageCapture(
+        pageCaptureIdentity(addresses.front),
+        crispTapCaptureQuality.desiredScale,
+      );
+      if (!recording) {
+        continue;
+      }
+      const playbackSpeed =
+        automaticTapPlaybackSpeeds.get(turn.id) ??
+        automaticPageTurnTuning.playbackSpeed;
+      const durationMs =
+        estimatedDurationMs *
+        (automaticPageTurnTuning.playbackSpeed / Math.max(0.01, playbackSpeed));
+      presentationRequiredTurnIdsRef.current.add(turn.id);
+      presentedTurnIdsRef.current.add(turn.id);
+      nativePagerPlaybackSpeedsRef.current.set(turn.id, playbackSpeed);
+      let accepted = false;
+      try {
+        accepted = enqueueNativePagerPictureTurn(readerCanvasRef.current, {
+          id: turn.id,
+          frontPicture: recording.picture,
+          pixelWidth: recording.pixelWidth,
+          pixelHeight: recording.pixelHeight,
+          direction: turn.direction,
+          spread: false,
+          startAtMs: turn.startAtMs,
+          durationMs,
+          launchIntervalMs: turnConcurrency.minimumTurnIntervalMs,
+          paperColor,
+        });
+      } finally {
+        recording.dispose();
+      }
+      if (!accepted) {
+        presentationRequiredTurnIdsRef.current.delete(turn.id);
+        presentedTurnIdsRef.current.delete(turn.id);
+        nativePagerPlaybackSpeedsRef.current.delete(turn.id);
+        continue;
+      }
+      nativePagerSubmittedTurnIdsRef.current.add(turn.id);
+      markScheduledTurnLanePrepared(turn.id);
+    }
+  }, [
+    activeTurns,
+    automaticPageTurnTuning,
+    automaticTapPlaybackSpeeds,
+    captureAddressesForTurn,
+    createRecordedPageCapture,
+    crispTapCaptureQuality.desiredScale,
+    markScheduledTurnLanePrepared,
+    nativePagerCompositorEnabled,
+    pageCaptureIdentity,
+    pageReadyForCapture,
+    readerCanvasRef,
+    theme.paper,
+    turnConcurrency.minimumTurnIntervalMs,
+  ]);
+  useEffect(() => {
+    if (!nativePagerCompositorEnabled) {
+      return;
+    }
+    const canvas = readerCanvasRef.current;
+    if (!canvas) {
+      return;
+    }
+    const drainEvents = () => {
+      for (const event of takeNativePagerEvents(canvas)) {
+        handleNativePagerEvent(
+          event.id,
+          event.event,
+          event.eventAtMs,
+          event.direction,
+        );
+      }
+    };
+    drainEvents();
+    const timer = setInterval(drainEvents, 16);
+    return () => {
+      clearInterval(timer);
+      drainEvents();
+    };
+  }, [
+    handleNativePagerEvent,
+    nativePagerCompositorEnabled,
+    readerCanvasRef,
+    readerGeneration,
+  ]);
+  useEffect(() => {
+    for (const turn of texturePreparedTurns) {
+      if (
+        !turn.completed &&
+        turn.motion === "tap" &&
+        !nativePagerCompositorEnabled
+      ) {
+        presentationRequiredTurnIdsRef.current.add(turn.id);
+      }
+    }
+  }, [nativePagerCompositorEnabled, texturePreparedTurns]);
   const nativePoolCommands = useMemo(() => {
     const commands: (NativeProgrammaticPageTurnCommand | undefined)[] =
       new Array(PAGE_TURN_LANE_HARD_LIMIT).fill(undefined);
     for (const turn of texturePreparedTurns) {
-      if (turn.interactive || !textureReadyForTurn(turn)) {
+      if (
+        turn.interactive ||
+        !textureReadyForTurn(turn) ||
+        (nativePagerCompositorEnabled && turn.motion === "tap")
+      ) {
         continue;
       }
       commands[turn.lane] = {
         id: turn.id,
         direction: turn.direction,
         ready: true,
+        startAtMs: turn.startAtMs,
+        readyToStart: turn.motion === "gesture" || turn.presentationReady,
         settlingIncomingPage: layout === "single" && turn.direction === -1,
         motion: turn.motion,
+        playbackSpeed:
+          turn.motion === "tap"
+            ? (automaticTapPlaybackSpeeds.get(turn.id) ??
+              automaticPageTurnTuning.playbackSpeed)
+            : undefined,
         gestureRelease: turn.gestureRelease,
       };
     }
     return commands;
-  }, [layout, texturePreparedTurns, textureReadyForTurn]);
+  }, [
+    automaticPageTurnTuning.playbackSpeed,
+    automaticTapPlaybackSpeeds,
+    layout,
+    nativePagerCompositorEnabled,
+    texturePreparedTurns,
+    textureReadyForTurn,
+  ]);
   const nativePageTurnPool = useNativePageTurnPool({
     width,
     height,
@@ -2490,9 +3718,11 @@ function LazyReaderEngine({
     automaticTuning: automaticPageTurnTuning,
     gestureTuning: gesturePageTurnTuning,
     commands: nativePoolCommands,
-    onStarted: markScheduledTurnLaneStarted,
+    onPrepared: markScheduledTurnLanePrepared,
+    onStarted: recordScheduledTurnLaneStarted,
     onOutcome: completeScheduledTurn,
   });
+  authorizeScheduledTurnStartRef.current = nativePageTurnPool.authorizeStart;
   const pageAt = useCallback(
     (address: PageAddress) =>
       ensurePagination(address.sectionIndex).pages[address.pageIndex],
@@ -2506,7 +3736,10 @@ function LazyReaderEngine({
       scheduledPageAddress(readerState),
       ...activeTurns.flatMap((turn) => [turn.from, turn.to]),
     ];
-    const addresses = viewStarts.flatMap(addressesForView);
+    const addresses = [
+      ...viewStarts.flatMap(addressesForView),
+      ...captureInventoryPlan.map(({ metadata }) => metadata.address),
+    ];
     const assetIds = new Set<string>();
     for (const address of addresses) {
       for (const item of pageAt(address)?.items ?? []) {
@@ -2516,7 +3749,14 @@ function LazyReaderEngine({
       }
     }
     return assetIds;
-  }, [activeTurns, adjacent, addressesForView, pageAt, readerState]);
+  }, [
+    activeTurns,
+    adjacent,
+    addressesForView,
+    captureInventoryPlan,
+    pageAt,
+    readerState,
+  ]);
 
   useEffect(() => {
     imageCache.pinOnly(pinnedAssetIds);
@@ -2677,7 +3917,11 @@ function LazyReaderEngine({
       onLayout={measureReaderOrigin}
       style={[styles.container, { backgroundColor: theme.paper }]}
     >
-      <Canvas style={styles.canvas}>
+      <Canvas
+        ref={readerCanvasRef}
+        opaque={Platform.OS === "android"}
+        style={styles.canvas}
+      >
         <Fill color={theme.paper} />
         {!transitionReady ? (
           <>
@@ -2715,6 +3959,10 @@ function LazyReaderEngine({
                       gesturePageTurnTuning={gesturePageTurnTuning}
                       onComplete={settleTurn}
                       onFrame={publishTurnFrame}
+                      playbackSpeed={
+                        automaticTapPlaybackSpeeds.get(turn.id) ??
+                        automaticPageTurnTuning.playbackSpeed
+                      }
                       spread={layout === "spread"}
                       turn={turn}
                     />
@@ -2723,6 +3971,14 @@ function LazyReaderEngine({
             {paperPaintPasses.map(({ turn, face }) => {
               const texture = turnTextures.get(turn.id);
               if (!texture?.frontImage) {
+                return null;
+              }
+              if (
+                nativePagerCompositorEnabled &&
+                turn.motion === "tap" &&
+                !turn.interactive &&
+                !turn.handoffPending
+              ) {
                 return null;
               }
               if (Platform.OS === "web") {
@@ -2770,6 +4026,7 @@ function LazyReaderEngine({
       </Canvas>
 
       <View
+        pointerEvents={Platform.OS === "web" ? "auto" : "none"}
         style={[
           styles.edge,
           styles.leftEdge,
@@ -2785,6 +4042,7 @@ function LazyReaderEngine({
         />
       </View>
       <View
+        pointerEvents={Platform.OS === "web" ? "auto" : "none"}
         style={[
           styles.edge,
           styles.rightEdge,
@@ -2868,7 +4126,9 @@ function LazyReaderEngine({
     </View>
   );
   const linkOverlay =
-    readerState.turns.length === 0 && !selectingText ? (
+    readerState.turns.length === 0 &&
+    nativePagerDirectActiveCount === 0 &&
+    !selectingText ? (
       <View pointerEvents="box-none" style={styles.linkOverlay}>
         {settledLinkHits.map(({ frame, key, region }) => (
           <Pressable
@@ -3080,6 +4340,7 @@ function WebPageTurnFaceMesh({
 interface AutomaticWebPageTurnDriverProps {
   readonly turn: ScheduledPageTurn;
   readonly automaticPageTurnTuning: AutomaticPageTurnTuning;
+  readonly playbackSpeed: number;
   readonly gesturePageTurnTuning: GesturePageTurnTuning;
   readonly spread: boolean;
   readonly onComplete: (turnId: string) => void;
@@ -3099,11 +4360,14 @@ interface AutomaticWebPageTurnDriverProps {
 function AutomaticWebPageTurnDriver({
   turn,
   automaticPageTurnTuning,
+  playbackSpeed,
   gesturePageTurnTuning,
   spread,
   onComplete,
   onFrame,
 }: AutomaticWebPageTurnDriverProps) {
+  const playbackSpeedRef = useRef(playbackSpeed);
+  playbackSpeedRef.current = playbackSpeed;
   useEffect(() => {
     const gestureRelease =
       turn.motion === "gesture" ? turn.gestureRelease : undefined;
@@ -3113,20 +4377,30 @@ function AutomaticWebPageTurnDriver({
         : automaticTuningForCore(automaticPageTurnTuning),
     );
     const settlingIncomingPage = !spread && turn.direction === -1;
-    if (gestureRelease) {
-      controller.playReleasedGesture(gestureRelease, settlingIncomingPage);
-    } else if (settlingIncomingPage) {
-      controller.playSettlingPage();
-    } else {
-      controller.play();
-    }
     const publish = () =>
       onFrame(turn.id, controller, turn.direction, settlingIncomingPage);
     publish();
 
     let previousFrameTime = performanceNow();
     let animationFrame = 0;
+    let started = false;
     const tick = (now: number) => {
+      if (!started) {
+        if (Date.now() < turn.startAtMs) {
+          previousFrameTime = now;
+          animationFrame = requestAnimationFrame(tick);
+          return;
+        }
+        started = true;
+        if (gestureRelease) {
+          controller.playReleasedGesture(gestureRelease, settlingIncomingPage);
+        } else if (settlingIncomingPage) {
+          controller.playSettlingPage();
+        } else {
+          controller.play();
+        }
+        previousFrameTime = now;
+      }
       let remainingTime = Math.min(
         0.25,
         Math.max(0, (now - previousFrameTime) / 1000),
@@ -3135,7 +4409,7 @@ function AutomaticWebPageTurnDriver({
       while (remainingTime > 0) {
         const step = Math.min(0.05, remainingTime);
         controller.advance(
-          step * (gestureRelease ? 1 : automaticPageTurnTuning.playbackSpeed),
+          step * (gestureRelease ? 1 : playbackSpeedRef.current),
         );
         remainingTime -= step;
       }
@@ -3160,6 +4434,7 @@ function AutomaticWebPageTurnDriver({
     turn.gestureRelease,
     turn.id,
     turn.motion,
+    turn.startAtMs,
   ]);
 
   return null;
@@ -3301,6 +4576,36 @@ function eventTimeSeconds(event: GestureResponderEvent): number {
 
 function performanceNow(): number {
   return globalThis.performance?.now() ?? Date.now();
+}
+
+function eventRatePerSecond(
+  timestamps: readonly number[],
+  now: number,
+): number {
+  const recent = timestamps.filter((timestamp) => now - timestamp <= 2_000);
+  const sample = recent.slice(-12);
+  if (sample.length < 2 || now - sample.at(-1)! > 1_500) {
+    return 0;
+  }
+  const duration = sample.at(-1)! - sample[0]!;
+  return duration > 0 ? ((sample.length - 1) * 1_000) / duration : 0;
+}
+
+function sampleDurationStats(samples: readonly number[]): {
+  readonly averageMs: number;
+  readonly p95Ms: number;
+} {
+  if (samples.length === 0) {
+    return { averageMs: 0, p95Ms: 0 };
+  }
+  const sorted = [...samples].sort((left, right) => left - right);
+  const averageMs =
+    sorted.reduce((total, duration) => total + duration, 0) / sorted.length;
+  const p95Index = Math.min(
+    sorted.length - 1,
+    Math.ceil(sorted.length * 0.95) - 1,
+  );
+  return { averageMs, p95Ms: sorted[p95Index]! };
 }
 
 function clampUnit(value: number): number {

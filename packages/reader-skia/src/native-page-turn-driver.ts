@@ -34,6 +34,7 @@ import {
   gestureTuningForCore,
   type GesturePageTurnTuning,
 } from "./gesture-page-turn-tuning";
+import { consumeNativePagerInputOnUI } from "./native-pager-compositor";
 import { useStableRNDispatcher } from "./use-stable-rn-dispatcher";
 
 export interface NativePageTurnCommand {
@@ -44,8 +45,22 @@ export interface NativePageTurnCommand {
   readonly settlingIncomingPage: boolean;
 }
 
+export interface NativePageTurnBenchmarkCommand {
+  readonly revision: number;
+  readonly count: number;
+  readonly intervalMs: number;
+  readonly direction: 1 | -1;
+}
+
 interface NativePageTurnDriverOptions {
   readonly gesturesEnabled: boolean;
+  /**
+   * Gesture Handler recognizes the tap on the platform UI thread, then calls
+   * the native compositor synchronously through its JSI HostObject. RN only
+   * receives asynchronous reconciliation events.
+   */
+  readonly nativePagerTapInputEnabled?: boolean;
+  readonly nativePagerNativeId?: number;
   readonly width: number;
   readonly height: number;
   readonly physicalPageWidth: number;
@@ -55,10 +70,11 @@ interface NativePageTurnDriverOptions {
   readonly canStartInteractive: boolean;
   readonly tuning: GesturePageTurnTuning;
   readonly command?: NativePageTurnCommand;
+  readonly benchmark?: NativePageTurnBenchmarkCommand;
   readonly onCenterTap: () => void;
   readonly onGestureBegin: (direction: 1 | -1) => void;
   readonly onGestureRelease: (release: PageGestureReleaseInput) => void;
-  readonly onTapTurn: (direction: 1 | -1) => void;
+  readonly onTapTurn: (direction: 1 | -1, requestedAtMs: number) => void;
   readonly onOutcome: (outcome: number) => void;
 }
 
@@ -97,6 +113,14 @@ interface NativeGestureProbe {
   lastThrowVelocity: number;
   lastTime: number;
   turnProgress: number;
+}
+
+interface NativePageTurnBenchmarkState {
+  revision: number;
+  remaining: number;
+  nextAtMs: number;
+  intervalMs: number;
+  direction: 1 | -1;
 }
 
 function createNativeGestureTarget(): NativeGestureTarget {
@@ -165,6 +189,8 @@ function materialXForTouch(
  */
 export function useNativePageTurnDriver({
   gesturesEnabled,
+  nativePagerTapInputEnabled = false,
+  nativePagerNativeId,
   width,
   height,
   physicalPageWidth,
@@ -174,6 +200,7 @@ export function useNativePageTurnDriver({
   canStartInteractive,
   tuning,
   command,
+  benchmark,
   onCenterTap,
   onGestureBegin,
   onGestureRelease,
@@ -192,6 +219,65 @@ export function useNativePageTurnDriver({
   const gestureTarget = useSharedValue(createNativeGestureTarget());
   const gestureProbe = useSharedValue(createNativeGestureProbe());
   const gestureRequestHandled = useSharedValue(false);
+  const benchmarkState = useSharedValue<NativePageTurnBenchmarkState>({
+    revision: 0,
+    remaining: 0,
+    nextAtMs: 0,
+    intervalMs: 100,
+    direction: 1,
+  });
+
+  useEffect(() => {
+    if (!__DEV__ || Platform.OS === "web" || benchmark === undefined) {
+      return;
+    }
+    scheduleOnUI(
+      (
+        revision: number,
+        count: number,
+        intervalMs: number,
+        direction: 1 | -1,
+      ) => {
+        "worklet";
+        benchmarkState.value = {
+          revision,
+          remaining: count,
+          nextAtMs: Date.now(),
+          intervalMs,
+          direction,
+        };
+      },
+      benchmark.revision,
+      benchmark.count,
+      benchmark.intervalMs,
+      benchmark.direction,
+    );
+  }, [benchmark, benchmarkState]);
+
+  useFrameCallback(
+    () => {
+      "worklet";
+      const now = Date.now();
+      benchmarkState.modify((current) => {
+        // A frame hitch may cross more than one 100 ms boundary. Preserve every
+        // synthetic tap and its original UI-clock timestamp, but bound catch-up
+        // work per frame so diagnostics cannot create an unbounded RN burst.
+        let emitted = 0;
+        while (
+          current.remaining > 0 &&
+          now >= current.nextAtMs &&
+          emitted < 4
+        ) {
+          scheduleOnRN(dispatchTapTurn, current.direction, current.nextAtMs);
+          current.remaining -= 1;
+          current.nextAtMs += current.intervalMs;
+          emitted += 1;
+        }
+        return current;
+      }, true);
+    },
+    __DEV__ && Platform.OS !== "web",
+  );
 
   useEffect(() => {
     scheduleOnUI((nextTuning: PageTurnTuning) => {
@@ -566,18 +652,38 @@ export function useNativePageTurnDriver({
       });
 
     const tap = Gesture.Tap()
-      .enabled(gesturesEnabled)
+      // Native pager taps remain live while earlier curls are still on screen.
+      // The pan path stays disabled until those turns settle, so a drag cannot
+      // accidentally enter the RN scheduler during a native burst.
+      .enabled(gesturesEnabled || nativePagerTapInputEnabled)
       .maxDistance(8)
       .onEnd((event, success) => {
         "worklet";
         if (!success) {
           return;
         }
+        const requestedAtMs = Date.now();
         if (event.x <= width * 0.24 && canTurnBackward) {
-          scheduleOnRN(dispatchTapTurn, -1);
+          const nativeResult =
+            nativePagerTapInputEnabled && nativePagerNativeId !== undefined
+              ? consumeNativePagerInputOnUI(nativePagerNativeId, -1)
+              : undefined;
+          if (!nativePagerTapInputEnabled || nativeResult === undefined) {
+            scheduleOnRN(dispatchTapTurn, -1, requestedAtMs);
+          }
         } else if (event.x >= width * 0.76 && canTurnForward) {
-          scheduleOnRN(dispatchTapTurn, 1);
-        } else if (state.value.phase === PAGE_TURN_WORKLET_IDLE) {
+          const nativeResult =
+            nativePagerTapInputEnabled && nativePagerNativeId !== undefined
+              ? consumeNativePagerInputOnUI(nativePagerNativeId, 1)
+              : undefined;
+          if (!nativePagerTapInputEnabled || nativeResult === undefined) {
+            scheduleOnRN(dispatchTapTurn, 1, requestedAtMs);
+          }
+        } else if (
+          event.x > width * 0.24 &&
+          event.x < width * 0.76 &&
+          state.value.phase === PAGE_TURN_WORKLET_IDLE
+        ) {
           scheduleOnRN(dispatchCenterTap);
         }
       });
@@ -599,6 +705,8 @@ export function useNativePageTurnDriver({
     dispatchOutcome,
     dispatchTapTurn,
     onePhysicalPixel,
+    nativePagerTapInputEnabled,
+    nativePagerNativeId,
     physicalPageWidth,
     spread,
     state,

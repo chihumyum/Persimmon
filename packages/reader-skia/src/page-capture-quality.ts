@@ -35,9 +35,7 @@ export interface PageCaptureQuality {
 }
 
 const ACTIVE_GESTURE_MAX_SCALE = PAGE_CAPTURE_MAX_SCALE;
-const ACTIVE_TAP_MAX_SCALE = 2.5;
-const BUSY_TAP_MAX_SCALE = 2;
-const BURST_TAP_MAX_SCALE = 1.5;
+const ACTIVE_TAP_MAX_SCALE = PAGE_CAPTURE_MAX_SCALE;
 const PREFETCH_MAX_SCALE = 2;
 const BACKGROUND_MAX_SCALE = 1.5;
 
@@ -75,51 +73,33 @@ export function selectPageCaptureQuality(
 
   const inputKind = input.inputKind ?? "tap";
   if (inputKind === "gesture") {
+    const desiredScale = Math.max(
+      PAGE_CAPTURE_MIN_SCALE,
+      Math.min(devicePixelRatio, ACTIVE_GESTURE_MAX_SCALE),
+    );
     return {
-      desiredScale: Math.max(
-        PAGE_CAPTURE_MIN_SCALE,
-        Math.min(devicePixelRatio, ACTIVE_GESTURE_MAX_SCALE),
-      ),
-      minimumScale: PAGE_CAPTURE_MIN_SCALE,
+      desiredScale,
+      minimumScale: desiredScale,
       idealPerspectiveScale,
     };
   }
 
-  const recentStartsPerSecond = finiteNonNegativeOr(
-    input.recentStartsPerSecond,
-    0,
+  // Burst pressure changes admission, not text resolution. A turn either waits
+  // for a device-scale worker capture or does not start; it never freezes a
+  // blurry 1.5x proxy into the paper just because the reader tapped quickly.
+  const desiredScale = Math.max(
+    PAGE_CAPTURE_MIN_SCALE,
+    Math.min(devicePixelRatio, ACTIVE_TAP_MAX_SCALE),
   );
-  const activeTurnCount = Math.floor(
-    finiteNonNegativeOr(input.activeTurnCount, 0),
-  );
-  const maximumScale =
-    recentStartsPerSecond >= 5 || activeTurnCount >= 4
-      ? BURST_TAP_MAX_SCALE
-      : recentStartsPerSecond >= 2.5 || activeTurnCount >= 2
-        ? BUSY_TAP_MAX_SCALE
-        : ACTIVE_TAP_MAX_SCALE;
-
   return {
-    desiredScale: Math.max(
-      PAGE_CAPTURE_MIN_SCALE,
-      Math.min(devicePixelRatio, maximumScale),
-    ),
-    minimumScale: PAGE_CAPTURE_MIN_SCALE,
+    desiredScale,
+    minimumScale: desiredScale,
     idealPerspectiveScale,
   };
 }
 
 function finitePositiveOr(value: number | undefined, fallback: number): number {
   return value !== undefined && Number.isFinite(value) && value > 0
-    ? value
-    : fallback;
-}
-
-function finiteNonNegativeOr(
-  value: number | undefined,
-  fallback: number,
-): number {
-  return value !== undefined && Number.isFinite(value) && value >= 0
     ? value
     : fallback;
 }

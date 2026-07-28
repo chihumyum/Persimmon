@@ -17,6 +17,11 @@ export interface PageCapturePlanInput {
   readonly addressesForView: (
     address: PageAddress,
   ) => readonly (PageAddress | undefined)[];
+  /**
+   * Number of views retained on each side while direction is still unknown.
+   * The caller should derive this from its byte budget.
+   */
+  readonly radius?: number;
 }
 
 interface ViewPlan {
@@ -34,33 +39,33 @@ const ROLE_PRIORITY: Readonly<Record<PageCapturePlanRole, number>> = {
 /**
  * Plans a small physical-page capture window independently of animation lanes.
  *
- * The current view and its immediate neighbors are prefetch candidates. Views
- * two steps away are background-quality candidates. Clamped navigation and
- * short final spreads may expose the same physical page more than once; the
- * first stable position is retained while its highest-priority role wins.
+ * The current view and its immediate neighbors are prefetch candidates. More
+ * distant views are background candidates. Clamped navigation and short final
+ * spreads may expose the same physical page more than once; the first stable
+ * position is retained while its highest-priority role wins.
  */
 export function buildPageCapturePlan({
   settled,
   adjacent,
   addressesForView,
+  radius = 2,
 }: PageCapturePlanInput): readonly PageCapturePlanEntry[] {
-  const previous = adjacent(settled, -1);
-  const next = adjacent(settled, 1);
-  const viewPlans: readonly ViewPlan[] = [
+  const retainedRadius = Math.max(1, Math.floor(radius));
+  const viewPlans: ViewPlan[] = [
     { start: settled, role: "current", tier: "prefetch" },
-    { start: previous, role: "neighbor", tier: "prefetch" },
-    { start: next, role: "neighbor", tier: "prefetch" },
-    {
-      start: adjacent(previous, -1),
-      role: "background",
-      tier: "background",
-    },
-    {
-      start: adjacent(next, 1),
-      role: "background",
-      tier: "background",
-    },
   ];
+  let previous = settled;
+  let next = settled;
+  for (let distance = 1; distance <= retainedRadius; distance += 1) {
+    previous = adjacent(previous, -1);
+    next = adjacent(next, 1);
+    const role = distance === 1 ? "neighbor" : "background";
+    const tier = distance === 1 ? "prefetch" : "background";
+    viewPlans.push(
+      { start: previous, role, tier },
+      { start: next, role, tier },
+    );
+  }
   const entries = new Map<string, PageCapturePlanEntry>();
 
   for (const view of viewPlans) {

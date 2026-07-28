@@ -645,6 +645,46 @@ describe("captured page turn leases", () => {
     expect(seenPageIndexes).toEqual([42]);
   });
 
+  it("keeps prepared active faces in hard reserve until atomic acquisition", () => {
+    const capturesCache = cache(400, 800);
+    const front = page("prepared-front");
+    const back = page("prepared-back");
+    const frontCapture = fakeCapture(front, 1);
+    const backCapture = fakeCapture(back, 1);
+
+    expect(capturesCache.installPrepared(front, "active", frontCapture)).toBe(
+      frontCapture,
+    );
+    expect(capturesCache.installPrepared(back, "active", backCapture)).toBe(
+      backCapture,
+    );
+    capturesCache.reconcileUnpinnedTiers([
+      { identity: front, tier: "active" },
+      { identity: back, tier: "active" },
+    ]);
+
+    expect(capturesCache.getStats()).toMatchObject({
+      residentBytes: 800,
+      entryCount: 2,
+      pinnedBytes: 0,
+    });
+    const result = capturesCache.acquireTurn(
+      {
+        turnId: "prepared",
+        front: { identity: front, desiredScale: 1 },
+        back: { identity: back, desiredScale: 1 },
+      },
+      () => null,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.lease.front).toBe(frontCapture);
+    expect(result.lease.back).toBe(backCapture);
+    expect(capturesCache.getStats().pinnedBytes).toBe(800);
+  });
+
   it("clears pinned entries once and makes later release a no-op", () => {
     const captures: FakeCapture[] = [];
     const capturesCache = cache(400);

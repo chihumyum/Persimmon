@@ -194,4 +194,18 @@ describe("page capture plan", () => {
     ]);
     expect(plan).toHaveLength(5);
   });
+
+  it("uses an explicit byte-budgeted radius for deeper idle inventory", () => {
+    const plan = buildPageCapturePlan({
+      settled: page(100),
+      adjacent: (address, direction) =>
+        page(address.pageIndex + direction, address.sectionIndex),
+      addressesForView: (address) => [address],
+      radius: 5,
+    });
+
+    expect(plan.map((entry) => entry.address.pageIndex)).toEqual([
+      100, 99, 101, 98, 102, 97, 103, 96, 104, 95, 105,
+    ]);
+  });
 });

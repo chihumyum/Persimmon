@@ -4,6 +4,7 @@ import {
   Skia,
   type SkImage,
   type SkParagraph,
+  type SkPicture,
 } from "@shopify/react-native-skia";
 import { Platform } from "react-native";
 
@@ -17,10 +18,19 @@ import {
   drawSkiaPageDecoration,
   type SkiaPageDecoration,
 } from "./skia-page-decoration";
-import { releaseSkiaResources } from "./skia-resource-release";
+import { releaseCapturedPageResources } from "./skia-resource-release";
 
 export interface CapturedPage {
   readonly image: SkImage;
+  readonly scale: number;
+  readonly pixelWidth: number;
+  readonly pixelHeight: number;
+  readonly byteSize: number;
+  dispose(): void;
+}
+
+export interface RecordedPageCapture {
+  readonly picture: SkPicture;
   readonly scale: number;
   readonly pixelWidth: number;
   readonly pixelHeight: number;
@@ -51,6 +61,51 @@ export function capturePage(
   theme: ReaderTheme = DEFAULT_READER_THEME,
   decorationOffsetX = 0,
 ): CapturedPage | null {
+  const recording = recordPageCapture(
+    page,
+    pagination,
+    imageCache,
+    width,
+    height,
+    scale,
+    allowUnrequestedImages,
+    decoration,
+    progressDisplay,
+    progressPresentation,
+    theme,
+    decorationOffsetX,
+  );
+  if (!recording) {
+    return null;
+  }
+  try {
+    return rasterizeRecordedPageCapture(recording);
+  } finally {
+    recording.dispose();
+  }
+}
+
+/**
+ * Records a complete physical page without allocating its pixel buffer.
+ *
+ * SkPicture is immutable after recording, so native can safely hand this
+ * display list to a worker runtime. Paragraph layout and decoded images stay
+ * shared while the expensive pixel fill happens away from RN and UI threads.
+ */
+export function recordPageCapture(
+  page: PageScene,
+  pagination: PaginationResult<SkParagraph>,
+  imageCache: DecodedImageCache,
+  width: number,
+  height: number,
+  scale: number,
+  allowUnrequestedImages = false,
+  decoration?: SkiaPageDecoration,
+  progressDisplay: ReaderProgressDisplay = "hidden",
+  progressPresentation: PageProgressPresentation = "reading",
+  theme: ReaderTheme = DEFAULT_READER_THEME,
+  decorationOffsetX = 0,
+): RecordedPageCapture | null {
   if (!pageImagesSettledForCapture(page, imageCache, allowUnrequestedImages)) {
     return null;
   }
@@ -61,26 +116,15 @@ export function capturePage(
 
   const pixelWidth = pixelSize.width;
   const pixelHeight = pixelSize.height;
-  // CanvasKit GPU surfaces may belong to a different WebGL context than the
-  // visible Canvas, so Web captures start on a CPU surface. Native records on
-  // the faster offscreen GPU surface and converts the final snapshot to a
-  // portable raster image below.
-  const surface =
-    Platform.OS === "web"
-      ? Skia.Surface.Make(pixelWidth, pixelHeight)
-      : Skia.Surface.MakeOffscreen(pixelWidth, pixelHeight);
-  if (!surface) {
-    return null;
-  }
-
-  const canvas = surface.getCanvas();
+  const recorder = Skia.PictureRecorder();
+  const canvas = recorder.beginRecording(
+    Skia.XYWHRect(0, 0, pixelWidth, pixelHeight),
+  );
   const imagePaint = Skia.Paint();
   const placeholderPaint = Skia.Paint();
   const notePaint = Skia.Paint();
   placeholderPaint.setColor(Skia.Color(theme.imagePlaceholder));
   notePaint.setColor(Skia.Color(theme.noteAccent));
-  let returnedCapture = false;
-  let surfaceDisposed = false;
 
   try {
     canvas.clear(Skia.Color(theme.paper));
@@ -140,32 +184,17 @@ export function capturePage(
         decorationOffsetX,
       );
     }
-
-    surface.flush();
-    const textureImage = surface.makeImageSnapshot();
-    // A GPU snapshot is tied to the surface/context that created it. Native
-    // page-turn rendering samples the capture again from another surface, so
-    // convert it to a portable raster image when Skia exposes that capability.
-    const rasterImage =
-      typeof textureImage.makeNonTextureImage === "function"
-        ? textureImage.makeNonTextureImage()
-        : null;
-    const image = rasterImage ?? textureImage;
-    if (rasterImage && rasterImage !== textureImage) {
-      textureImage.dispose();
-      surface.dispose();
-      surfaceDisposed = true;
-    }
-    let retainedImage: SkImage | null = image;
-    let retainedSurface = surfaceDisposed ? null : surface;
+    const picture = recorder.finishRecordingAsPicture();
+    let retainedPicture: SkPicture | null = picture;
     let disposed = false;
-    returnedCapture = true;
     return {
-      get image() {
-        if (!retainedImage) {
-          throw new Error("Captured page was accessed after owner release.");
+      get picture() {
+        if (!retainedPicture) {
+          throw new Error(
+            "Recorded page was accessed after its owner released it.",
+          );
         }
-        return retainedImage;
+        return retainedPicture;
       },
       scale,
       pixelWidth,
@@ -176,17 +205,14 @@ export function capturePage(
           return;
         }
         disposed = true;
-        const imageToRelease = retainedImage;
-        const surfaceToRelease = retainedSurface;
-        retainedImage = null;
-        retainedSurface = null;
-        surfaceDisposed = true;
-        releaseSkiaResources(Platform.OS, imageToRelease, surfaceToRelease);
+        const pictureToRelease = retainedPicture;
+        retainedPicture = null;
+        pictureToRelease?.dispose();
       },
     };
   } catch (error) {
     console.warn(
-      "[Persimmon] Page capture failed; skipping the textured page turn.",
+      "[Persimmon] Page recording failed; skipping the textured page turn.",
       error,
     );
     return null;
@@ -194,10 +220,98 @@ export function capturePage(
     imagePaint.dispose();
     placeholderPaint.dispose();
     notePaint.dispose();
+    recorder.dispose();
+  }
+}
+
+/**
+ * Synchronous compatibility path used by Web and focused unit tests. Native
+ * sustained turning uses page-capture-rasterizer.native.ts instead.
+ */
+export function rasterizeRecordedPageCapture(
+  recording: RecordedPageCapture,
+): CapturedPage | null {
+  const surface =
+    Platform.OS === "web"
+      ? Skia.Surface.Make(recording.pixelWidth, recording.pixelHeight)
+      : Skia.Surface.MakeOffscreen(recording.pixelWidth, recording.pixelHeight);
+  if (!surface) {
+    return null;
+  }
+  let returnedCapture = false;
+  let surfaceDisposed = false;
+  try {
+    const canvas = surface.getCanvas();
+    canvas.drawPicture(recording.picture);
+    surface.flush();
+    const textureImage = surface.makeImageSnapshot();
+    const rasterImage =
+      typeof textureImage.makeNonTextureImage === "function"
+        ? textureImage.makeNonTextureImage()
+        : null;
+    const image = rasterImage ?? textureImage;
+    if (rasterImage && rasterImage !== textureImage) {
+      textureImage.dispose();
+      surface.dispose();
+      surfaceDisposed = true;
+    }
+    returnedCapture = true;
+    return capturedPageFromImage(
+      image,
+      recording,
+      surfaceDisposed ? null : surface,
+    );
+  } catch (error) {
+    console.warn(
+      "[Persimmon] Page rasterization failed; skipping the textured page turn.",
+      error,
+    );
+    return null;
+  } finally {
     if (!returnedCapture && !surfaceDisposed) {
       surface.dispose();
     }
   }
+}
+
+export function capturedPageFromImage(
+  image: SkImage,
+  dimensions: Pick<
+    RecordedPageCapture,
+    "scale" | "pixelWidth" | "pixelHeight" | "byteSize"
+  >,
+  retainedSurface: { dispose(): void } | null = null,
+): CapturedPage {
+  let retainedImage: SkImage | null = image;
+  let surface = retainedSurface;
+  let disposed = false;
+  return {
+    get image() {
+      if (!retainedImage) {
+        throw new Error("Captured page was accessed after owner release.");
+      }
+      return retainedImage;
+    },
+    scale: dimensions.scale,
+    pixelWidth: dimensions.pixelWidth,
+    pixelHeight: dimensions.pixelHeight,
+    byteSize: dimensions.byteSize,
+    dispose: () => {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      const imageToRelease = retainedImage;
+      const surfaceToRelease = surface;
+      retainedImage = null;
+      surface = null;
+      releaseCapturedPageResources(
+        Platform.OS,
+        imageToRelease,
+        surfaceToRelease,
+      );
+    },
+  };
 }
 
 /**

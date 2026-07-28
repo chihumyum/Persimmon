@@ -2,24 +2,27 @@ import { describe, expect, it } from "vitest";
 
 import { DEFAULT_AUTOMATIC_PAGE_TURN_TUNING } from "./automatic-page-turn-tuning";
 import {
+  PAGE_TURN_BURST_TARGET_DURATION_MS,
   PAGE_TURN_LANE_HARD_LIMIT,
   PAGE_TURN_TAP_LANE_HEADROOM,
+  burstPageTurnPlaybackSpeed,
   calculatePageTurnConcurrency,
+  estimateAutomaticPageTurnDurationMs,
 } from "./page-turn-concurrency";
 
 describe("page turn concurrency", () => {
-  it("adds two completion-headroom lanes to the three default overlaps", () => {
+  it("sizes the pool from the compressed burst duration", () => {
     expect(
       calculatePageTurnConcurrency(DEFAULT_AUTOMATIC_PAGE_TURN_TUNING, 150),
     ).toEqual({
       estimatedTapDurationMs: 441,
       minimumTurnIntervalMs: 150,
-      maximumConcurrentTapTurns: 5,
-      maximumConcurrentTurns: 6,
+      maximumConcurrentTapTurns: 10,
+      maximumConcurrentTurns: 11,
     });
   });
 
-  it("tracks playback speed without exceeding the hard pool", () => {
+  it("keeps slow single-turn tuning from inflating the burst pool", () => {
     expect(
       calculatePageTurnConcurrency(
         { ...DEFAULT_AUTOMATIC_PAGE_TURN_TUNING, playbackSpeed: 2 },
@@ -28,8 +31,8 @@ describe("page turn concurrency", () => {
     ).toMatchObject({
       estimatedTapDurationMs: 287,
       minimumTurnIntervalMs: 150,
-      maximumConcurrentTapTurns: 4,
-      maximumConcurrentTurns: 5,
+      maximumConcurrentTapTurns: 10,
+      maximumConcurrentTurns: 11,
     });
     expect(
       calculatePageTurnConcurrency(
@@ -38,13 +41,13 @@ describe("page turn concurrency", () => {
       ),
     ).toMatchObject({
       estimatedTapDurationMs: 1147,
-      minimumTurnIntervalMs: 230,
-      maximumConcurrentTapTurns: 7,
-      maximumConcurrentTurns: 8,
+      minimumTurnIntervalMs: 150,
+      maximumConcurrentTapTurns: 10,
+      maximumConcurrentTurns: 11,
     });
   });
 
-  it("raises the start interval instead of producing a capacity gap", () => {
+  it("compresses pathological tap tuning instead of stretching the cadence", () => {
     const result = calculatePageTurnConcurrency(
       {
         ...DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
@@ -58,13 +61,14 @@ describe("page turn concurrency", () => {
 
     expect(result).toMatchObject({
       estimatedTapDurationMs: 3435,
-      minimumTurnIntervalMs: 687,
-      maximumConcurrentTapTurns: PAGE_TURN_LANE_HARD_LIMIT - 1,
-      maximumConcurrentTurns: PAGE_TURN_LANE_HARD_LIMIT,
+      minimumTurnIntervalMs: 150,
+      maximumConcurrentTapTurns: 10,
+      maximumConcurrentTurns: 11,
     });
     expect(
-      Math.ceil(result.estimatedTapDurationMs / result.minimumTurnIntervalMs) +
-        PAGE_TURN_TAP_LANE_HEADROOM,
+      Math.ceil(
+        PAGE_TURN_BURST_TARGET_DURATION_MS / result.minimumTurnIntervalMs,
+      ) + PAGE_TURN_TAP_LANE_HEADROOM,
     ).toBeLessThanOrEqual(result.maximumConcurrentTapTurns);
   });
 
@@ -72,9 +76,26 @@ describe("page turn concurrency", () => {
     expect(
       calculatePageTurnConcurrency(DEFAULT_AUTOMATIC_PAGE_TURN_TUNING, 0),
     ).toMatchObject({
-      minimumTurnIntervalMs: 89,
+      minimumTurnIntervalMs: 80,
       maximumConcurrentTapTurns: PAGE_TURN_LANE_HARD_LIMIT - 1,
       maximumConcurrentTurns: PAGE_TURN_LANE_HARD_LIMIT,
     });
+  });
+
+  it("accelerates overlapping turns into the burst duration without lowering quality", () => {
+    const tuning = {
+      ...DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
+      playbackSpeed: 0.5,
+    };
+    const playbackSpeed = burstPageTurnPlaybackSpeed(tuning);
+    const compressedDuration =
+      (estimateAutomaticPageTurnDurationMs(tuning) * tuning.playbackSpeed) /
+      playbackSpeed;
+
+    expect(playbackSpeed).toBeGreaterThan(tuning.playbackSpeed);
+    expect(compressedDuration).toBeLessThanOrEqual(
+      PAGE_TURN_BURST_TARGET_DURATION_MS + 1,
+    );
+    expect(burstPageTurnPlaybackSpeed(tuning, 1)).toBe(playbackSpeed);
   });
 });

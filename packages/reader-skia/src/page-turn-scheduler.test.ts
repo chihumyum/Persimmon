@@ -8,6 +8,7 @@ import {
   createPageTurnSchedulerState,
   handoffScheduledInteractivePageTurn,
   markScheduledPageTurnLaneReady,
+  markScheduledPageTurnsPresented,
   requestScheduledGesturePageTurn,
   requestScheduledPageTurn,
   resolveScheduledPageTurn,
@@ -94,9 +95,11 @@ describe("page-turn scheduler", () => {
         to: page(1),
         direction: 1,
         lane: 0,
+        startAtMs: 0,
         interactive: false,
         handoffPending: false,
         laneReady: false,
+        presentationReady: false,
         completed: false,
       },
     ]);
@@ -119,33 +122,84 @@ describe("page-turn scheduler", () => {
     });
   });
 
-  it("uniformly throttles tap starts to one every 150 ms", () => {
+  it("starts only after presentation and shifts every later cadence slot", () => {
+    const scheduler = createHarness();
+    let state = createPageTurnSchedulerState(page(0));
+    state = requestScheduledPageTurn(state, 1, scheduler, 0);
+    state = requestScheduledPageTurn(state, 1, scheduler, 100);
+    state = requestScheduledPageTurn(state, 1, scheduler, 200);
+    state = markScheduledPageTurnLaneReady(state, "turn:1");
+    state = markScheduledPageTurnLaneReady(state, "turn:2");
+    state = markScheduledPageTurnLaneReady(state, "turn:3");
+
+    state = markScheduledPageTurnsPresented(state, ["turn:1", "turn:2"], 80);
+    expect(state.turns.map((turn) => turn.startAtMs)).toEqual([80, 180, 280]);
+    expect(state.turns.map((turn) => turn.presentationReady)).toEqual([
+      true,
+      true,
+      false,
+    ]);
+    expect(state.nextTapStartAtMs).toBe(380);
+
+    state = markScheduledPageTurnsPresented(state, ["turn:3"], 350);
+    expect(state.turns.map((turn) => turn.startAtMs)).toEqual([80, 180, 350]);
+    expect(state.turns.every((turn) => turn.presentationReady)).toBe(true);
+    expect(state.nextTapStartAtMs).toBe(450);
+  });
+
+  it("does not reopen or reschedule an acknowledged presentation gate", () => {
+    const scheduler = createHarness();
+    let state = requestScheduledPageTurn(
+      createPageTurnSchedulerState(page(0)),
+      1,
+      scheduler,
+      0,
+    );
+    state = markScheduledPageTurnsPresented(state, ["turn:1"], 75);
+
+    expect(markScheduledPageTurnsPresented(state, ["turn:1"], 500)).toBe(state);
+    expect(state.turns[0]).toMatchObject({
+      startAtMs: 75,
+      presentationReady: true,
+    });
+  });
+
+  it("queues early taps into uniform future cadence slots", () => {
     const scheduler = createHarness();
     let state = createPageTurnSchedulerState(page(0));
     for (const requestedAtMs of [0, 149, 150, 299, 300, 449, 450]) {
       state = requestScheduledPageTurn(state, 1, scheduler, requestedAtMs);
     }
 
-    expect(state.turns).toHaveLength(4);
+    expect(state.turns).toHaveLength(7);
     expect(state.turns.map((turn) => turn.from.pageIndex)).toEqual([
-      0, 1, 2, 3,
+      0, 1, 2, 3, 4, 5, 6,
     ]);
-    expect(state.turns.map((turn) => turn.lane)).toEqual([0, 1, 2, 3]);
-    expect(state.desired).toEqual(page(4));
+    expect(state.turns.map((turn) => turn.lane)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(state.turns.map((turn) => turn.startAtMs)).toEqual([
+      0, 149, 249, 349, 449, 549, 649,
+    ]);
+    expect(state.desired).toEqual(page(7));
   });
 
-  it("drops an instantaneous burst instead of replaying it later", () => {
+  it("bounds an instantaneous queued burst by physical lane capacity", () => {
     const scheduler = createHarness();
     let state = createPageTurnSchedulerState(page(0));
-    for (let index = 0; index < 10; index += 1) {
+    for (let index = 0; index < PAGE_TURN_LANE_HARD_LIMIT + 1; index += 1) {
       state = requestScheduledPageTurn(state, 1, scheduler, 100);
     }
 
-    expect(state.turns).toHaveLength(1);
-    expect(state.desired).toEqual(page(1));
+    expect(state.turns).toHaveLength(PAGE_TURN_LANE_HARD_LIMIT);
+    expect(state.turns.map((turn) => turn.startAtMs)).toEqual(
+      Array.from(
+        { length: PAGE_TURN_LANE_HARD_LIMIT },
+        (_, index) => 100 + index * PAGE_TURN_START_INTERVAL_MS,
+      ),
+    );
+    expect(state.desired).toEqual(page(PAGE_TURN_LANE_HARD_LIMIT));
 
     state = resolveScheduledPageTurn(state, "turn:1", true);
-    expect(state.turns).toHaveLength(0);
+    expect(state.turns).toHaveLength(PAGE_TURN_LANE_HARD_LIMIT - 1);
     expect(state.settled).toEqual(page(1));
   });
 

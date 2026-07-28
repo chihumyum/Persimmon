@@ -2,13 +2,6 @@ interface DisposableSkiaResource {
   dispose(): void;
 }
 
-/**
- * Native declarative Skia may retain a HostObject in a display list after the
- * React owner releases it. Let JSI garbage collection reclaim that object once
- * Skia drops its final reference; calling dispose() early creates a use-after-
- * dispose race. CanvasKit does not have that HostObject ownership path, so Web
- * resources remain explicitly disposable.
- */
 export function releaseSkiaResources(
   platform: string,
   image: DisposableSkiaResource | null,
@@ -19,4 +12,22 @@ export function releaseSkiaResources(
   }
   image?.dispose();
   surface?.dispose();
+}
+
+/**
+ * Android page captures are CPU SkImages created on dedicated raster runtimes.
+ * Their native pager and display-list consumers copy the underlying sk_sp, so
+ * releasing the JSI owner's image reference after the paint grace period is
+ * safe. Paragraphs and other native Skia resources keep GC ownership.
+ */
+export function releaseCapturedPageResources(
+  platform: string,
+  image: DisposableSkiaResource | null,
+  surface: DisposableSkiaResource | null,
+): void {
+  if (platform === "android") {
+    image?.dispose();
+    return;
+  }
+  releaseSkiaResources(platform, image, surface);
 }

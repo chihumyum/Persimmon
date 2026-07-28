@@ -3,7 +3,7 @@ import type { ReleasedPageTurnGesture } from "@persimmon/page-turn-core";
 import { PAGE_TURN_LANE_HARD_LIMIT } from "./page-turn-concurrency";
 import { samePageAddress, type PageAddress } from "./section-navigation";
 
-export const PAGE_TURN_START_INTERVAL_MS = 150;
+export const PAGE_TURN_START_INTERVAL_MS = 100;
 
 export interface ScheduledPageTurn {
   readonly id: string;
@@ -11,6 +11,11 @@ export interface ScheduledPageTurn {
   readonly to: PageAddress;
   readonly direction: 1 | -1;
   readonly lane: number;
+  /**
+   * UI-clock deadline for automatic launch. Rapid taps reserve successive
+   * cadence slots instead of being discarded inside the throttle window.
+   */
+  readonly startAtMs: number;
   /**
    * True only while a finger owns the shared interactive driver.
    * Released gestures become autonomous lane animations immediately.
@@ -27,6 +32,13 @@ export interface ScheduledPageTurn {
    * target background can leak through for one frame.
    */
   readonly laneReady: boolean;
+  /**
+   * Native sets this only after React has committed the paper mesh and Skia
+   * has had two presentation opportunities. Automatic animation time must not
+   * advance before this barrier; a fixed preparation delay cannot guarantee
+   * that a cold texture is visible.
+   */
+  readonly presentationReady: boolean;
   readonly motion: "tap" | "gesture";
   readonly gestureRelease?: ReleasedPageTurnGesture;
   readonly completed: boolean;
@@ -59,11 +71,10 @@ export function createPageTurnSchedulerState(
 }
 
 /**
- * Starts at most one turn for this input. There is deliberately no pending
- * queue: tap input inside the configured throttle window, input at full lane
- * capacity, or input against the current stack direction is dropped instead
- * of replayed later. Gestures have their own input cadence and bypass only the
- * tap throttle.
+ * Starts at most one turn for this input. Taps that arrive before the next
+ * cadence boundary reserve that future UI-clock slot, so every accepted page
+ * keeps uniform spacing. Full lane capacity and input against the current
+ * stack direction are still rejected. Gestures bypass the tap cadence.
  */
 export function requestScheduledPageTurn(
   state: PageTurnSchedulerState,
@@ -168,6 +179,61 @@ export function markScheduledPageTurnLaneReady(
   return found ? { ...state, turns } : state;
 }
 
+/**
+ * Opens the native presentation gate for a source-order batch. If texture or
+ * React work made a reserved cadence slot stale, shift this turn and every
+ * later tap by the same amount. This preserves 100 ms spacing without letting
+ * several overdue lanes catch up on one UI frame.
+ */
+export function markScheduledPageTurnsPresented(
+  state: PageTurnSchedulerState,
+  turnIds: readonly string[],
+  presentedAtMs: number,
+): PageTurnSchedulerState {
+  if (turnIds.length === 0 || !Number.isFinite(presentedAtMs)) {
+    return state;
+  }
+  const presentedIds = new Set(turnIds);
+  let changed = false;
+  let cumulativeShiftMs = 0;
+  const turns = state.turns.map((turn) => {
+    let startAtMs =
+      turn.motion === "tap" && !turn.completed
+        ? turn.startAtMs + cumulativeShiftMs
+        : turn.startAtMs;
+    let presentationReady = turn.presentationReady;
+    if (
+      presentedIds.has(turn.id) &&
+      !turn.completed &&
+      turn.motion === "tap" &&
+      !turn.presentationReady
+    ) {
+      const overdueMs = Math.max(0, presentedAtMs - startAtMs);
+      if (overdueMs > 0) {
+        cumulativeShiftMs += overdueMs;
+        startAtMs += overdueMs;
+      }
+      presentationReady = true;
+      changed = true;
+    }
+    if (
+      startAtMs === turn.startAtMs &&
+      presentationReady === turn.presentationReady
+    ) {
+      return turn;
+    }
+    changed = true;
+    return { ...turn, startAtMs, presentationReady };
+  });
+  return changed
+    ? {
+        ...state,
+        turns,
+        nextTapStartAtMs: state.nextTapStartAtMs + cumulativeShiftMs,
+      }
+    : state;
+}
+
 export function resolveScheduledPageTurn(
   state: PageTurnSchedulerState,
   turnId: string,
@@ -229,10 +295,6 @@ function tryStartScheduledTurn(
   gestureRelease?: ReleasedPageTurnGesture,
   respectThrottle = true,
 ): PageTurnSchedulerState {
-  if (respectThrottle && requestedAtMs < state.nextTapStartAtMs) {
-    return state;
-  }
-
   const maximumConcurrentTurns = Math.min(
     PAGE_TURN_LANE_HARD_LIMIT,
     Math.max(
@@ -280,6 +342,10 @@ function tryStartScheduledTurn(
     0,
     scheduler.minimumTurnIntervalMs ?? PAGE_TURN_START_INTERVAL_MS,
   );
+  const scheduledStartAtMs =
+    motion === "tap" && respectThrottle
+      ? Math.max(requestedAtMs, state.nextTapStartAtMs)
+      : requestedAtMs;
   return {
     settled: state.settled,
     desired: to,
@@ -294,11 +360,12 @@ function tryStartScheduledTurn(
         scheduler,
         motion,
         gestureRelease,
+        scheduledStartAtMs,
       ),
     ],
     nextTapStartAtMs:
       motion === "tap"
-        ? requestedAtMs + minimumTurnIntervalMs
+        ? scheduledStartAtMs + minimumTurnIntervalMs
         : state.nextTapStartAtMs,
   };
 }
@@ -331,6 +398,7 @@ function createTurn(
   scheduler: PageTurnScheduler,
   motion: "tap" | "gesture" = "tap",
   gestureRelease?: ReleasedPageTurnGesture,
+  startAtMs = 0,
 ): ScheduledPageTurn {
   return {
     id: scheduler.createId(),
@@ -338,9 +406,11 @@ function createTurn(
     to,
     direction,
     lane,
+    startAtMs,
     interactive,
     handoffPending: false,
     laneReady: false,
+    presentationReady: false,
     motion,
     gestureRelease,
     completed: false,

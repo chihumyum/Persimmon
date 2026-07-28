@@ -9,6 +9,7 @@ import type { SkiaPageDecoration } from "./skia-page-decoration";
 const mocks = vi.hoisted(() => {
   const canvas = {
     clear: vi.fn(),
+    drawPicture: vi.fn(),
     scale: vi.fn(),
   };
   const image = {
@@ -22,7 +23,20 @@ const mocks = vi.hoisted(() => {
     makeImageSnapshot: vi.fn(() => image),
   };
   const drawSkiaPageDecoration = vi.fn();
-  return { canvas, drawSkiaPageDecoration, image, surface };
+  const picture = { dispose: vi.fn() };
+  const recorder = {
+    beginRecording: vi.fn(() => canvas),
+    dispose: vi.fn(),
+    finishRecordingAsPicture: vi.fn(() => picture),
+  };
+  return {
+    canvas,
+    drawSkiaPageDecoration,
+    image,
+    picture,
+    recorder,
+    surface,
+  };
 });
 
 vi.mock("react-native", () => ({ Platform: { OS: "web" } }));
@@ -34,10 +48,17 @@ vi.mock("@shopify/react-native-skia", () => ({
       dispose: vi.fn(),
       setColor: vi.fn(),
     }),
+    PictureRecorder: () => mocks.recorder,
     Surface: {
       Make: () => mocks.surface,
       MakeOffscreen: () => mocks.surface,
     },
+    XYWHRect: (x: number, y: number, width: number, height: number) => ({
+      x,
+      y,
+      width,
+      height,
+    }),
   },
 }));
 vi.mock("./skia-page-decoration", () => ({

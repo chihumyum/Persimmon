@@ -5,3 +5,6 @@ packages:
 onlyBuiltDependencies:
   - "@shopify/react-native-skia"
   - esbuild
+
+patchedDependencies:
+  "@shopify/react-native-skia@2.6.2": patches/@shopify__react-native-skia@2.6.2.patch

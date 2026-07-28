@@ -77,7 +77,7 @@ export type TurnCaptureAcquireResult<Value extends PageCaptureCacheValue> =
 
 export interface PageCaptureRetention<Metadata = unknown> {
   readonly identity: PageCaptureIdentity<Metadata>;
-  readonly tier: Exclude<PageCaptureTier, "active">;
+  readonly tier: PageCaptureTier;
 }
 
 export interface PageCaptureCacheStats {
@@ -257,6 +257,55 @@ export class CapturedPageCache<
     return null;
   }
 
+  hasResident(
+    identity: PageCaptureIdentity<Metadata>,
+    minimumScale: number,
+  ): boolean {
+    assertCaptureIdentity(identity);
+    return (
+      this.findReusableEntry(
+        identity,
+        assertPositiveScale(minimumScale, "minimumScale"),
+      ) !== undefined
+    );
+  }
+
+  /**
+   * Installs a value produced asynchronously outside the cache.
+   *
+   * Active feeder jobs may use the hard reserve before acquireTurn pins both
+   * faces atomically. Passive inventory remains constrained to the target
+   * budget and can never crowd out active paper.
+   */
+  installPrepared(
+    identity: PageCaptureIdentity<Metadata>,
+    tier: PageCaptureTier,
+    value: Value,
+  ): Value | null {
+    assertCaptureIdentity(identity);
+    this.assertCaptureValue(identity, value.scale, value);
+    const reusable = this.findReusableEntry(identity, value.scale);
+    if (reusable) {
+      reusable.tier = higherTier(reusable.tier, tier);
+      this.touch(reusable);
+      this.disposeValue(value);
+      return reusable.value;
+    }
+
+    const byteLimit =
+      tier === "active" ? this.hardByteBudget : this.targetByteBudget;
+    if (!this.evictToFit(value.byteSize, byteLimit, tier, new Set())) {
+      this.disposeValue(value);
+      return null;
+    }
+    const entry = this.createEntry(identity, tier, value);
+    const installed = this.installEntry(entry);
+    installed.tier = higherTier(installed.tier, tier);
+    this.touch(installed);
+    this.removeSupersededUnpinnedEntries(installed);
+    return installed.value;
+  }
+
   /**
    * Atomically acquires the physical front/back textures for a turn. Both
    * references stay fixed until the returned lease is released.
@@ -347,21 +396,13 @@ export class CapturedPageCache<
   reconcileUnpinnedTiers(
     retentions: readonly PageCaptureRetention<Metadata>[],
   ): void {
-    const requestedTiers = new Map<
-      string,
-      Exclude<PageCaptureTier, "active">
-    >();
+    const requestedTiers = new Map<string, PageCaptureTier>();
     for (const retention of retentions) {
       const identityId = captureIdentityId(retention.identity);
       const current = requestedTiers.get(identityId);
       requestedTiers.set(
         identityId,
-        current
-          ? (higherTier(current, retention.tier) as Exclude<
-              PageCaptureTier,
-              "active"
-            >)
-          : retention.tier,
+        current ? higherTier(current, retention.tier) : retention.tier,
       );
     }
 
@@ -719,7 +760,10 @@ export class CapturedPageCache<
   }
 
   private trimToTargetBudget(): void {
-    this.evictToFit(0, this.targetByteBudget, "active", new Set<string>());
+    // Prepared active faces are a short reservation between worker completion
+    // and atomic turn acquisition. Only passive entries may be trimmed here;
+    // stale active reservations are first demoted by reconciliation.
+    this.evictToFit(0, this.targetByteBudget, "prefetch", new Set<string>());
   }
 
   private removeEntry(entry: CacheEntry<Value, Metadata>): void {

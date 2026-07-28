@@ -8,8 +8,20 @@ export interface NativeProgrammaticPageTurnCommand {
   readonly id: string;
   readonly direction: 1 | -1;
   readonly ready: boolean;
+  readonly startAtMs: number;
+  /**
+   * Automatic lanes remain frozen on their initial frame until the Canvas has
+   * presented that mesh. Gesture handoffs bypass this gate because the shared
+   * interactive frame is already visible.
+   */
+  readonly readyToStart: boolean;
   readonly settlingIncomingPage: boolean;
   readonly motion: "tap" | "gesture";
+  /**
+   * Automatic turns may be accelerated while a rapid-tap burst is active.
+   * Gesture releases always use their physical 1x clock.
+   */
+  readonly playbackSpeed?: number;
   readonly gestureRelease?: ReleasedPageTurnGesture;
 }
 
@@ -20,8 +32,17 @@ export interface NativePageTurnPoolOptions {
   readonly automaticTuning: AutomaticPageTurnTuning;
   readonly gestureTuning: GesturePageTurnTuning;
   readonly commands: readonly (NativeProgrammaticPageTurnCommand | undefined)[];
-  readonly onStarted: (turnId: string) => void;
-  readonly onOutcome: (turnId: string, outcome: number) => void;
+  readonly onPrepared: (turnId: string) => void;
+  readonly onStarted: (
+    turnId: string,
+    startedAtMs: number,
+    playbackSpeed: number,
+  ) => void;
+  readonly onOutcome: (
+    turnId: string,
+    outcome: number,
+    completedAtMs: number,
+  ) => void;
 }
 
 export interface NativePageTurnPool {
@@ -29,6 +50,11 @@ export interface NativePageTurnPool {
     PageTurnNativeSharedFrame,
     typeof PAGE_TURN_LANE_HARD_LIMIT
   >;
+  readonly authorizeStart: (
+    lane: number,
+    turnId: string,
+    startAtMs: number,
+  ) => void;
 }
 
 type FixedLengthArray<
@@ -49,5 +75,6 @@ export function useNativePageTurnPool(
 ): NativePageTurnPool {
   return {
     frames: [] as unknown as NativePageTurnPool["frames"],
+    authorizeStart: () => {},
   };
 }

@@ -1,8 +1,8 @@
 export const PAGE_CAPTURE_BYTES_PER_PIXEL = 4;
 export const PAGE_CAPTURE_MIN_SCALE = 1;
 export const PAGE_CAPTURE_MAX_SCALE = 3;
-export const PAGE_CAPTURE_CACHE_TARGET_BYTE_BUDGET = 128 * 1024 * 1024;
-export const PAGE_CAPTURE_CACHE_HARD_BYTE_BUDGET = 192 * 1024 * 1024;
+export const PAGE_CAPTURE_CACHE_TARGET_BYTE_BUDGET = 192 * 1024 * 1024;
+export const PAGE_CAPTURE_CACHE_HARD_BYTE_BUDGET = 256 * 1024 * 1024;
 
 export interface PageCapturePixelSize {
   readonly width: number;
