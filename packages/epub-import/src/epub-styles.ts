@@ -4,6 +4,8 @@ import { contentAttribute, type ContentElement } from "./content-tree";
 
 export interface EpubElementStyle extends BlockStyleIR {
   hidden?: boolean;
+  fontFamily?: string;
+  bookFontFamilyId?: string;
 }
 
 interface StyleValue {
@@ -20,10 +22,25 @@ interface CssRule {
 
 export interface EpubStyleSheet {
   readonly rules: readonly CssRule[];
+  readonly fontFaces: readonly EpubFontFaceDefinition[];
+}
+
+export interface EpubStyleSource {
+  readonly cssText: string;
+  readonly basePath: string;
+}
+
+export interface EpubFontFaceDefinition {
+  readonly family: string;
+  readonly sources: readonly string[];
+  readonly weight: 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900;
+  readonly style: "normal" | "italic";
+  readonly basePath: string;
 }
 
 const SUPPORTED_PROPERTIES = new Set([
   "display",
+  "font-family",
   "font-style",
   "font-weight",
   "margin",
@@ -35,18 +52,31 @@ const SUPPORTED_PROPERTIES = new Set([
 ]);
 
 export function parseEpubStyleSheet(
-  sources: readonly string[],
+  sources: readonly (string | EpubStyleSource)[],
 ): EpubStyleSheet {
   const rules: CssRule[] = [];
+  const fontFaces: EpubFontFaceDefinition[] = [];
   let order = 0;
 
   for (const source of sources) {
-    const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, "");
+    const cssText = typeof source === "string" ? source : source.cssText;
+    const basePath = typeof source === "string" ? "" : source.basePath;
+    const withoutComments = cssText.replace(/\/\*[\s\S]*?\*\//g, "");
     const rulePattern = /([^{}]+)\{([^{}]*)\}/g;
     for (const match of withoutComments.matchAll(rulePattern)) {
       const selectorText = match[1]?.trim();
       const body = match[2] ?? "";
-      if (!selectorText || selectorText.startsWith("@")) {
+      if (!selectorText) {
+        continue;
+      }
+      if (/^@font-face\b/i.test(selectorText)) {
+        const fontFace = parseFontFace(body, basePath);
+        if (fontFace) {
+          fontFaces.push(fontFace);
+        }
+        continue;
+      }
+      if (selectorText.startsWith("@")) {
         continue;
       }
       const declarations = parseDeclarations(body);
@@ -68,7 +98,7 @@ export function parseEpubStyleSheet(
     }
   }
 
-  return { rules };
+  return { rules, fontFaces };
 }
 
 export function styleForContentElement(
@@ -129,6 +159,11 @@ export function styleForContentElement(
     style.fontStyle = "normal";
   }
 
+  const fontFamily = firstFontFamily(winners.get("font-family")?.value);
+  if (fontFamily) {
+    style.fontFamily = fontFamily;
+  }
+
   const marginTop =
     winners.get("margin-block-start")?.value ??
     winners.get("margin-top")?.value ??
@@ -147,6 +182,87 @@ export function styleForContentElement(
   }
 
   return Object.keys(style).length > 0 ? style : undefined;
+}
+
+function firstFontFamily(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  let quote: "'" | '"' | undefined;
+  let output = "";
+  for (const character of value.trim()) {
+    if ((character === "'" || character === '"') && !quote) {
+      quote = character;
+      continue;
+    }
+    if (character === quote) {
+      quote = undefined;
+      continue;
+    }
+    if (character === "," && !quote) {
+      break;
+    }
+    output += character;
+  }
+  const family = output.trim();
+  return family.length > 0 ? family : undefined;
+}
+
+function parseFontFace(
+  body: string,
+  basePath: string,
+): EpubFontFaceDefinition | undefined {
+  const declarations = new Map<string, string>();
+  for (const declaration of body.split(";")) {
+    const separator = declaration.indexOf(":");
+    if (separator < 1) {
+      continue;
+    }
+    const property = declaration.slice(0, separator).trim().toLowerCase();
+    const value = declaration
+      .slice(separator + 1)
+      .replace(/\s*!important\s*$/i, "")
+      .trim();
+    if (value) {
+      declarations.set(property, value);
+    }
+  }
+  const family = firstFontFamily(declarations.get("font-family"));
+  const sources = [
+    ...(declarations.get("src") ?? "").matchAll(
+      /url\(\s*(?:"([^"]+)"|'([^']+)'|([^)"'\s]+))\s*\)/gi,
+    ),
+  ].flatMap((match) => {
+    const source = match[1] ?? match[2] ?? match[3];
+    return source ? [source.trim()] : [];
+  });
+  if (!family || sources.length === 0) {
+    return undefined;
+  }
+  const rawWeight = declarations.get("font-weight")?.toLowerCase();
+  const numericWeight =
+    rawWeight === "bold"
+      ? 700
+      : rawWeight === "normal"
+        ? 400
+        : Number(rawWeight);
+  const weight = Math.min(
+    900,
+    Math.max(
+      100,
+      Math.round((Number.isFinite(numericWeight) ? numericWeight : 400) / 100) *
+        100,
+    ),
+  ) as EpubFontFaceDefinition["weight"];
+  const rawStyle = declarations.get("font-style")?.toLowerCase();
+  return {
+    family,
+    sources,
+    weight,
+    style:
+      rawStyle === "italic" || rawStyle === "oblique" ? "italic" : "normal",
+    basePath,
+  };
 }
 
 export function marksWithElementStyle(

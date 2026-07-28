@@ -1,0 +1,32 @@
+export { parseDownloadableFontCatalog } from "./catalog";
+export {
+  BUILTIN_READER_MATH_ID,
+  BUILTIN_READER_SANS_ID,
+  BUILTIN_READER_SERIF_ID,
+  DEFAULT_READER_FONT_SETTINGS,
+  FONT_CATALOG_SCHEMA_VERSION,
+  FONT_REPOSITORY_SCHEMA_VERSION,
+  normalizeFontWeight,
+  normalizeReaderFontSettings,
+  resolveAvailableFontId,
+  type DownloadableFontCatalog,
+  type DownloadableFontFace,
+  type DownloadableFontFamily,
+  type FontCategory,
+  type FontCoverage,
+  type FontFaceRecord,
+  type FontFaceStyle,
+  type FontFamilyRecord,
+  type FontFileFormat,
+  type FontLicense,
+  type FontRepositorySnapshot,
+  type FontSource,
+  type ReaderFontSettings,
+} from "./model";
+export {
+  FontParseError,
+  MAX_USER_FONT_BYTES,
+  parseSfntFont,
+  type FontParseErrorCode,
+  type ParsedFontMetadata,
+} from "./sfnt";

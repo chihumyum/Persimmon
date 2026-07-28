@@ -1,5 +1,6 @@
 import type {
   BookIR,
+  BookFontFamilyIR,
   BookLocator,
   BookNavigationItem,
   ImageAssetIR,
@@ -9,6 +10,10 @@ import type {
   EpubImportMetadata,
   EpubImportWarning,
 } from "@persimmon/epub-import";
+import {
+  DEFAULT_READER_FONT_SETTINGS,
+  type ReaderFontSettings,
+} from "@persimmon/font-core";
 import type {
   ReaderColorMode,
   ReaderPageTurnAnimation,
@@ -20,6 +25,7 @@ export type {
   ReaderPageTurnAnimation,
   ReaderThemeName,
 } from "@persimmon/reader-skia";
+export type { ReaderFontSettings } from "@persimmon/font-core";
 
 export const LIBRARY_SCHEMA_VERSION = 2 as const;
 
@@ -69,6 +75,7 @@ export interface StoredBookManifest {
   readonly sourceName: string;
   readonly addedAt: string;
   readonly assets: Readonly<Record<string, ImageAssetIR>>;
+  readonly fontFamilies?: Readonly<Record<string, BookFontFamilyIR>>;
   readonly coverAssetId?: string;
   readonly navigation?: readonly BookNavigationItem[];
   readonly sectionIds: readonly string[];
@@ -85,14 +92,12 @@ export interface ReaderSettings {
   readonly pageTurnTuning: ReaderPageTurnTuning;
 }
 
-export type ReaderFontFamily = "serif" | "sans";
-
 export type ReaderProgressDisplay = "footer" | "header" | "both" | "hidden";
 
 export interface ReaderAppearanceSettings {
   readonly theme: ReaderThemeName;
   readonly colorMode: ReaderColorMode;
-  readonly fontFamily: ReaderFontFamily;
+  readonly font: ReaderFontSettings;
   readonly fontSize: number;
   readonly lineHeight: number;
   readonly paragraphSpacing: number;
@@ -138,7 +143,7 @@ export const DEFAULT_READER_PAGE_TURN_TUNING: ReaderPageTurnTuning = {
 export const DEFAULT_READER_APPEARANCE: ReaderAppearanceSettings = {
   theme: "warm",
   colorMode: "system",
-  fontFamily: "serif",
+  font: DEFAULT_READER_FONT_SETTINGS,
   fontSize: 20,
   lineHeight: 1.65,
   paragraphSpacing: 0.9,

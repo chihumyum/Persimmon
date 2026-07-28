@@ -1,8 +1,10 @@
 import {
   BOOK_IR_VERSION,
   assertValidBookIR,
+  isTextBlock,
   type BlockIR,
   type BlockStyleIR,
+  type BookFontFamilyIR,
   type BookIR,
   type BookNavigationItem,
   type BookPosition,
@@ -40,6 +42,12 @@ import {
 } from "./epub-styles";
 import { detectImageSize } from "./image-dimensions";
 import {
+  deobfuscateIdpfFont,
+  IDPF_FONT_OBFUSCATION_ALGORITHM,
+  idpfFontObfuscationKey,
+  removeXmlWhitespace,
+} from "./font-obfuscation";
+import {
   childElements,
   descendants,
   firstChildElement,
@@ -52,8 +60,19 @@ import {
 const EPUB_MIMETYPE = "application/epub+zip";
 const XHTML_MEDIA_TYPE = "application/xhtml+xml";
 const IMAGE_MEDIA_TYPE_PREFIX = "image/";
+const FONT_MEDIA_TYPES = new Set([
+  "application/font-sfnt",
+  "application/font-woff",
+  "application/vnd.ms-opentype",
+  "application/x-font-opentype",
+  "application/x-font-ttf",
+  "font/otf",
+  "font/ttf",
+  "font/woff",
+  "font/woff2",
+]);
 
-export const EPUB_COMPILER_VERSION = 4 as const;
+export const EPUB_COMPILER_VERSION = 5 as const;
 
 export interface EpubImportWarning {
   code:
@@ -68,7 +87,8 @@ export interface EpubImportWarning {
     | "navigation-item-skipped"
     | "navigation-target-fallback"
     | "internal-link-skipped"
-    | "stylesheet-skipped";
+    | "stylesheet-skipped"
+    | "embedded-font-skipped";
   message: string;
   context?: string;
 }
@@ -109,6 +129,7 @@ interface PackageModel {
   author?: string;
   language?: string;
   identifier?: string;
+  fontObfuscationIdentifier?: string;
   pageProgressionDirection?: "ltr" | "rtl" | "default";
   manifestById: ReadonlyMap<string, ManifestItem>;
   manifestByPath: ReadonlyMap<string, ManifestItem>;
@@ -153,12 +174,16 @@ interface InlineContext {
   readonly noteKind?: NoteKind;
   readonly pendingLink?: PendingInternalLink;
   readonly verticalAlign?: "superscript" | "subscript";
+  readonly bookFontFamilyId?: string;
 }
 
 interface NoteContext {
   readonly noteKind?: NoteKind;
   readonly collectionKind?: NoteKind;
+  readonly bookFontFamilyId?: string;
 }
+
+type FontEncryptionMethods = ReadonlyMap<string, string>;
 
 interface RawNavigationItem {
   readonly label: string;
@@ -525,6 +550,19 @@ function parsePackage(
       packagePath,
     );
   }
+  const uniqueIdentifierId = packageElement
+    .getAttribute("unique-identifier")
+    ?.trim();
+  const identifierElement =
+    (uniqueIdentifierId
+      ? descendants(metadata ?? packageElement, "identifier").find(
+          (element) =>
+            element.getAttribute("id")?.trim() === uniqueIdentifierId,
+        )
+      : undefined) ?? firstDescendant(metadata ?? packageElement, "identifier");
+  const rawIdentifier = identifierElement?.textContent ?? "";
+  const fontObfuscationIdentifier =
+    removeXmlWhitespace(rawIdentifier).length > 0 ? rawIdentifier : undefined;
 
   const manifestById = new Map<string, ManifestItem>();
   const manifestByPath = new Map<string, ManifestItem>();
@@ -641,7 +679,8 @@ function parsePackage(
     title: getMetadataText(metadata, "title"),
     author: getMetadataText(metadata, "creator"),
     language: getMetadataText(metadata, "language"),
-    identifier: getMetadataText(metadata, "identifier"),
+    identifier: normalizedText(identifierElement),
+    fontObfuscationIdentifier,
     pageProgressionDirection,
     manifestById,
     manifestByPath,
@@ -649,6 +688,33 @@ function parsePackage(
     ...(navigationItem ? { navigationItem } : {}),
     ...(coverItem ? { coverItem } : {}),
   };
+}
+
+function fontEncryptionMethods(archive: EpubArchive): FontEncryptionMethods {
+  const path = "META-INF/encryption.xml";
+  const bytes = archive.read(path);
+  if (!bytes) {
+    return new Map();
+  }
+  const document = parseXmlDocument(strFromU8(bytes), path);
+  const methods = new Map<string, string>();
+  for (const encryptedData of descendants(document, "encrypteddata")) {
+    const method = firstDescendant(encryptedData, "encryptionmethod")
+      ?.getAttribute("Algorithm")
+      ?.trim();
+    const reference = firstDescendant(encryptedData, "cipherreference")
+      ?.getAttribute("URI")
+      ?.trim();
+    if (!method || !reference) {
+      continue;
+    }
+    try {
+      methods.set(resolveArchiveReference("", reference), method);
+    } catch {
+      // An unsafe encryption reference cannot authorize reading an archive path.
+    }
+  }
+  return methods;
 }
 
 function sameMarks(
@@ -705,12 +771,16 @@ function appendTextToken(
     text,
     ...(orderedMarks.length > 0 ? { marks: orderedMarks } : {}),
     ...(context.verticalAlign ? { verticalAlign: context.verticalAlign } : {}),
+    ...(context.bookFontFamilyId
+      ? { bookFontFamilyId: context.bookFontFamilyId }
+      : {}),
   };
 
   if (
     previous?.kind === "text" &&
     sameMarks(previous.run.marks, run.marks) &&
     previous.run.verticalAlign === run.verticalAlign &&
+    previous.run.bookFontFamilyId === run.bookFontFamilyId &&
     samePendingLink(previous.pendingLink, context.pendingLink)
   ) {
     previous.run = {
@@ -740,12 +810,16 @@ function appendBreakToken(tokens: InlineToken[], context: InlineContext) {
     text: "\n",
     ...(orderedMarks.length > 0 ? { marks: orderedMarks } : {}),
     ...(context.verticalAlign ? { verticalAlign: context.verticalAlign } : {}),
+    ...(context.bookFontFamilyId
+      ? { bookFontFamilyId: context.bookFontFamilyId }
+      : {}),
   };
   const last = tokens.at(-1);
   if (
     last?.kind === "text" &&
     sameMarks(last.run.marks, run.marks) &&
     last.run.verticalAlign === run.verticalAlign &&
+    last.run.bookFontFamilyId === run.bookFontFamilyId &&
     samePendingLink(last.pendingLink, context.pendingLink)
   ) {
     last.run = {
@@ -797,6 +871,10 @@ function collectInlineElement(
   }
 
   const marks = new Set(marksWithElementStyle(inherited.marks, elementStyle));
+  const bookFontFamilyId =
+    elementStyle?.fontFamily !== undefined
+      ? elementStyle.bookFontFamilyId
+      : inherited.bookFontFamilyId;
   if (name === "strong" || name === "b") {
     marks.add("strong");
   }
@@ -827,6 +905,7 @@ function collectInlineElement(
       ...(inherited.noteKind ? { noteKind: inherited.noteKind } : {}),
       ...(pendingLink ? { pendingLink } : {}),
       ...(verticalAlign ? { verticalAlign } : {}),
+      ...(bookFontFamilyId ? { bookFontFamilyId } : {}),
     },
     tokens,
     resolveStyle,
@@ -885,6 +964,7 @@ class SectionCompiler {
     private readonly manifestItem: ManifestItem,
     private readonly sectionId: string,
     private readonly styleSheet: EpubStyleSheet,
+    private readonly fontFamilyIdsByCssName: ReadonlyMap<string, string>,
     private readonly warnings: EpubImportWarning[],
     private readonly unresolvedInternalLinks: UnresolvedInternalLink[],
     assets: Record<string, ImageAssetIR>,
@@ -899,7 +979,7 @@ class SectionCompiler {
     if (this.styleFor(body)?.hidden) {
       return [];
     }
-    this.processContainer(body, noteContextForElement(body, {}));
+    this.processContainer(body, this.contextForElement(body, {}));
     return this.blocks;
   }
 
@@ -937,7 +1017,33 @@ class SectionCompiler {
   }
 
   private styleFor(element: ContentElement): EpubElementStyle | undefined {
-    return styleForContentElement(element, this.styleSheet);
+    const style = styleForContentElement(element, this.styleSheet);
+    if (!style?.fontFamily) {
+      return style;
+    }
+    const bookFontFamilyId = this.fontFamilyIdsByCssName.get(
+      normalizeCssFontFamily(style.fontFamily),
+    );
+    return {
+      ...style,
+      ...(bookFontFamilyId ? { bookFontFamilyId } : {}),
+    };
+  }
+
+  private contextForElement(
+    element: ContentElement,
+    inherited: NoteContext,
+  ): NoteContext {
+    const noteContext = noteContextForElement(element, inherited);
+    const style = this.styleFor(element);
+    const bookFontFamilyId =
+      style?.fontFamily !== undefined
+        ? style.bookFontFamilyId
+        : inherited.bookFontFamilyId;
+    return {
+      ...noteContext,
+      ...(bookFontFamilyId ? { bookFontFamilyId } : {}),
+    };
   }
 
   private blockStyleFor(element: ContentElement): BlockStyleIR | undefined {
@@ -1012,13 +1118,16 @@ class SectionCompiler {
         appendTextToken(pendingInline, child.value, {
           marks: new Set(),
           ...(context.noteKind ? { noteKind: context.noteKind } : {}),
+          ...(context.bookFontFamilyId
+            ? { bookFontFamilyId: context.bookFontFamilyId }
+            : {}),
         });
         continue;
       }
 
       const element = child;
       const name = element.name;
-      const elementContext = noteContextForElement(element, context);
+      const elementContext = this.contextForElement(element, context);
       if (IGNORED_ELEMENTS.has(name) || this.styleFor(element)?.hidden) {
         continue;
       }
@@ -1029,6 +1138,9 @@ class SectionCompiler {
             marks: new Set(),
             ...(elementContext.noteKind
               ? { noteKind: elementContext.noteKind }
+              : {}),
+            ...(elementContext.bookFontFamilyId
+              ? { bookFontFamilyId: elementContext.bookFontFamilyId }
               : {}),
           },
           pendingInline,
@@ -1060,6 +1172,9 @@ class SectionCompiler {
         {
           marks: new Set(),
           ...(context.noteKind ? { noteKind: context.noteKind } : {}),
+          ...(context.bookFontFamilyId
+            ? { bookFontFamilyId: context.bookFontFamilyId }
+            : {}),
         },
         tokens,
         (candidate) => this.styleFor(candidate),
@@ -1075,6 +1190,9 @@ class SectionCompiler {
         {
           marks: new Set(),
           ...(context.noteKind ? { noteKind: context.noteKind } : {}),
+          ...(context.bookFontFamilyId
+            ? { bookFontFamilyId: context.bookFontFamilyId }
+            : {}),
         },
         tokens,
         (candidate) => this.styleFor(candidate),
@@ -1255,14 +1373,121 @@ function contentRawText(element: ContentElement): string {
     .join("");
 }
 
+function normalizeCssFontFamily(value: string): string {
+  return value.trim().toLocaleLowerCase();
+}
+
+function includeEmbeddedFontFaces(
+  archive: EpubArchive,
+  packageModel: PackageModel,
+  styleSheet: EpubStyleSheet,
+  encryptionMethods: FontEncryptionMethods,
+  fontFamilies: Record<string, BookFontFamilyIR>,
+  fontFamilyIdsByCssName: Map<string, string>,
+  resources: Record<string, Uint8Array>,
+  warnings: EpubImportWarning[],
+): void {
+  for (const definition of styleSheet.fontFaces) {
+    let declared: ManifestItem | undefined;
+    let fontPath: string | undefined;
+    for (const source of definition.sources) {
+      try {
+        const path = resolveArchiveReference(definition.basePath, source);
+        const candidate = packageModel.manifestByPath.get(path);
+        if (
+          candidate &&
+          FONT_MEDIA_TYPES.has(candidate.mediaType.toLowerCase())
+        ) {
+          declared = candidate;
+          fontPath = path;
+          break;
+        }
+      } catch {
+        // Try the next source in the author's CSS fallback list.
+      }
+    }
+    if (!declared || !fontPath) {
+      warnings.push({
+        code: "embedded-font-skipped",
+        message: `Embedded font has no supported manifested source: ${definition.family}`,
+        context: definition.basePath,
+      });
+      continue;
+    }
+    const archivedBytes = archive.read(fontPath);
+    if (!archivedBytes) {
+      warnings.push({
+        code: "embedded-font-skipped",
+        message: `Embedded font is missing: ${fontPath}`,
+        context: fontPath,
+      });
+      continue;
+    }
+    const encryptionMethod = encryptionMethods.get(fontPath);
+    let fontBytes = archivedBytes;
+    if (encryptionMethod) {
+      if (
+        encryptionMethod !== IDPF_FONT_OBFUSCATION_ALGORITHM ||
+        !packageModel.fontObfuscationIdentifier
+      ) {
+        warnings.push({
+          code: "embedded-font-skipped",
+          message: `Embedded font uses unsupported encryption: ${fontPath}`,
+          context: fontPath,
+        });
+        continue;
+      }
+      fontBytes = deobfuscateIdpfFont(
+        archivedBytes,
+        idpfFontObfuscationKey(packageModel.fontObfuscationIdentifier),
+      );
+    }
+
+    const cssKey = normalizeCssFontFamily(definition.family);
+    const familyId =
+      fontFamilyIdsByCssName.get(cssKey) ??
+      `epub-font-family:${stableHash(new TextEncoder().encode(cssKey))}`;
+    fontFamilyIdsByCssName.set(cssKey, familyId);
+    const resourceId = `epub-font:${declared.id}`;
+    const faceId = `${familyId}:${declared.id}:${definition.weight}:${definition.style}`;
+    const previous = fontFamilies[familyId];
+    if (!previous?.faces.some((face) => face.id === faceId)) {
+      fontFamilies[familyId] = {
+        id: familyId,
+        cssFamily: definition.family,
+        faces: [
+          ...(previous?.faces ?? []),
+          {
+            id: faceId,
+            familyId,
+            resourceId,
+            mediaType: declared.mediaType,
+            weight: definition.weight,
+            style: definition.style,
+          },
+        ],
+      };
+    }
+    resources[resourceId] ??= fontBytes;
+  }
+}
+
 function loadSectionStyleSheet(
   archive: EpubArchive,
   packageModel: PackageModel,
   manifestItem: ManifestItem,
   root: ContentElement,
+  encryptionMethods: FontEncryptionMethods,
+  fontFamilies: Record<string, BookFontFamilyIR>,
+  fontFamilyIdsByCssName: Map<string, string>,
+  resources: Record<string, Uint8Array>,
   warnings: EpubImportWarning[],
 ): EpubStyleSheet {
-  const sources = contentDescendants(root, "style").map(contentRawText);
+  const documentPath = manifestItem.path ?? manifestItem.href;
+  const sources = contentDescendants(root, "style").map((element) => ({
+    cssText: contentRawText(element),
+    basePath: documentPath,
+  }));
   for (const link of contentDescendants(root, "link")) {
     if (
       !splitTokens(contentAttribute(link, "rel")?.toLowerCase()).has(
@@ -1298,7 +1523,10 @@ function loadSectionStyleSheet(
         });
         continue;
       }
-      sources.push(strFromU8(bytes));
+      sources.push({
+        cssText: strFromU8(bytes),
+        basePath: path,
+      });
     } catch (error) {
       if (
         error instanceof EpubImportError &&
@@ -1314,7 +1542,18 @@ function loadSectionStyleSheet(
       throw error;
     }
   }
-  return parseEpubStyleSheet(sources);
+  const styleSheet = parseEpubStyleSheet(sources);
+  includeEmbeddedFontFaces(
+    archive,
+    packageModel,
+    styleSheet,
+    encryptionMethods,
+    fontFamilies,
+    fontFamilyIdsByCssName,
+    resources,
+    warnings,
+  );
+  return styleSheet;
 }
 
 function sectionTitle(
@@ -1338,10 +1577,12 @@ function sectionTitle(
 function compileSections(
   archive: EpubArchive,
   packageModel: PackageModel,
+  encryptionMethods: FontEncryptionMethods,
   warnings: EpubImportWarning[],
 ): {
   sections: SectionIR[];
   assets: Record<string, ImageAssetIR>;
+  fontFamilies: Record<string, BookFontFamilyIR>;
   resources: Record<string, Uint8Array>;
   firstSectionByPath: Map<string, SectionIR>;
   fragmentTargetsByPath: Map<string, ReadonlyMap<string, BookPosition>>;
@@ -1350,6 +1591,8 @@ function compileSections(
 } {
   const sections: SectionIR[] = [];
   const assets: Record<string, ImageAssetIR> = {};
+  const fontFamilies: Record<string, BookFontFamilyIR> = {};
+  const fontFamilyIdsByCssName = new Map<string, string>();
   const resources: Record<string, Uint8Array> = {};
   const firstSectionByPath = new Map<string, SectionIR>();
   const fragmentTargetsByPath = new Map<
@@ -1386,6 +1629,10 @@ function compileSections(
       packageModel,
       item,
       document.root,
+      encryptionMethods,
+      fontFamilies,
+      fontFamilyIdsByCssName,
+      resources,
       warnings,
     );
     const compiler = new SectionCompiler(
@@ -1394,6 +1641,7 @@ function compileSections(
       item,
       sectionId,
       styleSheet,
+      fontFamilyIdsByCssName,
       warnings,
       unresolvedInternalLinks,
       assets,
@@ -1427,6 +1675,7 @@ function compileSections(
   return {
     sections,
     assets,
+    fontFamilies,
     resources,
     firstSectionByPath,
     fragmentTargetsByPath,
@@ -1795,6 +2044,44 @@ function includeCoverResource(
   return assetId;
 }
 
+function removeUnusedEmbeddedFonts(
+  sections: readonly SectionIR[],
+  fontFamilies: Record<string, BookFontFamilyIR>,
+  resources: Record<string, Uint8Array>,
+): void {
+  const referencedFamilyIds = new Set(
+    sections.flatMap((section) =>
+      section.blocks.flatMap((block) =>
+        isTextBlock(block)
+          ? block.runs.flatMap((run) =>
+              run.bookFontFamilyId ? [run.bookFontFamilyId] : [],
+            )
+          : [],
+      ),
+    ),
+  );
+  const allFontResourceIds = new Set(
+    Object.values(fontFamilies).flatMap((family) =>
+      family.faces.map((face) => face.resourceId),
+    ),
+  );
+  for (const familyId of Object.keys(fontFamilies)) {
+    if (!referencedFamilyIds.has(familyId)) {
+      delete fontFamilies[familyId];
+    }
+  }
+  const retainedFontResourceIds = new Set(
+    Object.values(fontFamilies).flatMap((family) =>
+      family.faces.map((face) => face.resourceId),
+    ),
+  );
+  for (const resourceId of allFontResourceIds) {
+    if (!retainedFontResourceIds.has(resourceId)) {
+      delete resources[resourceId];
+    }
+  }
+}
+
 export function importEpub(
   bytes: Uint8Array,
   options: ImportEpubOptions = {},
@@ -1812,15 +2099,17 @@ export function importEpub(
   const warnings: EpubImportWarning[] = [];
   const packagePath = parseContainer(archive);
   const packageModel = parsePackage(archive, packagePath, warnings);
+  const encryptionMethods = fontEncryptionMethods(archive);
   const {
     sections,
     assets,
+    fontFamilies,
     resources,
     firstSectionByPath,
     fragmentTargetsByPath,
     fragmentNoteKindsByPath,
     unresolvedInternalLinks,
-  } = compileSections(archive, packageModel, warnings);
+  } = compileSections(archive, packageModel, encryptionMethods, warnings);
 
   if (sections.length === 0) {
     throw new EpubImportError(
@@ -1851,6 +2140,7 @@ export function importEpub(
     resources,
     warnings,
   );
+  removeUnusedEmbeddedFonts(sections, fontFamilies, resources);
   const contentHash = options.contentDigest?.toLowerCase() ?? stableHash(bytes);
   if (options.contentDigest && !/^[a-f0-9]{64}$/.test(contentHash)) {
     throw new EpubImportError(
@@ -1866,6 +2156,7 @@ export function importEpub(
     ...(packageModel.language ? { language: packageModel.language } : {}),
     sections,
     assets,
+    ...(Object.keys(fontFamilies).length > 0 ? { fontFamilies } : {}),
     ...(coverAssetId ? { coverAssetId } : {}),
     ...(navigation ? { navigation } : {}),
   };

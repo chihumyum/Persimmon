@@ -9,11 +9,11 @@ import {
   ScrollView,
   StatusBar,
   StyleSheet,
-  Text,
   useWindowDimensions,
   View,
 } from "react-native";
 
+import { UiText as Text } from "../components/ui-text";
 import {
   libraryRepository,
   type LibraryBookSummary,

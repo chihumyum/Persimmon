@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import {
+  BUILTIN_READER_SANS_ID,
+  BUILTIN_READER_SERIF_ID,
+} from "@persimmon/font-core";
 
 import { normalizeSettings } from "./reader-settings";
 import {
@@ -47,7 +51,10 @@ describe("reader settings", () => {
       appearance: {
         theme: "warm",
         colorMode: "dark",
-        fontFamily: "sans",
+        font: {
+          selectedFontId: BUILTIN_READER_SANS_ID,
+          useBookEmbeddedFonts: false,
+        },
         fontSize: 32,
         lineHeight: 1.85,
         paragraphSpacing: 0,
@@ -73,6 +80,34 @@ describe("reader settings", () => {
       },
       pageTurnAnimation: "none",
     });
+  });
+
+  it("keeps new font settings and migrates old top-level font settings", () => {
+    expect(
+      normalizeSettings({
+        appearance: {
+          font: {
+            selectedFontId: "user:my-font",
+            useBookEmbeddedFonts: true,
+          },
+        },
+      }).appearance.font,
+    ).toEqual({
+      selectedFontId: "user:my-font",
+      useBookEmbeddedFonts: true,
+    });
+
+    expect(
+      normalizeSettings({
+        fontFamily: "sans",
+      }).appearance.font,
+    ).toEqual({
+      selectedFontId: BUILTIN_READER_SANS_ID,
+      useBookEmbeddedFonts: false,
+    });
+    expect(normalizeSettings({}).appearance.font.selectedFontId).toBe(
+      BUILTIN_READER_SERIF_ID,
+    );
   });
 
   it("stores raw gesture constants and keeps speed bounds ordered", () => {

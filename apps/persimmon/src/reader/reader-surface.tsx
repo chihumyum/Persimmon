@@ -1,7 +1,5 @@
-import { NotoSansMath_400Regular } from "@expo-google-fonts/noto-sans-math/400Regular";
-import { NotoSansSC_400Regular } from "@expo-google-fonts/noto-sans-sc/400Regular";
-import { NotoSerifSC_400Regular } from "@expo-google-fonts/noto-serif-sc/400Regular";
 import type { BookIR, BookPosition } from "@persimmon/book-core";
+import type { FontFamilyRecord } from "@persimmon/font-core";
 import {
   DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
   LiveReader,
@@ -13,45 +11,17 @@ import {
   type ReaderSelectionMenuRequest,
   type ReaderTheme,
 } from "@persimmon/reader-skia";
-import { useFonts, type DataModule } from "@shopify/react-native-skia";
-import { useCallback, useEffect, useMemo } from "react";
-import {
-  ActivityIndicator,
-  Platform,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { useCallback, useMemo } from "react";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 import {
   hideSelectionMenu,
   showSelectionMenu,
 } from "../../modules/persimmon-selection-menu";
 
+import { UiText as Text } from "../components/ui-text";
 import type { ReaderAppearanceSettings } from "../library/types";
-
-const READER_SERIF_FONT: DataModule =
-  Platform.OS === "web"
-    ? {
-        __esModule: true,
-        default: NotoSerifSC_400Regular as unknown as string,
-      }
-    : NotoSerifSC_400Regular;
-const READER_SYMBOL_FONT: DataModule =
-  Platform.OS === "web"
-    ? {
-        __esModule: true,
-        default: NotoSansMath_400Regular as unknown as string,
-      }
-    : NotoSansMath_400Regular;
-
-const READER_SANS_FONT: DataModule =
-  Platform.OS === "web"
-    ? {
-        __esModule: true,
-        default: NotoSansSC_400Regular as unknown as string,
-      }
-    : NotoSansSC_400Regular;
+import { useReaderFontProvider } from "./use-reader-font-provider";
 
 export interface ReaderSurfaceProps {
   book: BookIR;
@@ -66,6 +36,8 @@ export interface ReaderSurfaceProps {
   toolbarVisible: boolean;
   gesturePageTurnTuning: GesturePageTurnTuning;
   initialPosition?: BookPosition;
+  fontFamilies: readonly FontFamilyRecord[];
+  loadFontFace: (faceId: string) => Promise<Uint8Array | undefined>;
   loadResource: (assetId: string) => Promise<Uint8Array | undefined>;
   onCenterPress: () => void;
   onProgress: (progress: ReaderProgress) => void;
@@ -77,25 +49,36 @@ export default function ReaderSurface({
   appearance,
   ...props
 }: ReaderSurfaceProps) {
-  const fontFamily =
-    appearance.fontFamily === "sans" ? "Noto Sans SC" : "Noto Serif SC";
-  const font =
-    appearance.fontFamily === "sans" ? READER_SANS_FONT : READER_SERIF_FONT;
+  const font = useReaderFontProvider(
+    appearance.font.selectedFontId,
+    props.fontFamilies,
+    props.loadFontFace,
+    props.book,
+    appearance.font.useBookEmbeddedFonts,
+    props.loadResource,
+  );
 
   return (
     <FontBackedReaderSurface
-      key={fontFamily}
       {...props}
       appearance={appearance}
-      font={font}
-      fontFamily={fontFamily}
+      fontFamily={font.fontFamily}
+      fontProvider={font.fontProvider}
+      fontError={font.error}
+      bookFontFamilyNames={font.bookFontFamilyNames}
+      fontProviderKey={font.providerKey}
     />
   );
 }
 
 interface FontBackedReaderSurfaceProps extends ReaderSurfaceProps {
-  readonly font: DataModule;
+  readonly fontError?: string;
   readonly fontFamily: string;
+  readonly bookFontFamilyNames?: Readonly<Record<string, string>>;
+  readonly fontProvider: ReturnType<
+    typeof useReaderFontProvider
+  >["fontProvider"];
+  readonly fontProviderKey: string;
 }
 
 function FontBackedReaderSurface({
@@ -116,30 +99,26 @@ function FontBackedReaderSurface({
   onProgress,
   onSelectionChange,
   onTurningChange,
-  font,
+  fontError,
   fontFamily,
+  bookFontFamilyNames,
+  fontProvider,
+  fontProviderKey,
 }: FontBackedReaderSurfaceProps) {
-  const fontProvider = useFonts({
-    [fontFamily]: [font],
-    "Noto Sans Math": [READER_SYMBOL_FONT],
-  });
-  useEffect(
-    () => () => {
-      if (
-        Platform.OS === "web" &&
-        typeof fontProvider?.dispose === "function"
-      ) {
-        fontProvider.dispose();
-      }
-    },
-    [fontProvider],
-  );
   const liveAppearance = useMemo<ReaderAppearance>(
     () => ({
-      ...appearance,
+      theme: appearance.theme,
+      colorMode: appearance.colorMode,
       fontFamily,
+      decorationFontFamily: "Noto Sans SC",
+      ...(bookFontFamilyNames ? { bookFontFamilyNames } : {}),
+      fontSize: appearance.fontSize,
+      lineHeight: appearance.lineHeight,
+      paragraphSpacing: appearance.paragraphSpacing,
+      horizontalMargin: appearance.horizontalMargin,
+      progressDisplay: appearance.progressDisplay,
     }),
-    [appearance, fontFamily],
+    [appearance, bookFontFamilyNames, fontFamily],
   );
   const handleSelectionMenuRequest = useCallback(
     ({ text, rectInWindow }: ReaderSelectionMenuRequest) => {
@@ -156,7 +135,7 @@ function FontBackedReaderSurface({
       <View style={[styles.loading, { backgroundColor: theme.paper }]}>
         <ActivityIndicator color={theme.accent} />
         <Text style={[styles.loadingText, { color: theme.secondaryText }]}>
-          正在准备中文排版…
+          {fontError ?? "正在准备中文排版…"}
         </Text>
       </View>
     );
@@ -166,6 +145,7 @@ function FontBackedReaderSurface({
     <LiveReader
       book={book}
       fontProvider={fontProvider}
+      fontProviderKey={fontProviderKey}
       width={width}
       height={height}
       appearance={liveAppearance}

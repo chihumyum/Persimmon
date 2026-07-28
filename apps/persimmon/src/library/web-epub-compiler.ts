@@ -21,6 +21,8 @@ type ImportResponse =
       readonly error: ImportFailure;
     };
 
+const EPUB_IMPORT_TIMEOUT_MS = 60_000;
+
 function errorFromWorker(failure: ImportFailure): Error {
   return failure.name === "EpubImportError" && failure.code
     ? new EpubImportError(
@@ -44,7 +46,7 @@ export function compileEpubInWorker(
     const timeout = setTimeout(() => {
       worker.terminate();
       reject(new Error("EPUB import worker timed out"));
-    }, 15_000);
+    }, EPUB_IMPORT_TIMEOUT_MS);
     const finish = () => {
       clearTimeout(timeout);
       worker.terminate();

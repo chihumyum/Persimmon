@@ -1,3 +1,5 @@
+import { normalizeReaderFontSettings } from "@persimmon/font-core";
+
 import {
   DEFAULT_READER_APPEARANCE,
   DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
@@ -5,7 +7,6 @@ import {
   DEFAULT_READER_SETTINGS,
   type ReaderAppearanceSettings,
   type ReaderColorMode,
-  type ReaderFontFamily,
   type ReaderGesturePageTurnTuning,
   type ReaderPageTurnTuning,
   type ReaderProgressDisplay,
@@ -42,7 +43,10 @@ function normalizeAppearance(value: object): ReaderAppearanceSettings {
   return {
     theme: "warm",
     colorMode: readerColorMode(value),
-    fontFamily: readerFontFamily(value),
+    font: normalizeReaderFontSettings(
+      "font" in value ? value.font : undefined,
+      "fontFamily" in value ? value.fontFamily : undefined,
+    ),
     fontSize: steppedNumber(
       value,
       "fontSize",
@@ -90,12 +94,6 @@ function readerColorMode(value: object): ReaderColorMode {
     default:
       return "system";
   }
-}
-
-function readerFontFamily(value: object): ReaderFontFamily {
-  return "fontFamily" in value && value.fontFamily === "sans"
-    ? "sans"
-    : "serif";
 }
 
 function readerProgressDisplay(value: object): ReaderProgressDisplay {

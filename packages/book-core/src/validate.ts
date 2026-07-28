@@ -20,6 +20,8 @@ export type BookValidationIssueCode =
   | "invalid-heading-level"
   | "invalid-block-style"
   | "invalid-inline-run"
+  | "invalid-font-family"
+  | "missing-font-family"
   | "invalid-link-target"
   | "invalid-note-kind"
   | "missing-image-asset"
@@ -159,6 +161,16 @@ function validateBlock(
           code: "invalid-inline-run",
           path: runPath,
           message: "inline run contains an unsupported mark or alignment",
+        });
+      }
+      if (
+        run.bookFontFamilyId !== undefined &&
+        !book.fontFamilies?.[run.bookFontFamilyId]
+      ) {
+        issues.push({
+          code: "missing-font-family",
+          path: `${runPath}.bookFontFamilyId`,
+          message: "inline run refers to an unknown book font family",
         });
       }
 
@@ -315,6 +327,34 @@ export function validateBookIR(book: BookIR): readonly BookValidationIssue[] {
         path: `assets.${assetKey}`,
         message:
           "asset key must match a non-empty id, mediaType must be non-empty, and byteLength must be a non-negative integer",
+      });
+    }
+  }
+
+  for (const [familyKey, family] of Object.entries(book.fontFamilies ?? {})) {
+    if (
+      familyKey !== family.id ||
+      !hasText(family.id) ||
+      !hasText(family.cssFamily) ||
+      family.faces.length === 0 ||
+      family.faces.some(
+        (face) =>
+          !hasText(face.id) ||
+          face.familyId !== family.id ||
+          !hasText(face.resourceId) ||
+          !hasText(face.mediaType) ||
+          !Number.isInteger(face.weight) ||
+          face.weight < 100 ||
+          face.weight > 900 ||
+          face.weight % 100 !== 0 ||
+          (face.style !== "normal" && face.style !== "italic"),
+      )
+    ) {
+      issues.push({
+        code: "invalid-font-family",
+        path: `fontFamilies.${familyKey}`,
+        message:
+          "font family key/id, CSS name, resource, media type, weight, and style must be valid",
       });
     }
   }

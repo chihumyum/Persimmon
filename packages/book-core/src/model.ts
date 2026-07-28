@@ -8,6 +8,7 @@ export interface BookIR {
   language?: string;
   sections: readonly SectionIR[];
   assets: Readonly<Record<string, ImageAssetIR>>;
+  fontFamilies?: Readonly<Record<string, BookFontFamilyIR>>;
   coverAssetId?: string;
   navigation?: readonly BookNavigationItem[];
 }
@@ -86,12 +87,32 @@ export interface InlineRunIR {
   marks?: readonly InlineMark[];
   verticalAlign?: "superscript" | "subscript";
   link?: InternalLinkIR;
+  /**
+   * Refers to a publisher-provided EPUB font. Renderers apply it only when
+   * the reader has explicitly enabled book fonts.
+   */
+  bookFontFamilyId?: string;
 }
 
 export interface ImageAssetIR {
   id: string;
   mediaType: string;
   byteLength?: number;
+}
+
+export interface BookFontFaceIR {
+  id: string;
+  familyId: string;
+  resourceId: string;
+  mediaType: string;
+  weight: 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900;
+  style: "normal" | "italic";
+}
+
+export interface BookFontFamilyIR {
+  id: string;
+  cssFamily: string;
+  faces: readonly BookFontFaceIR[];
 }
 
 export interface ExternalSourceRef {

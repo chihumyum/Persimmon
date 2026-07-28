@@ -35,7 +35,10 @@ function textAlignOf(align: TypographyPreset["align"]): TextAlign {
 function textStyleOf(
   input: ParagraphLayoutInput,
   theme: ReaderTheme,
-  run?: Pick<ResolvedRun, "link" | "marks" | "verticalAlign">,
+  run?: Pick<
+    ResolvedRun,
+    "bookFontFamilyId" | "link" | "marks" | "verticalAlign"
+  >,
 ): SkTextStyle {
   const marks = run?.marks ?? [];
   const verticalScale = run?.verticalAlign ? 0.78 : 1;
@@ -48,7 +51,13 @@ function textStyleOf(
           decorationColor: linkColor,
         }
       : {}),
-    fontFamilies: [...input.style.fontFamilies],
+    fontFamilies: [
+      ...(run?.bookFontFamilyId &&
+      input.style.bookFontFamilyNames?.[run.bookFontFamilyId]
+        ? [input.style.bookFontFamilyNames[run.bookFontFamilyId]]
+        : []),
+      ...input.style.fontFamilies,
+    ],
     fontSize: input.style.fontSize * verticalScale,
     ...(run?.verticalAlign
       ? {

@@ -21,6 +21,7 @@ export interface Insets {
 
 export interface TypographyPreset {
   fontFamilies: readonly string[];
+  bookFontFamilyNames?: Readonly<Record<string, string>>;
   fontSize: number;
   heightMultiplier: number;
   weight?: 400 | 500 | 600 | 700;
@@ -54,6 +55,7 @@ export interface ResolvedRun {
   marks: readonly InlineMark[];
   verticalAlign?: "superscript" | "subscript";
   link?: InternalLinkIR;
+  bookFontFamilyId?: string;
 }
 
 export interface ParagraphLayoutInput {

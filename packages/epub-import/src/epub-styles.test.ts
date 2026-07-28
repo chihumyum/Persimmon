@@ -56,4 +56,33 @@ describe("safe EPUB style cascade", () => {
       marginAfterEm: 0,
     });
   });
+
+  it("extracts font faces and keeps only the first explicit CSS family", () => {
+    const sheet = parseEpubStyleSheet([
+      {
+        cssText: `
+          @font-face {
+            font-family: "Publisher Song";
+            src: local("Ignored"), url("../Fonts/song.woff2") format("woff2");
+            font-weight: 650;
+            font-style: oblique;
+          }
+          p { font-family: "Publisher Song", serif; }
+        `,
+        basePath: "OPS/Styles/book.css",
+      },
+    ]);
+    expect(sheet.fontFaces).toEqual([
+      {
+        family: "Publisher Song",
+        sources: ["../Fonts/song.woff2"],
+        weight: 700,
+        style: "italic",
+        basePath: "OPS/Styles/book.css",
+      },
+    ]);
+    expect(
+      styleForContentElement(firstBodyChild("<p>Text</p>"), sheet),
+    ).toMatchObject({ fontFamily: "Publisher Song" });
+  });
 });

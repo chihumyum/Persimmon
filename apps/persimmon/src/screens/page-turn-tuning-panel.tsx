@@ -6,12 +6,12 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
   type GestureResponderEvent,
   type LayoutChangeEvent,
 } from "react-native";
 
+import { UiText as Text } from "../components/ui-text";
 import {
   DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
   type ReaderGesturePageTurnTuning,

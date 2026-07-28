@@ -211,6 +211,11 @@ export interface ReaderSelectionMenuRequest {
 export interface LiveReaderProps {
   book: BookIR;
   fontProvider: SkTypefaceFontProvider;
+  /**
+   * Stable identity of all registered typefaces. A change replaces every
+   * paragraph/capture generation while retaining the current BookPosition.
+   */
+  fontProviderKey?: string;
   width: number;
   height: number;
   appearance?: ReaderAppearance;
@@ -293,7 +298,7 @@ interface QueuedSelectionHandleMove {
 interface LazyReaderEngineProps
   extends Omit<
     LiveReaderProps,
-    "appearance" | "bottomInset" | "fontSize" | "topInset"
+    "appearance" | "bottomInset" | "fontProviderKey" | "fontSize" | "topInset"
   > {
   readonly appearance: ReaderAppearance;
   readonly topInset: number;
@@ -404,6 +409,8 @@ function LazyReaderEngine({
     appearance.progressDisplay,
     toolbarVisible,
   );
+  const decorationFontFamily =
+    appearance.decorationFontFamily ?? appearance.fontFamily;
   const backend = useMemo(
     () => createSkiaParagraphBackend(fontProvider, theme),
     [fontProvider, theme],
@@ -411,6 +418,9 @@ function LazyReaderEngine({
   const typographyAppearance = useMemo<ReaderAppearance>(
     () => ({
       fontFamily: appearance.fontFamily,
+      ...(appearance.bookFontFamilyNames
+        ? { bookFontFamilyNames: appearance.bookFontFamilyNames }
+        : {}),
       fontSize: appearance.fontSize,
       lineHeight: appearance.lineHeight,
       paragraphSpacing: appearance.paragraphSpacing,
@@ -419,6 +429,7 @@ function LazyReaderEngine({
     }),
     [
       appearance.fontFamily,
+      appearance.bookFontFamilyNames,
       appearance.fontSize,
       appearance.horizontalMargin,
       appearance.lineHeight,
@@ -607,7 +618,7 @@ function LazyReaderEngine({
         model.sectionTitle,
         model.pageNumber,
         model.pageCount,
-        appearance.fontFamily,
+        decorationFontFamily,
         appearance.horizontalMargin,
         pagesPerView,
         width,
@@ -627,7 +638,7 @@ function LazyReaderEngine({
       const decoration = createSkiaPageDecoration({
         model,
         fontProvider,
-        fontFamily: appearance.fontFamily,
+        fontFamily: decorationFontFamily,
         width,
         height,
         horizontalMargin: appearance.horizontalMargin,
@@ -651,9 +662,9 @@ function LazyReaderEngine({
       return decoration;
     },
     [
-      appearance.fontFamily,
       appearance.horizontalMargin,
       bottomInset,
+      decorationFontFamily,
       fontProvider,
       height,
       pageDecorationCache,
@@ -3180,6 +3191,7 @@ function initialWebPageTurnProfile(
 export function LiveReader({
   book,
   fontProvider,
+  fontProviderKey,
   width,
   height,
   appearance,
@@ -3232,6 +3244,9 @@ export function LiveReader({
     width,
     height,
     resolvedAppearance.fontFamily,
+    resolvedAppearance.decorationFontFamily,
+    resolvedAppearance.bookFontFamilyNames,
+    fontProviderKey,
     resolvedAppearance.fontSize,
     resolvedAppearance.lineHeight,
     resolvedAppearance.paragraphSpacing,

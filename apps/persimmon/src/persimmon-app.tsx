@@ -1,4 +1,8 @@
 import { NotoSansSC_400Regular } from "@expo-google-fonts/noto-sans-sc/400Regular";
+import {
+  BUILTIN_READER_SERIF_ID,
+  type FontFamilyRecord,
+} from "@persimmon/font-core";
 import type { ReaderProgress } from "@persimmon/reader-skia";
 import {
   resolveReaderTheme,
@@ -13,11 +17,16 @@ import {
   AppState,
   Platform,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
 
+import { UiText as Text } from "./components/ui-text";
 import { demoSummary } from "./library/demo";
+import { BUILTIN_FONT_FAMILIES } from "./fonts/builtin-fonts";
+import { downloadFontFamily } from "./fonts/download-font";
+import { DOWNLOADABLE_FONT_CATALOG } from "./fonts/downloadable-font-catalog";
+import { fontRepository } from "./fonts/font-repository";
+import { FontRepositoryError } from "./fonts/types";
 import {
   libraryRepository,
   type LibraryBookSummary,
@@ -33,6 +42,7 @@ import {
   type ReaderSettings,
 } from "./library/types";
 import { pickAndImportEpub } from "./pick-epub";
+import { pickLocalFont } from "./pick-font";
 import { useSystemReaderColorScheme } from "./reader/reader-color-scheme";
 import { resolveReaderColorScheme } from "./reader/reader-color-mode";
 import { READER_UI_FONT_FAMILY } from "./reader/reader-ui-typography";
@@ -57,6 +67,9 @@ function userFacingError(error: unknown): string {
     }
   }
   if (error instanceof LibraryError) {
+    return error.message;
+  }
+  if (error instanceof FontRepositoryError) {
     return error.message;
   }
   return error instanceof Error ? error.message : "发生未知错误。";
@@ -90,6 +103,9 @@ export function PersimmonApp() {
   const [entries, setEntries] = useState<readonly LibraryBookSummary[]>([
     demoSummary(),
   ]);
+  const [fontFamilies, setFontFamilies] = useState<readonly FontFamilyRecord[]>(
+    BUILTIN_FONT_FAMILIES,
+  );
   const [activeBook, setActiveBook] = useState<OpenedLibraryBook | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [screen, setScreen] = useState<Screen>({ kind: "library" });
@@ -117,17 +133,29 @@ export function PersimmonApp() {
 
   useEffect(() => {
     let cancelled = false;
-    libraryRepository
+    const library = libraryRepository.initialize().then(async () => {
+      const [books, settings] = await Promise.all([
+        libraryRepository.listBooks(),
+        libraryRepository.getSettings(),
+      ]);
+      return { books, settings };
+    });
+    const fonts = fontRepository
       .initialize()
-      .then(async () => {
-        const [books, settings] = await Promise.all([
-          libraryRepository.listBooks(),
-          libraryRepository.getSettings(),
-        ]);
+      .then(() => fontRepository.listFamilies())
+      .catch((fontError: unknown) => {
         if (!cancelled) {
-          setEntries(books);
-          readerSettingsRef.current = settings;
-          setReaderSettings(settings);
+          setError(`无法读取本地字体：${userFacingError(fontError)}`);
+        }
+        return BUILTIN_FONT_FAMILIES;
+      });
+    Promise.all([library, fonts])
+      .then(([loadedLibrary, loadedFonts]) => {
+        if (!cancelled) {
+          setEntries(loadedLibrary.books);
+          setFontFamilies(loadedFonts);
+          readerSettingsRef.current = loadedLibrary.settings;
+          setReaderSettings(loadedLibrary.settings);
         }
       })
       .catch((loadError: unknown) => {
@@ -248,6 +276,53 @@ export function PersimmonApp() {
     }
   }, [openBook, refreshLibrary]);
 
+  const importFont = useCallback(async (): Promise<string | undefined> => {
+    setError(null);
+    try {
+      const picked = await pickLocalFont();
+      if (!picked) {
+        return undefined;
+      }
+      const family = await fontRepository.installFont({
+        bytes: picked.bytes,
+        source: "user",
+      });
+      setFontFamilies(await fontRepository.listFamilies());
+      return family.id;
+    } catch (fontError: unknown) {
+      setError(userFacingError(fontError));
+      throw fontError;
+    }
+  }, []);
+  const downloadFont = useCallback(
+    async (familyId: string): Promise<string> => {
+      setError(null);
+      const family = DOWNLOADABLE_FONT_CATALOG.families.find(
+        (candidate) => candidate.id === familyId,
+      );
+      if (!family) {
+        throw new FontRepositoryError(
+          "font-not-found",
+          "下载字体目录中没有这个字体。",
+        );
+      }
+      try {
+        const installed = await downloadFontFamily(family, fontRepository);
+        setFontFamilies(await fontRepository.listFamilies());
+        return installed.id;
+      } catch (fontError: unknown) {
+        setError(userFacingError(fontError));
+        throw fontError;
+      }
+    },
+    [],
+  );
+
+  const loadFontFace = useCallback(
+    (faceId: string) => fontRepository.readFace(faceId),
+    [],
+  );
+
   const persistPendingProgress = useCallback(async () => {
     const pending = pendingProgress.current;
     if (!pending) {
@@ -327,6 +402,32 @@ export function PersimmonApp() {
     },
     [updateReaderSettings],
   );
+  const removeFont = useCallback(
+    async (familyId: string): Promise<void> => {
+      setError(null);
+      try {
+        await fontRepository.removeFamily(familyId);
+        setFontFamilies(await fontRepository.listFamilies());
+        if (
+          readerSettingsRef.current.appearance.font.selectedFontId === familyId
+        ) {
+          updateReaderSettings({
+            appearance: {
+              ...readerSettingsRef.current.appearance,
+              font: {
+                ...readerSettingsRef.current.appearance.font,
+                selectedFontId: BUILTIN_READER_SERIF_ID,
+              },
+            },
+          });
+        }
+      } catch (fontError: unknown) {
+        setError(userFacingError(fontError));
+        throw fontError;
+      }
+    },
+    [updateReaderSettings],
+  );
   const updateColorMode = useCallback(
     (colorMode: ReaderColorMode) => {
       updateAppearance({ ...readerSettingsRef.current.appearance, colorMode });
@@ -392,16 +493,21 @@ export function PersimmonApp() {
         pageTurnAnimation={readerSettings.pageTurnAnimation}
         pageTurnTuning={readerSettings.pageTurnTuning}
         opened={activeBook}
+        fontFamilies={fontFamilies}
+        loadFontFace={loadFontFace}
         onBack={() => {
           void persistPendingProgress();
           setActiveBook(null);
           setScreen({ kind: "library" });
         }}
         onAppearanceChange={updateAppearance}
+        onDownloadFont={downloadFont}
+        onImportFont={importFont}
         onLayoutChange={updateLayout}
         onPageTurnAnimationChange={updatePageTurnAnimation}
         onPageTurnTuningChange={updatePageTurnTuning}
         onProgress={updateProgress}
+        onRemoveFont={removeFont}
       />
     );
   }

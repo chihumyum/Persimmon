@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { PixelRatio, StyleSheet, Text, View } from "react-native";
+import { PixelRatio, StyleSheet, View } from "react-native";
 import Animated, {
   Easing,
   cancelAnimation,
@@ -9,6 +9,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
+import { UiText as Text } from "../components/ui-text";
 import { READER_UI_FONT_FAMILY } from "./reader-ui-typography";
 import {
   estimatedToolbarBreadcrumbWidth,

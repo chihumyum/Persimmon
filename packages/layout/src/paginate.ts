@@ -141,6 +141,9 @@ function resolveRuns(block: TextBlockIR): readonly ResolvedRun[] {
       startOffset,
       endOffset: offset,
       marks: run.marks ?? [],
+      ...(run.bookFontFamilyId
+        ? { bookFontFamilyId: run.bookFontFamilyId }
+        : {}),
       ...(run.verticalAlign ? { verticalAlign: run.verticalAlign } : {}),
       ...(run.link ? { link: run.link } : {}),
     };

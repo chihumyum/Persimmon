@@ -19,7 +19,10 @@ export function createReaderLayoutSpec(
     appearance.horizontalMargin,
     maximumHorizontalMargin,
   );
-  const fontFamilies = [appearance.fontFamily, "Noto Sans Math"];
+  const fontFamilies = [
+    ...new Set([appearance.fontFamily, "Noto Serif SC", "Noto Sans Math"]),
+  ];
+  const bookFontFamilyNames = appearance.bookFontFamilyNames;
   return {
     ...spec,
     padding: {
@@ -31,28 +34,33 @@ export function createReaderLayoutSpec(
     body: {
       ...spec.body,
       fontFamilies,
+      ...(bookFontFamilyNames ? { bookFontFamilyNames } : {}),
       fontSize: appearance.fontSize,
       heightMultiplier: appearance.lineHeight,
     },
     note: {
       ...spec.note,
       fontFamilies,
+      ...(bookFontFamilyNames ? { bookFontFamilyNames } : {}),
       fontSize: spec.note.fontSize * scale,
     },
     headings: {
       1: {
         ...spec.headings[1],
         fontFamilies,
+        ...(bookFontFamilyNames ? { bookFontFamilyNames } : {}),
         fontSize: spec.headings[1].fontSize * scale,
       },
       2: {
         ...spec.headings[2],
         fontFamilies,
+        ...(bookFontFamilyNames ? { bookFontFamilyNames } : {}),
         fontSize: spec.headings[2].fontSize * scale,
       },
       3: {
         ...spec.headings[3],
         fontFamilies,
+        ...(bookFontFamilyNames ? { bookFontFamilyNames } : {}),
         fontSize: spec.headings[3].fontSize * scale,
       },
     },

@@ -523,13 +523,19 @@ class NativeLibraryRepository implements LibraryRepository {
         );
       }
     });
-    for (const assetId of Object.keys(expected.assets)) {
+    const requiredResourceIds = [
+      ...Object.keys(expected.assets),
+      ...Object.values(expected.fontFamilies ?? {}).flatMap((family) =>
+        family.faces.map((face) => face.resourceId),
+      ),
+    ];
+    for (const assetId of requiredResourceIds) {
       if (
         !new File(directory, "resources", `${storageName(assetId)}.bin`).exists
       ) {
         throw new LibraryError(
           "corrupt-storage",
-          "暂存书籍缺少图片资源，导入已取消。",
+          "暂存书籍缺少内容资源，导入已取消。",
         );
       }
     }

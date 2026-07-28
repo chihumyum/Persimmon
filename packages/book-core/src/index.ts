@@ -6,6 +6,8 @@ export {
   type BlockIR,
   type BlockStyleIR,
   type BookIR,
+  type BookFontFaceIR,
+  type BookFontFamilyIR,
   type BookLocator,
   type BookNavigationItem,
   type BookPosition,

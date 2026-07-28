@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import { strToU8, zipSync, type Zippable } from "fflate";
 
 import { EpubImportError, importEpub } from "./index";
+import {
+  deobfuscateIdpfFont,
+  IDPF_FONT_OBFUSCATION_ALGORITHM,
+  idpfFontObfuscationKey,
+} from "./font-obfuscation";
 
 const PNG_BYTES = new Uint8Array([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -225,6 +230,97 @@ describe("importEpub", () => {
         fontStyle: "italic",
       },
     });
+  });
+
+  it("preserves explicitly assigned embedded fonts and deobfuscates IDPF resources", () => {
+    const originalFont = Uint8Array.from(
+      { length: 1200 },
+      (_, index) => (index * 17) % 251,
+    );
+    const identifier = "urn:persimmon:font-test";
+    const obfuscatedFont = deobfuscateIdpfFont(
+      originalFont,
+      idpfFontObfuscationKey(identifier),
+    );
+    const packageXml = minimalPackage(
+      "chapter.xhtml",
+      `
+        <item id="style" href="styles/book.css" media-type="text/css"/>
+        <item id="publisher-font" href="fonts/publisher.ttf" media-type="font/ttf"/>
+        <item id="unused-font" href="fonts/unused.ttf" media-type="font/ttf"/>
+      `,
+    )
+      .replace("<package ", '<package unique-identifier="pub-id" ')
+      .replace("<dc:identifier>", '<dc:identifier id="pub-id">')
+      .replace("urn:persimmon:test", identifier);
+    const bytes = fixtureBytes({
+      packageXml,
+      resources: {
+        "EPUB/styles/book.css": `
+          @font-face {
+            font-family: "Publisher Serif";
+            src: url("../fonts/publisher.ttf") format("truetype");
+          }
+          @font-face {
+            font-family: "Unused Font";
+            src: url("../fonts/unused.ttf") format("truetype");
+          }
+          .publisher { font-family: "Publisher Serif", serif; }
+          .reader { font-family: serif; }
+        `,
+        "EPUB/chapter.xhtml": `<?xml version="1.0"?>
+          <html xmlns="http://www.w3.org/1999/xhtml">
+            <head><link rel="stylesheet" href="styles/book.css"/></head>
+            <body>
+              <p class="publisher">Publisher <span class="reader">Reader</span></p>
+              <p>Default reader font</p>
+            </body>
+          </html>`,
+        "EPUB/fonts/publisher.ttf": obfuscatedFont,
+        "EPUB/fonts/unused.ttf": originalFont,
+      },
+      extraEntries: {
+        "META-INF/encryption.xml": `<?xml version="1.0"?>
+          <encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container"
+            xmlns:enc="http://www.w3.org/2001/04/xmlenc#">
+            <enc:EncryptedData>
+              <enc:EncryptionMethod Algorithm="${IDPF_FONT_OBFUSCATION_ALGORITHM}"/>
+              <enc:CipherData>
+                <enc:CipherReference URI="EPUB/fonts/publisher.ttf"/>
+              </enc:CipherData>
+            </enc:EncryptedData>
+          </encryption>`,
+      },
+    });
+
+    const result = importEpub(bytes);
+    expect(Object.values(result.book.fontFamilies ?? {})).toHaveLength(1);
+    const family = Object.values(result.book.fontFamilies ?? {})[0];
+    expect(family).toMatchObject({
+      cssFamily: "Publisher Serif",
+      faces: [
+        {
+          resourceId: "epub-font:publisher-font",
+          mediaType: "font/ttf",
+          weight: 400,
+          style: "normal",
+        },
+      ],
+    });
+    const firstBlock = result.book.sections[0]?.blocks[0];
+    expect(firstBlock?.kind === "paragraph" ? firstBlock.runs : []).toEqual([
+      {
+        text: "Publisher ",
+        bookFontFamilyId: family?.id,
+      },
+      { text: "Reader" },
+    ]);
+    const secondBlock = result.book.sections[0]?.blocks[1];
+    expect(
+      secondBlock?.kind === "paragraph" ? secondBlock.runs[0] : undefined,
+    ).toEqual({ text: "Default reader font" });
+    expect(result.resources["epub-font:publisher-font"]).toEqual(originalFont);
+    expect(result.resources["epub-font:unused-font"]).toBeUndefined();
   });
 
   it("keeps repeated spine entries with deterministic occurrence ids", () => {

@@ -1,31 +1,42 @@
+import {
+  BUILTIN_READER_MATH_ID,
+  type FontFamilyRecord,
+} from "@persimmon/font-core";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { ReaderTheme } from "@persimmon/reader-skia";
 import {
+  Alert,
   PanResponder,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
+  Switch,
   View,
   type GestureResponderEvent,
   type LayoutChangeEvent,
 } from "react-native";
 
+import { UiText as Text } from "../components/ui-text";
 import {
   DEFAULT_READER_APPEARANCE,
   type ReaderAppearanceSettings,
   type ReaderColorMode,
-  type ReaderFontFamily,
   type ReaderProgressDisplay,
 } from "../library/types";
+import { DOWNLOADABLE_FONT_CATALOG } from "../fonts/downloadable-font-catalog";
 
 interface ReadingStylePanelProps {
   readonly appearance: ReaderAppearanceSettings;
+  readonly fontFamilies: readonly FontFamilyRecord[];
+  readonly hasBookFonts?: boolean;
   readonly theme: ReaderTheme;
   readonly bottom: number;
   readonly onChange: (appearance: ReaderAppearanceSettings) => void;
   readonly onClose: () => void;
+  readonly onDownloadFont: (familyId: string) => Promise<string>;
+  readonly onImportFont: () => Promise<string | undefined>;
+  readonly onRemoveFont: (familyId: string) => Promise<void>;
 }
 
 interface StyleSliderProps {
@@ -218,15 +229,6 @@ function StyleSlider({
   );
 }
 
-const FONT_OPTIONS: readonly {
-  readonly value: ReaderFontFamily;
-  readonly label: string;
-  readonly sample: string;
-}[] = [
-  { value: "serif", label: "衬线", sample: "柿子 Aa" },
-  { value: "sans", label: "无衬线", sample: "柿子 Aa" },
-];
-
 const PROGRESS_OPTIONS: readonly {
   readonly value: ReaderProgressDisplay;
   readonly label: string;
@@ -248,11 +250,18 @@ const COLOR_MODE_OPTIONS: readonly {
 
 export function ReadingStylePanel({
   appearance,
+  fontFamilies,
+  hasBookFonts = false,
   theme,
   bottom,
   onChange,
   onClose,
+  onDownloadFont,
+  onImportFont,
+  onRemoveFont,
 }: ReadingStylePanelProps) {
+  const [fontBusy, setFontBusy] = useState(false);
+  const [fontError, setFontError] = useState<string | undefined>();
   const appearanceRef = useRef(appearance);
   appearanceRef.current = appearance;
   const update = useCallback(
@@ -265,6 +274,78 @@ export function ReadingStylePanel({
       onChange(next);
     },
     [onChange],
+  );
+  const chooseFont = useCallback(
+    (selectedFontId: string) => {
+      update("font", {
+        ...appearanceRef.current.font,
+        selectedFontId,
+      });
+    },
+    [update],
+  );
+  const importFont = useCallback(async () => {
+    setFontBusy(true);
+    setFontError(undefined);
+    try {
+      const familyId = await onImportFont();
+      if (familyId) {
+        chooseFont(familyId);
+      }
+    } catch (error) {
+      setFontError(error instanceof Error ? error.message : "字体导入失败。");
+    } finally {
+      setFontBusy(false);
+    }
+  }, [chooseFont, onImportFont]);
+  const downloadFont = useCallback(
+    async (familyId: string) => {
+      setFontBusy(true);
+      setFontError(undefined);
+      try {
+        chooseFont(await onDownloadFont(familyId));
+      } catch (error) {
+        setFontError(error instanceof Error ? error.message : "字体下载失败。");
+      } finally {
+        setFontBusy(false);
+      }
+    },
+    [chooseFont, onDownloadFont],
+  );
+  const removeFont = useCallback(
+    (family: FontFamilyRecord) => {
+      const remove = async () => {
+        setFontBusy(true);
+        setFontError(undefined);
+        try {
+          await onRemoveFont(family.id);
+        } catch (error) {
+          setFontError(
+            error instanceof Error ? error.message : "字体删除失败。",
+          );
+        } finally {
+          setFontBusy(false);
+        }
+      };
+      if (Platform.OS === "web" && typeof globalThis.confirm === "function") {
+        if (globalThis.confirm(`确定删除字体“${family.displayName}”吗？`)) {
+          void remove();
+        }
+        return;
+      }
+      Alert.alert("删除字体", `确定删除“${family.displayName}”吗？`, [
+        { text: "取消", style: "cancel" },
+        { text: "删除", style: "destructive", onPress: () => void remove() },
+      ]);
+    },
+    [onRemoveFont],
+  );
+  const selectableFonts = useMemo(
+    () => fontFamilies.filter((family) => family.id !== BUILTIN_READER_MATH_ID),
+    [fontFamilies],
+  );
+  const selectedFontAvailable = selectableFonts.some(
+    (family) => family.id === appearance.font.selectedFontId,
   );
 
   return (
@@ -394,56 +475,204 @@ export function ReadingStylePanel({
           <Text style={[styles.sectionLabel, { color: theme.controlText }]}>
             字体
           </Text>
-          <View style={styles.optionRow}>
-            {FONT_OPTIONS.map((option) => {
-              const selected = appearance.fontFamily === option.value;
+          {!selectedFontAvailable ? (
+            <Text style={[styles.fontError, { color: theme.accentStrong }]}>
+              此设备缺少所选字体，阅读正文暂时回退到 Noto Serif
+              SC；字体设置已保留。
+            </Text>
+          ) : null}
+          <View style={[styles.fontList, { borderColor: theme.border }]}>
+            {selectableFonts.map((family) => {
+              const selected = appearance.font.selectedFontId === family.id;
               return (
-                <Pressable
-                  key={option.value}
-                  aria-checked={selected}
-                  accessibilityLabel={`${option.label}字体`}
-                  accessibilityRole="radio"
-                  onPress={() => update("fontFamily", option.value)}
+                <View
+                  key={family.id}
                   style={[
-                    styles.fontOption,
+                    styles.fontRow,
                     {
                       backgroundColor: selected
                         ? theme.panelRaised
                         : "transparent",
-                      borderColor: selected ? theme.accent : "transparent",
+                      borderBottomColor: theme.border,
                     },
                   ]}
                 >
-                  <Text
-                    style={[
-                      styles.fontSample,
-                      option.value === "serif"
-                        ? styles.serifSample
-                        : styles.sansSample,
-                      {
-                        color: selected
-                          ? theme.accentStrong
-                          : theme.controlText,
-                      },
-                    ]}
+                  <Pressable
+                    aria-checked={selected}
+                    accessibilityLabel={`${family.displayName}字体`}
+                    accessibilityRole="radio"
+                    disabled={fontBusy}
+                    onPress={() => chooseFont(family.id)}
+                    style={styles.fontChoice}
                   >
-                    {option.sample}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.optionLabel,
-                      {
-                        color: selected
-                          ? theme.accentStrong
-                          : theme.secondaryText,
-                      },
-                    ]}
-                  >
-                    {option.label}
-                  </Text>
-                </Pressable>
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.fontName,
+                        {
+                          color: selected
+                            ? theme.accentStrong
+                            : theme.controlText,
+                        },
+                      ]}
+                    >
+                      {family.displayName}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.fontSource,
+                        { color: theme.secondaryText },
+                      ]}
+                    >
+                      {family.source === "bundled"
+                        ? "内置"
+                        : family.source === "downloaded"
+                          ? "已下载"
+                          : "本地导入"}
+                    </Text>
+                  </Pressable>
+                  {family.source !== "bundled" ? (
+                    <Pressable
+                      accessibilityLabel={`删除字体 ${family.displayName}`}
+                      accessibilityRole="button"
+                      disabled={fontBusy}
+                      onPress={() => removeFont(family)}
+                      style={styles.fontDelete}
+                    >
+                      <Text
+                        style={[
+                          styles.fontDeleteText,
+                          { color: theme.accentStrong },
+                        ]}
+                      >
+                        删除
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
               );
             })}
+          </View>
+          <Pressable
+            accessibilityLabel="从本地文件导入字体"
+            accessibilityRole="button"
+            disabled={fontBusy}
+            onPress={() => void importFont()}
+            style={[
+              styles.importFontButton,
+              {
+                backgroundColor: theme.panelRaised,
+                borderColor: theme.border,
+                opacity: fontBusy ? 0.55 : 1,
+              },
+            ]}
+          >
+            <Text
+              style={[styles.importFontText, { color: theme.accentStrong }]}
+            >
+              {fontBusy ? "正在处理…" : "从本地导入 TTF / OTF"}
+            </Text>
+          </Pressable>
+          {fontError ? (
+            <Text style={[styles.fontError, { color: theme.accentStrong }]}>
+              {fontError}
+            </Text>
+          ) : null}
+          <Text style={[styles.fontCatalogLabel, { color: theme.controlText }]}>
+            可下载字体
+          </Text>
+          <View style={[styles.fontList, { borderColor: theme.border }]}>
+            {DOWNLOADABLE_FONT_CATALOG.families.map((family) => {
+              const installed = fontFamilies.some(
+                (candidate) => candidate.id === family.id,
+              );
+              return (
+                <View
+                  key={family.id}
+                  style={[
+                    styles.downloadRow,
+                    { borderBottomColor: theme.border },
+                  ]}
+                >
+                  <View style={styles.downloadCopy}>
+                    <Text
+                      style={[styles.fontName, { color: theme.controlText }]}
+                    >
+                      {family.displayName}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.optionDescription,
+                        { color: theme.secondaryText },
+                      ]}
+                    >
+                      {family.description}
+                    </Text>
+                  </View>
+                  <Pressable
+                    accessibilityLabel={`${installed ? "使用" : "下载"}字体 ${family.displayName}`}
+                    accessibilityRole="button"
+                    disabled={fontBusy}
+                    onPress={() =>
+                      installed
+                        ? chooseFont(family.id)
+                        : void downloadFont(family.id)
+                    }
+                    style={[
+                      styles.downloadButton,
+                      {
+                        backgroundColor: theme.panelRaised,
+                        borderColor: theme.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.downloadButtonText,
+                        { color: theme.accentStrong },
+                      ]}
+                    >
+                      {installed ? "使用" : "下载"}
+                    </Text>
+                  </Pressable>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={styles.settingSection}>
+          <View style={styles.bookFontRow}>
+            <View style={styles.bookFontCopy}>
+              <Text style={[styles.sectionLabel, { color: theme.controlText }]}>
+                使用书籍内嵌字体
+              </Text>
+              <Text
+                style={[
+                  styles.optionDescription,
+                  { color: theme.secondaryText },
+                ]}
+              >
+                {hasBookFonts
+                  ? "仅应用在 EPUB 明确指定字体的位置"
+                  : "这本书没有可用的内嵌字体"}
+              </Text>
+            </View>
+            <Switch
+              accessibilityLabel="使用书籍内嵌字体"
+              disabled={!hasBookFonts}
+              onValueChange={(useBookEmbeddedFonts) =>
+                update("font", {
+                  ...appearanceRef.current.font,
+                  useBookEmbeddedFonts,
+                })
+              }
+              trackColor={{
+                false: theme.panelMuted,
+                true: theme.accent,
+              }}
+              value={hasBookFonts && appearance.font.useBookEmbeddedFonts}
+            />
           </View>
         </View>
 
@@ -568,19 +797,87 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 1.2,
   },
-  fontOption: {
+  bookFontCopy: {
+    flex: 1,
+    gap: 3,
+  },
+  bookFontRow: {
     alignItems: "center",
-    borderColor: "transparent",
-    borderRadius: 11,
-    borderWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+  },
+  fontChoice: {
     flex: 1,
     gap: 2,
     paddingHorizontal: 10,
     paddingVertical: 9,
   },
-  fontSample: {
-    color: "#524941",
-    fontSize: 18,
+  downloadButton: {
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+  },
+  downloadButtonText: {
+    fontSize: 10,
+    fontWeight: "600",
+  },
+  downloadCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  downloadRow: {
+    alignItems: "center",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  fontDelete: {
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+  },
+  fontDeleteText: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  fontError: {
+    fontSize: 10,
+    lineHeight: 14,
+  },
+  fontCatalogLabel: {
+    fontSize: 10,
+    fontWeight: "600",
+    marginTop: 4,
+  },
+  fontList: {
+    borderRadius: 11,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: "hidden",
+  },
+  fontName: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  fontRow: {
+    alignItems: "center",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+  },
+  fontSource: {
+    fontSize: 9,
+  },
+  importFontButton: {
+    alignItems: "center",
+    borderRadius: 9,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  importFontText: {
+    fontSize: 11,
+    fontWeight: "600",
   },
   footer: {
     alignItems: "center",
@@ -610,10 +907,6 @@ const styles = StyleSheet.create({
   optionDescription: {
     fontSize: 10,
     lineHeight: 14,
-  },
-  optionRow: {
-    flexDirection: "row",
-    gap: 8,
   },
   optionSelected: {
     backgroundColor: "#fffaf4",
@@ -666,25 +959,11 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     paddingVertical: 4,
   },
-  sansSample: {
-    fontFamily: Platform.select({
-      android: "sans-serif",
-      default: "Arial",
-      ios: "System",
-    }),
-  },
   sectionLabel: {
     color: "#6e6259",
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 0.3,
-  },
-  serifSample: {
-    fontFamily: Platform.select({
-      android: "serif",
-      default: "Georgia",
-      ios: "Times New Roman",
-    }),
   },
   settingSection: {
     gap: 6,

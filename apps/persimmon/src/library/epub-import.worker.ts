@@ -21,7 +21,14 @@ worker.addEventListener("message", (event: MessageEvent<ImportRequest>) => {
   const { id, bytes, contentDigest } = event.data;
   try {
     const result = importEpub(bytes, { contentDigest });
-    worker.postMessage({ id, result });
+    const transfer = [
+      ...new Set(
+        Object.values(result.resources).flatMap((resource) =>
+          resource.buffer instanceof ArrayBuffer ? [resource.buffer] : [],
+        ),
+      ),
+    ];
+    worker.postMessage({ id, result }, transfer);
   } catch (error) {
     const failure: ImportFailure =
       error instanceof Error

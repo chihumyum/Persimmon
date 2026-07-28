@@ -3,7 +3,9 @@ import type {
   ReaderPageTurnAnimation,
   ReaderTheme,
 } from "@persimmon/reader-skia";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, View } from "react-native";
+
+import { UiText as Text } from "../components/ui-text";
 
 interface ReadingLayoutPanelProps {
   readonly layout: ReaderLayoutMode;

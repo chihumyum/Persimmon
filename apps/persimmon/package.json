@@ -26,6 +26,7 @@
     "@expo-google-fonts/noto-serif-sc": "0.4.3",
     "@persimmon/book-core": "workspace:*",
     "@persimmon/epub-import": "workspace:*",
+    "@persimmon/font-core": "workspace:*",
     "@persimmon/reader-skia": "workspace:*",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-google-signin/google-signin": "^16.1.2",

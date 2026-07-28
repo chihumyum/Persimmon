@@ -1,4 +1,5 @@
 import type { BookNavigationItem, BookPosition } from "@persimmon/book-core";
+import type { FontFamilyRecord } from "@persimmon/font-core";
 import type { ReaderLayoutMode, ReaderProgress } from "@persimmon/reader-skia";
 import {
   resolveReaderTheme,
@@ -19,13 +20,13 @@ import {
   ScrollView,
   StatusBar,
   StyleSheet,
-  Text,
   View,
   type LayoutChangeEvent,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AsyncSkia } from "../../components/async-skia";
+import { UiText as Text } from "../components/ui-text";
 import type {
   LibraryBookSummary,
   OpenedLibraryBook,
@@ -76,14 +77,19 @@ export interface ReaderScreenProps {
   readonly pageTurnAnimation: ReaderPageTurnAnimation;
   readonly pageTurnTuning: ReaderPageTurnTuning;
   readonly opened: OpenedLibraryBook;
+  readonly fontFamilies: readonly FontFamilyRecord[];
+  readonly loadFontFace: (faceId: string) => Promise<Uint8Array | undefined>;
   readonly onBack: () => void;
   readonly onAppearanceChange: (appearance: ReaderAppearanceSettings) => void;
+  readonly onDownloadFont: (familyId: string) => Promise<string>;
+  readonly onImportFont: () => Promise<string | undefined>;
   readonly onLayoutChange: (layout: ReaderLayoutMode) => void;
   readonly onPageTurnAnimationChange: (
     animation: ReaderPageTurnAnimation,
   ) => void;
   readonly onPageTurnTuningChange: (tuning: ReaderPageTurnTuning) => void;
   readonly onProgress: (progress: ReaderProgress) => void;
+  readonly onRemoveFont: (familyId: string) => Promise<void>;
 }
 
 export function ReaderScreen({
@@ -94,12 +100,17 @@ export function ReaderScreen({
   pageTurnAnimation,
   pageTurnTuning,
   opened,
+  fontFamilies,
+  loadFontFace,
   onBack,
   onAppearanceChange,
+  onDownloadFont,
+  onImportFont,
   onLayoutChange,
   onPageTurnAnimationChange,
   onPageTurnTuningChange,
   onProgress,
+  onRemoveFont,
 }: ReaderScreenProps) {
   const insets = useSafeAreaInsets();
   const theme = useMemo(
@@ -326,6 +337,8 @@ export function ReaderScreen({
                     navigationTarget ??
                     entry.locator?.position
                   }
+                  fontFamilies={fontFamilies}
+                  loadFontFace={loadFontFace}
                   loadResource={loadResource}
                   onCenterPress={handleCenterPress}
                   onProgress={handleProgress}
@@ -527,10 +540,15 @@ export function ReaderScreen({
       {!turning && controlsVisible && styleVisible ? (
         <ReadingStylePanel
           appearance={appearance}
+          fontFamilies={fontFamilies}
+          hasBookFonts={Object.keys(opened.book.fontFamilies ?? {}).length > 0}
           theme={theme}
           bottom={insets.bottom + 52}
           onChange={onAppearanceChange}
           onClose={() => setStyleVisible(false)}
+          onDownloadFont={onDownloadFont}
+          onImportFont={onImportFont}
+          onRemoveFont={onRemoveFont}
         />
       ) : null}
 

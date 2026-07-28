@@ -62,6 +62,9 @@ importers:
       '@persimmon/epub-import':
         specifier: workspace:*
         version: link:../../packages/epub-import
+      '@persimmon/font-core':
+        specifier: workspace:*
+        version: link:../../packages/font-core
       '@persimmon/reader-skia':
         specifier: workspace:*
         version: link:../../packages/reader-skia
@@ -161,6 +164,8 @@ importers:
       parse5:
         specifier: 8.0.0
         version: 8.0.0
+
+  packages/font-core: {}
 
   packages/layout:
     dependencies:

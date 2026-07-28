@@ -23,16 +23,16 @@ describe("reader pagination style", () => {
       left: 44,
     });
     expect(spec.body).toMatchObject({
-      fontFamilies: ["Noto Sans SC", "Noto Sans Math"],
+      fontFamilies: ["Noto Sans SC", "Noto Serif SC", "Noto Sans Math"],
       fontSize: 24,
       heightMultiplier: 1.8,
     });
     expect(spec.note).toMatchObject({
-      fontFamilies: ["Noto Sans SC", "Noto Sans Math"],
+      fontFamilies: ["Noto Sans SC", "Noto Serif SC", "Noto Sans Math"],
       fontSize: 20.4,
     });
     expect(spec.headings[1]).toMatchObject({
-      fontFamilies: ["Noto Sans SC", "Noto Sans Math"],
+      fontFamilies: ["Noto Sans SC", "Noto Serif SC", "Noto Sans Math"],
       fontSize: 40.8,
     });
     expect(spec.paragraphGap).toBeCloseTo(28.8);

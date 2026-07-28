@@ -53,6 +53,9 @@ export function manifestFromImport(
     sourceName,
     addedAt,
     assets: result.book.assets,
+    ...(result.book.fontFamilies
+      ? { fontFamilies: result.book.fontFamilies }
+      : {}),
     ...(result.book.coverAssetId
       ? { coverAssetId: result.book.coverAssetId }
       : {}),
@@ -77,6 +80,7 @@ export function bookFromManifest(
     ...(manifest.language ? { language: manifest.language } : {}),
     sections,
     assets: manifest.assets,
+    ...(manifest.fontFamilies ? { fontFamilies: manifest.fontFamilies } : {}),
     ...(manifest.coverAssetId ? { coverAssetId: manifest.coverAssetId } : {}),
     ...(manifest.navigation ? { navigation: manifest.navigation } : {}),
   };
