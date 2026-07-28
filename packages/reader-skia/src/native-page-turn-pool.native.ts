@@ -33,6 +33,7 @@ import type {
   NativePageTurnPoolOptions,
   NativeProgrammaticPageTurnCommand,
 } from "./native-page-turn-pool";
+import { useStableRNDispatcher } from "./use-stable-rn-dispatcher";
 
 function useNativeProgrammaticPageTurnLane(
   width: number,
@@ -222,6 +223,8 @@ export function useNativePageTurnPool({
   onStarted,
   onOutcome,
 }: NativePageTurnPoolOptions): NativePageTurnPool {
+  const dispatchStarted = useStableRNDispatcher(onStarted);
+  const dispatchOutcome = useStableRNDispatcher(onOutcome);
   const frame0 = useNativeProgrammaticPageTurnLane(
     width,
     height,
@@ -229,8 +232,8 @@ export function useNativePageTurnPool({
     automaticTuning,
     gestureTuning,
     commands[0],
-    onStarted,
-    onOutcome,
+    dispatchStarted,
+    dispatchOutcome,
   );
   const frame1 = useNativeProgrammaticPageTurnLane(
     width,
@@ -239,8 +242,8 @@ export function useNativePageTurnPool({
     automaticTuning,
     gestureTuning,
     commands[1],
-    onStarted,
-    onOutcome,
+    dispatchStarted,
+    dispatchOutcome,
   );
   const frame2 = useNativeProgrammaticPageTurnLane(
     width,
@@ -249,8 +252,8 @@ export function useNativePageTurnPool({
     automaticTuning,
     gestureTuning,
     commands[2],
-    onStarted,
-    onOutcome,
+    dispatchStarted,
+    dispatchOutcome,
   );
   const frame3 = useNativeProgrammaticPageTurnLane(
     width,
@@ -259,8 +262,8 @@ export function useNativePageTurnPool({
     automaticTuning,
     gestureTuning,
     commands[3],
-    onStarted,
-    onOutcome,
+    dispatchStarted,
+    dispatchOutcome,
   );
   const frame4 = useNativeProgrammaticPageTurnLane(
     width,
@@ -269,8 +272,8 @@ export function useNativePageTurnPool({
     automaticTuning,
     gestureTuning,
     commands[4],
-    onStarted,
-    onOutcome,
+    dispatchStarted,
+    dispatchOutcome,
   );
   const frame5 = useNativeProgrammaticPageTurnLane(
     width,
@@ -279,8 +282,8 @@ export function useNativePageTurnPool({
     automaticTuning,
     gestureTuning,
     commands[5],
-    onStarted,
-    onOutcome,
+    dispatchStarted,
+    dispatchOutcome,
   );
   const frame6 = useNativeProgrammaticPageTurnLane(
     width,
@@ -289,8 +292,8 @@ export function useNativePageTurnPool({
     automaticTuning,
     gestureTuning,
     commands[6],
-    onStarted,
-    onOutcome,
+    dispatchStarted,
+    dispatchOutcome,
   );
   const frame7 = useNativeProgrammaticPageTurnLane(
     width,
@@ -299,8 +302,8 @@ export function useNativePageTurnPool({
     automaticTuning,
     gestureTuning,
     commands[7],
-    onStarted,
-    onOutcome,
+    dispatchStarted,
+    dispatchOutcome,
   );
   return {
     frames: [frame0, frame1, frame2, frame3, frame4, frame5, frame6, frame7],

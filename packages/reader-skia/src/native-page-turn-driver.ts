@@ -34,6 +34,7 @@ import {
   gestureTuningForCore,
   type GesturePageTurnTuning,
 } from "./gesture-page-turn-tuning";
+import { useStableRNDispatcher } from "./use-stable-rn-dispatcher";
 
 export interface NativePageTurnCommand {
   readonly id: string;
@@ -179,6 +180,11 @@ export function useNativePageTurnDriver({
   onTapTurn,
   onOutcome,
 }: NativePageTurnDriverOptions): NativePageTurnDriver {
+  const dispatchCenterTap = useStableRNDispatcher(onCenterTap);
+  const dispatchGestureBegin = useStableRNDispatcher(onGestureBegin);
+  const dispatchGestureRelease = useStableRNDispatcher(onGestureRelease);
+  const dispatchTapTurn = useStableRNDispatcher(onTapTurn);
+  const dispatchOutcome = useStableRNDispatcher(onOutcome);
   const onePhysicalPixel = 1 / Math.max(1, PixelRatio.get());
   const coreTuning = useMemo(() => gestureTuningForCore(tuning), [tuning]);
   const state = useSharedValue(createPageTurnWorkletState(coreTuning));
@@ -244,7 +250,7 @@ export function useNativePageTurnDriver({
         !current.outcomeNotified
       ) {
         current.outcomeNotified = true;
-        scheduleOnRN(onOutcome, current.outcome);
+        scheduleOnRN(dispatchOutcome, current.outcome);
       }
       return current;
     }, true);
@@ -381,7 +387,7 @@ export function useNativePageTurnDriver({
               probe.lastTime = workletTimeSeconds();
               return probe;
             });
-            scheduleOnRN(onGestureBegin, direction);
+            scheduleOnRN(dispatchGestureBegin, direction);
           } else {
             gestureRequestHandled.value = true;
             const startLocalX = event.x - event.translationX;
@@ -473,7 +479,7 @@ export function useNativePageTurnDriver({
         const releasedAtSeconds = workletTimeSeconds();
         const probe = gestureProbe.value;
         if (probe.mode === 2) {
-          scheduleOnRN(onGestureRelease, {
+          scheduleOnRN(dispatchGestureRelease, {
             direction: probe.direction,
             interactive: false,
             startBookX: probe.startBookX,
@@ -516,7 +522,7 @@ export function useNativePageTurnDriver({
           const outcome = endPageTurnWorkletDrag(current, releasedAtSeconds);
           updatePageTurnNativeSharedFrame(current, frame);
           if (interactiveProbe && outcome > 0) {
-            scheduleOnRN(onGestureRelease, {
+            scheduleOnRN(dispatchGestureRelease, {
               direction: interactiveProbe.direction,
               interactive: true,
               startBookX: interactiveProbe.startBookX,
@@ -553,7 +559,7 @@ export function useNativePageTurnDriver({
           updatePageTurnNativeSharedFrame(current, frame);
           if (!current.outcomeNotified) {
             current.outcomeNotified = true;
-            scheduleOnRN(onOutcome, current.outcome);
+            scheduleOnRN(dispatchOutcome, current.outcome);
           }
           return current;
         }, true);
@@ -568,11 +574,11 @@ export function useNativePageTurnDriver({
           return;
         }
         if (event.x <= width * 0.24 && canTurnBackward) {
-          scheduleOnRN(onTapTurn, -1);
+          scheduleOnRN(dispatchTapTurn, -1);
         } else if (event.x >= width * 0.76 && canTurnForward) {
-          scheduleOnRN(onTapTurn, 1);
+          scheduleOnRN(dispatchTapTurn, 1);
         } else if (state.value.phase === PAGE_TURN_WORKLET_IDLE) {
-          scheduleOnRN(onCenterTap);
+          scheduleOnRN(dispatchCenterTap);
         }
       });
     return Gesture.Race(pan, tap);
@@ -587,11 +593,11 @@ export function useNativePageTurnDriver({
     gestureTarget,
     gesturesEnabled,
     height,
-    onCenterTap,
-    onGestureBegin,
-    onGestureRelease,
-    onOutcome,
-    onTapTurn,
+    dispatchCenterTap,
+    dispatchGestureBegin,
+    dispatchGestureRelease,
+    dispatchOutcome,
+    dispatchTapTurn,
     onePhysicalPixel,
     physicalPageWidth,
     spread,

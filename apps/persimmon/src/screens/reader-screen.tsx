@@ -309,7 +309,7 @@ export function ReaderScreen({
             >
               <AsyncSkia>
                 <ReaderSurface
-                  key={`${opened.book.revisionId}:${navigationGeneration}:${theme.colorScheme}`}
+                  key={`${opened.book.revisionId}:${navigationGeneration}`}
                   book={opened.book}
                   width={readerFrame.width}
                   height={readerFrame.height}
