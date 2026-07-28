@@ -47,6 +47,31 @@ const book: BookIR = {
 const document = createTextSelectionDocument(book);
 
 describe("text selection document", () => {
+  it("builds the whole-book index only when selection first needs it", () => {
+    let blocksRead = 0;
+    const sourceSection = book.sections[0]!;
+    const lazyBook: BookIR = {
+      ...book,
+      sections: [
+        {
+          ...sourceSection,
+          get blocks() {
+            blocksRead += 1;
+            return sourceSection.blocks;
+          },
+        },
+      ],
+    };
+
+    const lazyDocument = createTextSelectionDocument(lazyBook);
+    expect(blocksRead).toBe(0);
+
+    expect(lazyDocument.entryByKey.size).toBe(2);
+    expect(blocksRead).toBe(1);
+    expect(lazyDocument.entries).toHaveLength(2);
+    expect(blocksRead).toBe(1);
+  });
+
   it("orders positions and normalizes crossed handles", () => {
     const selection = {
       anchor: { sectionId: "section-1", blockId: "block-2", offset: 4 },

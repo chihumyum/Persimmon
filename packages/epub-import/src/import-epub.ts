@@ -965,6 +965,10 @@ class SectionCompiler {
     string,
     NoteKind | undefined
   >();
+  private readonly elementStyles = new WeakMap<
+    ContentElement,
+    EpubElementStyle | null
+  >();
   private blockCounter = 0;
 
   constructor(
@@ -1030,17 +1034,24 @@ class SectionCompiler {
   }
 
   private styleFor(element: ContentElement): EpubElementStyle | undefined {
+    const cached = this.elementStyles.get(element);
+    if (cached !== undefined) {
+      return cached ?? undefined;
+    }
     const style = styleForContentElement(element, this.styleSheet);
     if (!style?.fontFamily) {
+      this.elementStyles.set(element, style ?? null);
       return style;
     }
     const bookFontFamilyId = this.fontFamilyIdsByCssName.get(
       normalizeCssFontFamily(style.fontFamily),
     );
-    return {
+    const resolvedStyle = {
       ...style,
       ...(bookFontFamilyId ? { bookFontFamilyId } : {}),
     };
+    this.elementStyles.set(element, resolvedStyle);
+    return resolvedStyle;
   }
 
   private contextForElement(

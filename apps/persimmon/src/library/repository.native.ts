@@ -26,6 +26,11 @@ import {
   type SaveProgressOptions,
   type StoredBookManifest,
 } from "./types";
+import {
+  NATIVE_SECTION_SNAPSHOT_FILE,
+  parseNativeSectionSnapshot,
+  serializeNativeSectionSnapshot,
+} from "./native-section-snapshot";
 
 const LEGACY_LIBRARY_KEY = "@persimmon/library/v1";
 const LEGACY_MIGRATION_KEY = "@persimmon/library/v2/legacy-migrated";
@@ -78,15 +83,26 @@ function parseManifest(serialized: string): StoredBookManifest | undefined {
 }
 
 class NativeBookSource implements BookSource {
+  private readonly sectionIndexById: ReadonlyMap<string, number>;
+  private sectionSnapshotPromise?: Promise<readonly SectionIR[] | undefined>;
+
   constructor(
     private readonly directory: Directory,
     readonly manifest: StoredBookManifest,
-  ) {}
+  ) {
+    this.sectionIndexById = new Map(
+      manifest.sectionIds.map((sectionId, index) => [sectionId, index]),
+    );
+  }
 
   async getSection(sectionId: string): Promise<SectionIR | undefined> {
-    const index = this.manifest.sectionIds.indexOf(sectionId);
-    if (index === -1) {
+    const index = this.sectionIndexById.get(sectionId);
+    if (index === undefined) {
       return undefined;
+    }
+    const snapshot = await this.getSectionSnapshot();
+    if (snapshot) {
+      return snapshot[index];
     }
     const file = new File(this.directory, "sections", sectionFileName(index));
     if (!file.exists) {
@@ -97,6 +113,37 @@ class NativeBookSource implements BookSource {
     } catch {
       return undefined;
     }
+  }
+
+  async getSections(): Promise<readonly SectionIR[] | undefined> {
+    const snapshot = await this.getSectionSnapshot();
+    if (snapshot) {
+      return snapshot;
+    }
+    const sections = await Promise.all(
+      this.manifest.sectionIds.map((sectionId) => this.getSection(sectionId)),
+    );
+    return sections.some((section) => !section)
+      ? undefined
+      : (sections as SectionIR[]);
+  }
+
+  async hasValidSectionSnapshot(): Promise<boolean> {
+    return (await this.getSectionSnapshot()) !== undefined;
+  }
+
+  private getSectionSnapshot(): Promise<readonly SectionIR[] | undefined> {
+    this.sectionSnapshotPromise ??= (async () => {
+      const file = new File(this.directory, NATIVE_SECTION_SNAPSHOT_FILE);
+      if (!file.exists) {
+        return undefined;
+      }
+      return parseNativeSectionSnapshot(
+        await file.text(),
+        this.manifest.sectionIds,
+      );
+    })();
+    return this.sectionSnapshotPromise;
   }
 
   async getResource(assetId: string): Promise<Uint8Array | undefined> {
@@ -200,8 +247,8 @@ class NativeLibraryRepository implements LibraryRepository {
     }
 
     const contentDigest = await sha256Hex(input.bytes);
-    const result = importEpub(input.bytes, { contentDigest });
-    const existing = this.manifests.get(result.book.id);
+    const bookId = `epub:${contentDigest}`;
+    const existing = this.manifests.get(bookId);
     if (
       existing?.status === "ready" &&
       existing.compilerVersion === EPUB_COMPILER_VERSION
@@ -209,6 +256,8 @@ class NativeLibraryRepository implements LibraryRepository {
       const progress = await this.readProgress(existing);
       return summaryFromManifest(existing, progress);
     }
+
+    const result = importEpub(input.bytes, { contentDigest });
 
     const manifest = manifestFromImport(
       result,
@@ -223,17 +272,13 @@ class NativeLibraryRepository implements LibraryRepository {
     stage.create();
 
     try {
-      const sections = new Directory(stage, "sections");
       const resources = new Directory(stage, "resources");
-      sections.create();
       resources.create();
 
       new File(stage, "original.epub").write(input.bytes);
-      result.book.sections.forEach((section, index) => {
-        new File(sections, sectionFileName(index)).write(
-          JSON.stringify(section),
-        );
-      });
+      new File(stage, NATIVE_SECTION_SNAPSHOT_FILE).write(
+        serializeNativeSectionSnapshot(result.book.sections),
+      );
       for (const [assetId, bytes] of Object.entries(result.resources)) {
         new File(resources, `${storageName(assetId)}.bin`).write(bytes);
       }
@@ -293,17 +338,26 @@ class NativeLibraryRepository implements LibraryRepository {
     }
 
     const source = new NativeBookSource(this.bookDirectory(bookId), manifest);
-    const sections = await Promise.all(
-      manifest.sectionIds.map((sectionId) => source.getSection(sectionId)),
-    );
-    if (sections.some((section) => !section)) {
+    const sections = await source.getSections();
+    if (!sections) {
       throw new LibraryError(
         "corrupt-storage",
         "书籍章节数据不完整，请删除后重新导入。",
       );
     }
+    if (!(await source.hasValidSectionSnapshot())) {
+      try {
+        new File(
+          this.bookDirectory(bookId),
+          NATIVE_SECTION_SNAPSHOT_FILE,
+        ).write(serializeNativeSectionSnapshot(sections));
+      } catch {
+        // The legacy per-section files remain authoritative if cache migration
+        // cannot be persisted, for example when the device is low on space.
+      }
+    }
     return {
-      book: bookFromManifest(manifest, sections as SectionIR[]),
+      book: bookFromManifest(manifest, sections),
       source,
     };
   }
@@ -515,14 +569,19 @@ class NativeLibraryRepository implements LibraryRepository {
       );
     }
 
-    expected.sectionIds.forEach((_, index) => {
-      if (!new File(directory, "sections", sectionFileName(index)).exists) {
-        throw new LibraryError(
-          "corrupt-storage",
-          "暂存书籍缺少章节，导入已取消。",
-        );
-      }
-    });
+    const sectionSnapshot = new File(directory, NATIVE_SECTION_SNAPSHOT_FILE);
+    const storedSections = sectionSnapshot.exists
+      ? parseNativeSectionSnapshot(
+          sectionSnapshot.textSync(),
+          expected.sectionIds,
+        )
+      : undefined;
+    if (!storedSections) {
+      throw new LibraryError(
+        "corrupt-storage",
+        "暂存书籍缺少章节，导入已取消。",
+      );
+    }
     const requiredResourceIds = [
       ...Object.keys(expected.assets),
       ...Object.values(expected.fontFamilies ?? {}).flatMap((family) =>

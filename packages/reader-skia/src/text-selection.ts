@@ -108,26 +108,45 @@ function blockKey(sectionId: string, blockId: string): string {
 export function createTextSelectionDocument(
   book: BookIR,
 ): TextSelectionDocument {
-  const entries: TextBlockEntry[] = [];
-  const entryByKey = new Map<string, TextBlockEntry>();
-
-  for (const section of book.sections) {
-    for (const block of section.blocks) {
-      if (!isTextBlock(block)) {
-        continue;
+  let built:
+    | {
+        readonly entries: readonly TextBlockEntry[];
+        readonly entryByKey: ReadonlyMap<string, TextBlockEntry>;
       }
-      const entry = {
-        sectionId: section.id,
-        blockId: block.id,
-        block,
-        ordinal: entries.length,
-      };
-      entries.push(entry);
-      entryByKey.set(blockKey(section.id, block.id), entry);
+    | undefined;
+  const build = () => {
+    if (built) {
+      return built;
     }
-  }
+    const entries: TextBlockEntry[] = [];
+    const entryByKey = new Map<string, TextBlockEntry>();
+    for (const section of book.sections) {
+      for (const block of section.blocks) {
+        if (!isTextBlock(block)) {
+          continue;
+        }
+        const entry = {
+          sectionId: section.id,
+          blockId: block.id,
+          block,
+          ordinal: entries.length,
+        };
+        entries.push(entry);
+        entryByKey.set(blockKey(section.id, block.id), entry);
+      }
+    }
+    built = { entries, entryByKey };
+    return built;
+  };
 
-  return { entries, entryByKey };
+  return {
+    get entries() {
+      return build().entries;
+    },
+    get entryByKey() {
+      return build().entryByKey;
+    },
+  };
 }
 
 function entryFor(

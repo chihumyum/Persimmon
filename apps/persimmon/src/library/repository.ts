@@ -186,8 +186,8 @@ class IndexedDbLibraryRepository implements LibraryRepository {
   ): Promise<LibraryBookSummary> {
     const database = this.requireDatabase();
     const contentDigest = await sha256Hex(input.bytes);
-    const result = await compileEpubInWorker(input.bytes, contentDigest);
-    const existing = await database.get("books", result.book.id);
+    const bookId = `epub:${contentDigest}`;
+    const existing = await database.get("books", bookId);
     if (
       existing?.status === "ready" &&
       existing.compilerVersion === EPUB_COMPILER_VERSION
@@ -198,6 +198,7 @@ class IndexedDbLibraryRepository implements LibraryRepository {
       );
       return summaryFromManifest(existing, progress);
     }
+    const result = await compileEpubInWorker(input.bytes, contentDigest);
 
     const manifest = manifestFromImport(
       result,

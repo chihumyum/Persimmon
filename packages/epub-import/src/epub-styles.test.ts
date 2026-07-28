@@ -57,6 +57,24 @@ describe("safe EPUB style cascade", () => {
     });
   });
 
+  it("compiles the final simple selector without changing cascade behavior", () => {
+    const sheet = parseEpubStyleSheet([
+      `
+        section > p.lead.featured:hover { text-align: center }
+        p#opening.lead { font-weight: bold }
+        p[data-kind="lead"] { display: none }
+      `,
+    ]);
+    const element = firstBodyChild(
+      '<p id="opening" class="lead featured">Text</p>',
+    );
+
+    expect(styleForContentElement(element, sheet)).toEqual({
+      textAlign: "center",
+      fontWeight: 700,
+    });
+  });
+
   it("extracts font faces and keeps only the first explicit CSS family", () => {
     const sheet = parseEpubStyleSheet([
       {

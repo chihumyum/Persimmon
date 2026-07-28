@@ -27,7 +27,10 @@ export interface LegacyLibraryMigration {
 }
 
 export async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digestInput = Uint8Array.from(bytes);
+  const digestInput: Uint8Array<ArrayBuffer> =
+    bytes.buffer instanceof ArrayBuffer
+      ? new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+      : Uint8Array.from(bytes);
   const result = new Uint8Array(
     await digest(CryptoDigestAlgorithm.SHA256, digestInput),
   );

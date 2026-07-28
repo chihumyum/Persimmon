@@ -15,9 +15,22 @@ interface StyleValue {
 
 interface CssRule {
   readonly selector: string;
+  readonly compiledSelector: CompiledSimpleSelector | undefined;
   readonly specificity: number;
   readonly order: number;
   readonly declarations: ReadonlyMap<string, StyleValue>;
+}
+
+interface CompiledSimpleSelector {
+  readonly tag: string | undefined;
+  readonly ids: readonly string[];
+  readonly classes: readonly string[];
+}
+
+interface SelectorElement {
+  readonly name: string;
+  readonly id: string | undefined;
+  readonly classes: ReadonlySet<string>;
 }
 
 export interface EpubStyleSheet {
@@ -90,6 +103,7 @@ export function parseEpubStyleSheet(
         }
         rules.push({
           selector: normalizedSelector,
+          compiledSelector: compileSimpleSelector(normalizedSelector),
           specificity: selectorSpecificity(normalizedSelector),
           order: order++,
           declarations,
@@ -109,8 +123,18 @@ export function styleForContentElement(
     string,
     StyleValue & { specificity: number; order: number }
   >();
+  const selectorElement: SelectorElement = {
+    name: element.name,
+    id: contentAttribute(element, "id"),
+    classes: new Set(
+      (contentAttribute(element, "class") ?? "").split(/\s+/).filter(Boolean),
+    ),
+  };
   for (const rule of styleSheet.rules) {
-    if (!matchesSelector(element, rule.selector)) {
+    if (
+      !rule.compiledSelector ||
+      !matchesSelector(selectorElement, rule.compiledSelector)
+    ) {
       continue;
     }
     applyDeclarations(winners, rule.declarations, rule.specificity, rule.order);
@@ -343,29 +367,40 @@ function selectorSpecificity(selector: string): number {
   return ids * 100 + classes * 10 + tags;
 }
 
-function matchesSelector(element: ContentElement, selector: string): boolean {
+function compileSimpleSelector(
+  selector: string,
+): CompiledSimpleSelector | undefined {
   const simple = selector.trim().split(/\s+|>/).filter(Boolean).at(-1);
   if (!simple || simple.includes("[") || simple.includes("+")) {
-    return false;
+    return undefined;
   }
   const withoutPseudo = simple.replace(/::?[\w()-]+/g, "");
-  const tag = withoutPseudo.match(/^([a-z][\w-]*|\*)/i)?.[1];
-  if (tag && tag !== "*" && tag.toLowerCase() !== element.name) {
+  const rawTag = withoutPseudo.match(/^([a-z][\w-]*|\*)/i)?.[1];
+  return {
+    tag: rawTag && rawTag !== "*" ? rawTag.toLowerCase() : undefined,
+    ids: [...withoutPseudo.matchAll(/#([\w-]+)/g)].map((match) => match[1]!),
+    classes: [...withoutPseudo.matchAll(/\.([\w-]+)/g)].map(
+      (match) => match[1]!,
+    ),
+  };
+}
+
+function matchesSelector(
+  element: SelectorElement,
+  selector: CompiledSimpleSelector,
+): boolean {
+  if (selector.tag && selector.tag !== element.name) {
     return false;
   }
 
-  const id = contentAttribute(element, "id");
-  for (const requiredId of withoutPseudo.matchAll(/#([\w-]+)/g)) {
-    if (id !== requiredId[1]) {
+  for (const requiredId of selector.ids) {
+    if (element.id !== requiredId) {
       return false;
     }
   }
 
-  const classes = new Set(
-    (contentAttribute(element, "class") ?? "").split(/\s+/).filter(Boolean),
-  );
-  for (const requiredClass of withoutPseudo.matchAll(/\.([\w-]+)/g)) {
-    if (!classes.has(requiredClass[1]!)) {
+  for (const requiredClass of selector.classes) {
+    if (!element.classes.has(requiredClass)) {
       return false;
     }
   }
