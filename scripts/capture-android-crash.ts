@@ -95,6 +95,29 @@ function assertAppInstalled(adb: string): void {
   }
 }
 
+function resolveLauncherActivity(adb: string): string {
+  const result = runAdb(adb, [
+    "shell",
+    "cmd",
+    "package",
+    "resolve-activity",
+    "--brief",
+    "-c",
+    "android.intent.category.LAUNCHER",
+    APP_ID,
+  ]);
+  const component = result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.startsWith(`${APP_ID}/`));
+  if (result.status !== 0 || component === undefined) {
+    throw new Error(
+      result.stderr.trim() || `Unable to resolve ${APP_ID} launcher activity.`,
+    );
+  }
+  return component;
+}
+
 function timestamp(): string {
   return new Date().toISOString().replaceAll(":", "-").replaceAll(".", "-");
 }
@@ -129,18 +152,21 @@ async function captureLogcat(
     output.write(chunk);
   });
 
+  const launcherActivity = resolveLauncherActivity(adb);
   const launchResult = runAdb(adb, [
     "shell",
-    "monkey",
-    "-p",
-    APP_ID,
-    "-c",
-    "android.intent.category.LAUNCHER",
-    "1",
+    "am",
+    "start",
+    "-W",
+    "-n",
+    launcherActivity,
   ]);
   if (launchResult.status !== 0) {
     logcat.kill();
-    output.end();
+    await new Promise<void>((resolve) => {
+      logcat.once("close", () => resolve());
+    });
+    await new Promise<void>((resolve) => output.end(resolve));
     throw new Error(
       launchResult.stderr.trim() || `Unable to launch ${APP_ID}.`,
     );
