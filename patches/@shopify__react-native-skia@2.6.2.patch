@@ -978,7 +978,7 @@ new file mode 100644
 index 0000000000000000000000000000000000000000..a84b859dbaad9ae47088ce02532ddb82916ee81b
 --- /dev/null
 +++ b/cpp/rnskia/RNSkPagerCompositor.h
-@@ -0,0 +1,2125 @@
+@@ -0,0 +1,2216 @@
 +#pragma once
 +
 +#include <algorithm>
@@ -1173,6 +1173,8 @@ index 0000000000000000000000000000000000000000..a84b859dbaad9ae47088ce02532ddb82
 +      _currentPageKey = std::move(pageKey);
 +      _preferredDirection = 1;
 +      _nextLaunchSteadyMs = 0;
++      _lastDirectInputSteadyMs = 0;
++      _directInputIntervalEstimateMs = 0;
 +      _benchmarkRemaining = 0;
 +    }
 +    _requestRedraw();
@@ -1269,8 +1271,8 @@ index 0000000000000000000000000000000000000000..a84b859dbaad9ae47088ce02532ddb82
 +      if (!_inputEnabled || _currentPageKey.empty()) {
 +        return false;
 +      }
-+      accepted =
-+          consumeStockLocked(direction, steadyNowMs(), epochNowMs());
++      accepted = consumeStockLocked(
++          direction, steadyNowMs(), epochNowMs(), true);
 +    }
 +    if (accepted) {
 +      _requestRedraw();
@@ -1465,6 +1467,8 @@ index 0000000000000000000000000000000000000000..a84b859dbaad9ae47088ce02532ddb82
 +      _currentPageKey.clear();
 +      _preferredDirection = 1;
 +      _nextLaunchSteadyMs = 0;
++      _lastDirectInputSteadyMs = 0;
++      _directInputIntervalEstimateMs = 0;
 +      _benchmarkRemaining = 0;
 +    }
 +  }
@@ -1587,10 +1591,14 @@ index 0000000000000000000000000000000000000000..a84b859dbaad9ae47088ce02532ddb82
 +  // page textures on a 1680x2520 device.
 +  static constexpr size_t kMaximumPreparedPageCount = 8;
 +  static constexpr double kMinimumDurationMs = 72.0;
-+  // Keep rapid turns alive long enough to bridge a late RN delivery batch.
-+  // Starts still follow the native 100 ms cadence, so this overlaps at most
-+  // three full-resolution GPU pages without changing isolated-tap duration.
++  // A 100 ms input cadence retains the established 260 ms burst model.
++  // Faster direct taps shorten the lifetime proportionally so roughly 2.6
++  // sheets remain visible, without changing an isolated turn's motion.
 +  static constexpr double kBurstDurationMs = 260.0;
++  static constexpr double kDirectInputBurstResetMs = 320.0;
++  static constexpr double kDirectInputDurationPerInterval = 2.6;
++  static constexpr double kDirectInputLaunchLatencyBudgetMs = 24.0;
++  static constexpr double kDirectInputIntervalRecovery = 0.25;
 +  static constexpr double kMaximumDurationMs = 900.0;
 +  static constexpr float kPi = 3.14159265358979323846f;
 +  static constexpr float kMinimumPressedEdgeX = 0.035f;
@@ -1666,10 +1674,12 @@ index 0000000000000000000000000000000000000000..a84b859dbaad9ae47088ce02532ddb82
 +    bool commitOnComplete = true;
 +    bool weakGrip = false;
 +    bool hasPreviousProfile = false;
++    bool directInput = false;
 +    MotionPhase motionPhase = MotionPhase::Automatic;
 +    MotionTuning tuning = {0.72f, 1.5f, 2.2f, 6.75f};
 +    SkColor paperColor = SK_ColorWHITE;
 +    double notBeforeSteadyMs = 0;
++    double requestedAtSteadyMs = 0;
 +    double startedAtSteadyMs = 0;
 +    double durationMs = kBurstDurationMs;
 +    float baseProgress = 0;
@@ -2502,8 +2512,54 @@ index 0000000000000000000000000000000000000000..a84b859dbaad9ae47088ce02532ddb82
 +    return page->image;
 +  }
 +
++  double directInputDurationLocked(double nowSteadyMs,
++                                   double stockDurationMs) {
++    if (_lastDirectInputSteadyMs <= 0 ||
++        nowSteadyMs - _lastDirectInputSteadyMs >
++            kDirectInputBurstResetMs) {
++      _lastDirectInputSteadyMs = nowSteadyMs;
++      _directInputIntervalEstimateMs = 0;
++      return stockDurationMs;
++    }
++
++    const double inputIntervalMs =
++        std::max(1.0, nowSteadyMs - _lastDirectInputSteadyMs);
++    double previousLaunchLatencyMs = 0;
++    const auto previous = std::find_if(
++        _turns.rbegin(), _turns.rend(),
++        [](const Turn &turn) { return turn.directInput; });
++    if (previous != _turns.rend()) {
++      previousLaunchLatencyMs =
++          previous->started
++              ? std::max(0.0, previous->startedAtSteadyMs -
++                                  previous->requestedAtSteadyMs)
++              : std::max(0.0, nowSteadyMs -
++                                  previous->requestedAtSteadyMs);
++    }
++    const double launchDebtMs = std::max(
++        0.0, previousLaunchLatencyMs -
++                 kDirectInputLaunchLatencyBudgetMs);
++    const double intervalSampleMs =
++        std::max(1.0, inputIntervalMs - launchDebtMs);
++    if (_directInputIntervalEstimateMs <= 0 ||
++        intervalSampleMs < _directInputIntervalEstimateMs) {
++      _directInputIntervalEstimateMs = intervalSampleMs;
++    } else {
++      _directInputIntervalEstimateMs +=
++          (intervalSampleMs - _directInputIntervalEstimateMs) *
++          kDirectInputIntervalRecovery;
++    }
++    _lastDirectInputSteadyMs = nowSteadyMs;
++    return std::clamp(
++        _directInputIntervalEstimateMs *
++            kDirectInputDurationPerInterval,
++        kMinimumDurationMs,
++        std::min(stockDurationMs, kBurstDurationMs));
++  }
++
 +  bool consumeStockLocked(int direction, double nowSteadyMs,
-+                          double nowEpochMs) {
++                          double nowEpochMs,
++                          bool directInput = false) {
 +    const int normalizedDirection = direction < 0 ? -1 : 1;
 +    const auto stock = std::find_if(
 +        _stock.begin(), _stock.end(),
@@ -2519,7 +2575,22 @@ index 0000000000000000000000000000000000000000..a84b859dbaad9ae47088ce02532ddb82
 +    }
 +
 +    const bool burst = !_turns.empty();
-+    if (burst) {
++    const double directDurationMs =
++        directInput
++            ? directInputDurationLocked(nowSteadyMs, stock->durationMs)
++            : stock->durationMs;
++    if (directInput) {
++      if (directDurationMs < stock->durationMs) {
++        compressActiveTurnsLocked(
++            nowSteadyMs, directDurationMs, 1.0);
++      }
++      for (auto &pending : _turns) {
++        if (!pending.interactive && !pending.started &&
++            !pending.completed) {
++          pending.notBeforeSteadyMs = nowSteadyMs;
++        }
++      }
++    } else if (burst) {
 +      compressActiveTurnsLocked(nowSteadyMs);
 +    }
 +    Turn turn;
@@ -2540,17 +2611,28 @@ index 0000000000000000000000000000000000000000..a84b859dbaad9ae47088ce02532ddb82
 +    turn.direction = normalizedDirection;
 +    turn.spread = false;
 +    turn.tuning = _automaticTuning;
-+    if (_turns.empty() &&
++    turn.directInput = directInput;
++    turn.requestedAtSteadyMs = nowSteadyMs;
++    if (directInput) {
++      turn.notBeforeSteadyMs = nowSteadyMs;
++      _nextLaunchSteadyMs = nowSteadyMs;
++    } else if (
++        _turns.empty() &&
 +        nowSteadyMs > _nextLaunchSteadyMs + stock->launchIntervalMs) {
 +      _nextLaunchSteadyMs = nowSteadyMs;
 +    }
-+    turn.notBeforeSteadyMs =
-+        std::max(nowSteadyMs, _nextLaunchSteadyMs);
-+    _nextLaunchSteadyMs =
-+        turn.notBeforeSteadyMs + stock->launchIntervalMs;
-+    turn.durationMs =
-+        burst ? std::min(stock->durationMs, kBurstDurationMs)
-+              : stock->durationMs;
++    if (!directInput) {
++      turn.notBeforeSteadyMs =
++          std::max(nowSteadyMs, _nextLaunchSteadyMs);
++      _nextLaunchSteadyMs =
++          turn.notBeforeSteadyMs + stock->launchIntervalMs;
++    }
++    turn.durationMs = directInput
++                          ? directDurationMs
++                          : (burst
++                                 ? std::min(stock->durationMs,
++                                            kBurstDurationMs)
++                                 : stock->durationMs);
 +    turn.paperColor = stock->paperColor;
 +    _preferredDirection = normalizedDirection;
 +    _currentPageKey = stock->toPageKey;
@@ -2864,12 +2946,19 @@ index 0000000000000000000000000000000000000000..a84b859dbaad9ae47088ce02532ddb82
 +#endif
 +  }
 +
-+  void compressActiveTurnsLocked(double nowSteadyMs) {
++  void compressActiveTurnsLocked(
++      double nowSteadyMs,
++      double targetDurationMs = kBurstDurationMs,
++      double minimumRemainingMs = kMinimumDurationMs) {
++    const double boundedDurationMs =
++        std::clamp(targetDurationMs, kMinimumDurationMs,
++                   kBurstDurationMs);
 +    for (auto &turn : _turns) {
 +      if (turn.interactive) {
 +        continue;
 +      }
-+      turn.durationMs = std::min(turn.durationMs, kBurstDurationMs);
++      turn.durationMs =
++          std::min(turn.durationMs, boundedDurationMs);
 +      if (!turn.started || turn.completed) {
 +        continue;
 +      }
@@ -2878,8 +2967,8 @@ index 0000000000000000000000000000000000000000..a84b859dbaad9ae47088ce02532ddb82
 +      turn.baseProgress = currentProgress;
 +      turn.startedAtSteadyMs = nowSteadyMs;
 +      turn.durationMs =
-+          std::max(kMinimumDurationMs,
-+                   kBurstDurationMs * (1.0 - currentProgress));
++          std::max(minimumRemainingMs,
++                   boundedDurationMs * (1.0 - currentProgress));
 +    }
 +  }
 +
@@ -3093,6 +3182,8 @@ index 0000000000000000000000000000000000000000..a84b859dbaad9ae47088ce02532ddb82
 +  uint64_t _pageTextureUsageCounter = 0;
 +  uint64_t _preloadUsageCounter = 0;
 +  double _nextLaunchSteadyMs = 0;
++  double _lastDirectInputSteadyMs = 0;
++  double _directInputIntervalEstimateMs = 0;
 +  int _benchmarkRemaining = 0;
 +  int _benchmarkDirection = 1;
 +  int _preferredDirection = 1;
