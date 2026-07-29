@@ -14,6 +14,20 @@ export function nativePagerPageKey(address: PageAddress): string {
 }
 
 /**
+ * Resolves the stationary page underneath a native page curl.
+ *
+ * Forward turns peel the current page away and reveal the destination.
+ * Backward turns unfold the destination over the still-visible current page.
+ */
+export function nativePagerBackgroundAddress(
+  from: PageAddress,
+  to: PageAddress,
+  direction: 1 | -1,
+): PageAddress {
+  return direction === 1 ? to : from;
+}
+
+/**
  * Keeps the asynchronous RN reconciliation table aligned with the native
  * compositor's distance-based stock eviction.
  *

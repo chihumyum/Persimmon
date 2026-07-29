@@ -180,6 +180,7 @@ import {
 } from "./native-pager-compositor";
 import {
   buildNativePagerStockPlan,
+  nativePagerBackgroundAddress,
   nativePagerPageKey,
   trimNativePagerReconciliationEntries,
 } from "./native-pager-stock";
@@ -3465,7 +3466,12 @@ function LazyReaderEngine({
           currentSlots,
           targetSlots,
         ).front;
-        const backgroundMetadata = targetSlots[0];
+        const backgroundAddress = nativePagerBackgroundAddress(
+          edge.from,
+          edge.to,
+          edge.direction,
+        );
+        const backgroundMetadata = captureSlotsForView(backgroundAddress)[0];
         if (!frontMetadata || !backgroundMetadata) {
           continue;
         }

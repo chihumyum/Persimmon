@@ -849,7 +849,7 @@ new file mode 100644
 index 0000000000000000000000000000000000000000..96fe6c4b378b73b9e676b2daae116a8456b5c0a9
 --- /dev/null
 +++ b/cpp/rnskia/RNSkPagerCompositor.h
-@@ -0,0 +1,1327 @@
+@@ -0,0 +1,1332 @@
 +#pragma once
 +
 +#include <algorithm>
@@ -1050,10 +1050,15 @@ index 0000000000000000000000000000000000000000..96fe6c4b378b73b9e676b2daae116a84
 +      const int normalizedDirection = direction < 0 ? -1 : 1;
 +      const std::string frontPageKey =
 +          normalizedDirection > 0 ? fromPageKey : toPageKey;
++      // Forward curls reveal the destination. Backward curls unfold the
++      // destination over the current page, which must remain stationary
++      // underneath until the incoming sheet covers it.
++      const std::string backgroundPageKey =
++          normalizedDirection > 0 ? toPageKey : fromPageKey;
 +      const std::string frontTextureKey =
 +          pageTextureKey(contentRevision, frontPageKey);
 +      const std::string backgroundTextureKey =
-+          pageTextureKey(contentRevision, toPageKey);
++          pageTextureKey(contentRevision, backgroundPageKey);
 +      stockPageTextureLocked(frontTextureKey, frontPicture, pixelWidth,
 +                             pixelHeight);
 +      stockPageTextureLocked(backgroundTextureKey, backgroundPicture, pixelWidth,

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildNativePagerStockPlan,
+  nativePagerBackgroundAddress,
   nativePagerPageKey,
   trimNativePagerReconciliationEntries,
 } from "./native-pager-stock";
@@ -17,6 +18,14 @@ function adjacentFor(pageCount: number) {
 }
 
 describe("native pager picture stock", () => {
+  it("keeps the current page underneath a backward curl", () => {
+    expect(nativePagerBackgroundAddress(page(5), page(4), -1)).toEqual(page(5));
+  });
+
+  it("reveals the destination underneath a forward curl", () => {
+    expect(nativePagerBackgroundAddress(page(5), page(6), 1)).toEqual(page(6));
+  });
+
   it("evicts distant reconciliation records before old reverse runway", () => {
     const entries = new Map(
       Array.from({ length: 130 }, (_, index) => [`edge:${index}`, index]),
