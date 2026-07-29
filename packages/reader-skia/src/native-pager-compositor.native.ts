@@ -4,6 +4,9 @@ import type {
   NativePagerCanvasHandle,
   NativePagerEventRecord,
   NativePagerGestureRelease,
+  NativePagerGestureStart,
+  NativePagerGestureUpdate,
+  NativePagerMotionConfig,
   NativePagerPictureTurnCommand,
   NativePagerStockPictureCommand,
   NativePagerTurnCommand,
@@ -53,13 +56,30 @@ interface NativePagerSkiaViewApi {
     paperColor: number,
   ) => void;
   pagerSetInputEnabled?: (nativeId: number, enabled: boolean) => void;
+  pagerConfigureMotion?: (
+    nativeId: number,
+    automaticReleaseX: number,
+    automaticLiftVelocity: number,
+    automaticLiftToLeft: number,
+    automaticCurvatureRelaxation: number,
+    gestureReleaseX: number,
+    gestureLiftVelocity: number,
+    gestureLiftToLeft: number,
+    gestureCurvatureRelaxation: number,
+  ) => void;
   pagerConsumeInput?: (nativeId: number, direction: 1 | -1) => boolean;
   pagerBeginGesture?: (
     nativeId: number,
     direction: 1 | -1,
-    initialProgress: number,
+    startBookX: number,
+    fingerX: number,
+    turnProgress: number,
   ) => boolean;
-  pagerUpdateGesture?: (nativeId: number, progress: number) => boolean;
+  pagerUpdateGesture?: (
+    nativeId: number,
+    fingerX: number,
+    turnProgress: number,
+  ) => boolean;
   pagerEndGesture?: (
     nativeId: number,
     fingerX: number,
@@ -108,6 +128,7 @@ export function nativePagerCompositorAvailable(): boolean {
     typeof api.pagerSetAnchor === "function" &&
     typeof api.pagerStockPicture === "function" &&
     typeof api.pagerSetInputEnabled === "function" &&
+    typeof api.pagerConfigureMotion === "function" &&
     typeof api.pagerConsumeInput === "function" &&
     typeof api.pagerBeginGesture === "function" &&
     typeof api.pagerUpdateGesture === "function" &&
@@ -252,6 +273,32 @@ export function configureNativePagerInput(
   }
 }
 
+export function configureNativePagerMotion(
+  canvas: NativePagerCanvasHandle | null,
+  config: NativePagerMotionConfig,
+): boolean {
+  const api = pagerApi();
+  if (!canvas || typeof api?.pagerConfigureMotion !== "function") {
+    return false;
+  }
+  try {
+    api.pagerConfigureMotion(
+      canvas.getNativeId(),
+      config.automatic.releaseX,
+      config.automatic.liftVelocity,
+      config.automatic.liftToLeft,
+      config.automatic.curvatureRelaxation,
+      config.gesture.releaseX,
+      config.gesture.liftVelocity,
+      config.gesture.liftToLeft,
+      config.gesture.curvatureRelaxation,
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function consumeNativePagerInputOnUI(
   nativeId: number,
   direction: 1 | -1,
@@ -266,15 +313,16 @@ export function consumeNativePagerInputOnUI(
 
 export function beginNativePagerGestureOnUI(
   nativeId: number,
-  direction: 1 | -1,
-  initialProgress: number,
+  start: NativePagerGestureStart,
 ): boolean | undefined {
   "worklet";
   try {
     return nativePagerWorkletApi?.pagerBeginGesture?.(
       nativeId,
-      direction,
-      initialProgress,
+      start.direction,
+      start.startBookX,
+      start.fingerX,
+      start.turnProgress,
     );
   } catch {
     return undefined;
@@ -283,11 +331,15 @@ export function beginNativePagerGestureOnUI(
 
 export function updateNativePagerGestureOnUI(
   nativeId: number,
-  progress: number,
+  update: NativePagerGestureUpdate,
 ): boolean | undefined {
   "worklet";
   try {
-    return nativePagerWorkletApi?.pagerUpdateGesture?.(nativeId, progress);
+    return nativePagerWorkletApi?.pagerUpdateGesture?.(
+      nativeId,
+      update.fingerX,
+      update.turnProgress,
+    );
   } catch {
     return undefined;
   }

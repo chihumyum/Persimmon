@@ -1,3 +1,6 @@
+diff --git a/android/README.md b/android/README.md
+deleted file mode 100644
+index ac2fbda377ad1213c02f090138f48054e5660547..0000000000000000000000000000000000000000
 diff --git a/android/cpp/rnskia-android/RNSkAndroidView.h b/android/cpp/rnskia-android/RNSkAndroidView.h
 index e0533bf5d93051f50d3292b42a2d05c41d6c4ce8..119845ab8728401b3ace5ec422c1bd2651631f15 100644
 --- a/android/cpp/rnskia-android/RNSkAndroidView.h
@@ -25,7 +28,7 @@ index e0533bf5d93051f50d3292b42a2d05c41d6c4ce8..119845ab8728401b3ace5ec422c1bd26
 
    float getPixelDensity() override {
 diff --git a/android/cpp/rnskia-android/RNSkOpenGLCanvasProvider.cpp b/android/cpp/rnskia-android/RNSkOpenGLCanvasProvider.cpp
-index e8e4c0314b7a11600827b5ccd4924c337fd59833..394003141b517dc91ac121daf6526c4486c8e8dd 100644
+index e8e4c0314b7a11600827b5ccd4924c337fd59833..bc0d6f5ad0922f5bfba842a397bdd3245a1b39f2 100644
 --- a/android/cpp/rnskia-android/RNSkOpenGLCanvasProvider.cpp
 +++ b/android/cpp/rnskia-android/RNSkOpenGLCanvasProvider.cpp
 @@ -1,9 +1,19 @@
@@ -518,7 +521,7 @@ index aad94429344434bd0b4c3a78e3bcff15fb0d27ce..f796c0afcac504055f1f8946c9a9a8ed
    size_t getMemoryPressure() const override { return 2048; }
 
 diff --git a/cpp/rnskia/RNSkJsiViewApi.h b/cpp/rnskia/RNSkJsiViewApi.h
-index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..2ea4293a56a9179b6eb2e174526b7b4d60cdadec 100644
+index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..054941b265b18eaf3cd0dccf92314e1676836dd3 100644
 --- a/cpp/rnskia/RNSkJsiViewApi.h
 +++ b/cpp/rnskia/RNSkJsiViewApi.h
 @@ -10,6 +10,7 @@
@@ -529,7 +532,7 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..2ea4293a56a9179b6eb2e174526b7b4d
  #include "RNSkPictureView.h"
  #include "RNSkPlatformContext.h"
  #include "RNSkView.h"
-@@ -268,11 +269,403 @@ public:
+@@ -268,11 +269,439 @@ public:
      return sizeObj;
    }
 
@@ -730,6 +733,36 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..2ea4293a56a9179b6eb2e174526b7b4d
 +    return jsi::Value::undefined();
 +  }
 +
++  JSI_HOST_FUNCTION(pagerConfigureMotion) {
++    if (count != 9) {
++      _platformContext->raiseError(
++          std::string(
++              "pagerConfigureMotion: Expected 9 numeric arguments, got " +
++              std::to_string(count) + "."));
++      return jsi::Value::undefined();
++    }
++    for (size_t index = 0; index < count; index += 1) {
++      if (!arguments[index].isNumber()) {
++        _platformContext->raiseError(
++            "pagerConfigureMotion: All arguments must be numeric.");
++        return jsi::Value::undefined();
++      }
++    }
++    const int nativeId = arguments[0].asNumber();
++    auto view = ViewRegistry::getInstance().withViewInfo(
++        nativeId,
++        [](std::shared_ptr<RNSkViewInfo> info) { return info->view; });
++    auto pictureView = std::dynamic_pointer_cast<RNSkPictureView>(view);
++    if (pictureView != nullptr) {
++      pictureView->configurePagerMotion(
++          arguments[1].asNumber(), arguments[2].asNumber(),
++          arguments[3].asNumber(), arguments[4].asNumber(),
++          arguments[5].asNumber(), arguments[6].asNumber(),
++          arguments[7].asNumber(), arguments[8].asNumber());
++    }
++    return jsi::Value::undefined();
++  }
++
 +  JSI_HOST_FUNCTION(pagerConsumeInput) {
 +    if (count != 2 || !arguments[0].isNumber() ||
 +        !arguments[1].isNumber()) {
@@ -750,10 +783,12 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..2ea4293a56a9179b6eb2e174526b7b4d
 +  }
 +
 +  JSI_HOST_FUNCTION(pagerBeginGesture) {
-+    if (count != 3 || !arguments[0].isNumber() ||
-+        !arguments[1].isNumber() || !arguments[2].isNumber()) {
++    if (count != 5 || !arguments[0].isNumber() ||
++        !arguments[1].isNumber() || !arguments[2].isNumber() ||
++        !arguments[3].isNumber() || !arguments[4].isNumber()) {
 +      _platformContext->raiseError(
-+          "pagerBeginGesture: Expected native id, direction, progress.");
++          "pagerBeginGesture: Expected native id, direction, start x, "
++          "finger x, and turn progress.");
 +      return jsi::Value(false);
 +    }
 +    const int nativeId = arguments[0].asNumber();
@@ -765,14 +800,15 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..2ea4293a56a9179b6eb2e174526b7b4d
 +      return jsi::Value(false);
 +    }
 +    return jsi::Value(pictureView->beginPagerGesture(
-+        arguments[1].asNumber(), arguments[2].asNumber()));
++        arguments[1].asNumber(), arguments[2].asNumber(),
++        arguments[3].asNumber(), arguments[4].asNumber()));
 +  }
 +
 +  JSI_HOST_FUNCTION(pagerUpdateGesture) {
-+    if (count != 2 || !arguments[0].isNumber() ||
-+        !arguments[1].isNumber()) {
++    if (count != 3 || !arguments[0].isNumber() ||
++        !arguments[1].isNumber() || !arguments[2].isNumber()) {
 +      _platformContext->raiseError(
-+          "pagerUpdateGesture: Expected native id and progress.");
++          "pagerUpdateGesture: Expected native id, finger x, and progress.");
 +      return jsi::Value(false);
 +    }
 +    const int nativeId = arguments[0].asNumber();
@@ -784,7 +820,8 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..2ea4293a56a9179b6eb2e174526b7b4d
 +      return jsi::Value(false);
 +    }
 +    return jsi::Value(
-+        pictureView->updatePagerGesture(arguments[1].asNumber()));
++        pictureView->updatePagerGesture(
++            arguments[1].asNumber(), arguments[2].asNumber()));
 +  }
 +
 +  JSI_HOST_FUNCTION(pagerEndGesture) {
@@ -918,6 +955,8 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..2ea4293a56a9179b6eb2e174526b7b4d
 +                       JSI_EXPORT_FUNC(RNSkJsiViewApi,
 +                                       pagerSetInputEnabled),
 +                       JSI_EXPORT_FUNC(RNSkJsiViewApi,
++                                       pagerConfigureMotion),
++                       JSI_EXPORT_FUNC(RNSkJsiViewApi,
 +                                       pagerConsumeInput),
 +                       JSI_EXPORT_FUNC(RNSkJsiViewApi,
 +                                       pagerBeginGesture),
@@ -936,10 +975,10 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..2ea4293a56a9179b6eb2e174526b7b4d
     * Constructor
 diff --git a/cpp/rnskia/RNSkPagerCompositor.h b/cpp/rnskia/RNSkPagerCompositor.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..39e9470d92d548aaebdc0ed7b8d51cbb06b84bfb
+index 0000000000000000000000000000000000000000..a84b859dbaad9ae47088ce02532ddb82916ee81b
 --- /dev/null
 +++ b/cpp/rnskia/RNSkPagerCompositor.h
-@@ -0,0 +1,1562 @@
+@@ -0,0 +1,2125 @@
 +#pragma once
 +
 +#include <algorithm>
@@ -1003,8 +1042,21 @@ index 0000000000000000000000000000000000000000..39e9470d92d548aaebdc0ed7b8d51cbb
 +    int direction = 0;
 +  };
 +
++  struct MotionTuning {
++    float releaseX;
++    float liftVelocity;
++    float liftToLeft;
++    float curvatureRelaxation;
++  };
++
 +  explicit RNSkPagerCompositor(std::function<void()> requestRedraw)
 +      : _requestRedraw(std::move(requestRedraw)) {}
++
++  void configureMotion(MotionTuning automatic, MotionTuning gesture) {
++    std::lock_guard<std::mutex> lock(_mutex);
++    _automaticTuning = clampMotionTuning(automatic);
++    _gestureTuning = clampMotionTuning(gesture);
++  }
 +
 +  void preload(sk_sp<SkImage> image) {
 +    if (image == nullptr) {
@@ -1043,6 +1095,7 @@ index 0000000000000000000000000000000000000000..39e9470d92d548aaebdc0ed7b8d51cbb
 +      turn.backImage = std::move(backImage);
 +      turn.direction = direction < 0 ? -1 : 1;
 +      turn.spread = spread;
++      turn.tuning = _automaticTuning;
 +      const double requestedNotBeforeSteadyMs =
 +          nowSteadyMs + std::max(0.0, startAtEpochMs - nowEpochMs);
 +      const double cadenceMs = std::clamp(launchIntervalMs, 1.0, 1000.0);
@@ -1089,6 +1142,7 @@ index 0000000000000000000000000000000000000000..39e9470d92d548aaebdc0ed7b8d51cbb
 +      turn.pixelHeight = pixelHeight;
 +      turn.direction = direction < 0 ? -1 : 1;
 +      turn.spread = spread;
++      turn.tuning = _automaticTuning;
 +      const double requestedNotBeforeSteadyMs =
 +          nowSteadyMs + std::max(0.0, startAtEpochMs - nowEpochMs);
 +      const double cadenceMs = std::clamp(launchIntervalMs, 1.0, 1000.0);
@@ -1162,6 +1216,11 @@ index 0000000000000000000000000000000000000000..39e9470d92d548aaebdc0ed7b8d51cbb
 +      if (existing != _stock.end()) {
 +        if (existing->id == id) {
 +          existing->lastUsed = ++_stockUsageCounter;
++          existing->durationMs =
++              std::clamp(durationMs, kMinimumDurationMs, kMaximumDurationMs);
++          existing->launchIntervalMs =
++              std::clamp(launchIntervalMs, 1.0, 1000.0);
++          existing->paperColor = paperColor;
 +          return;
 +        }
 +        _stock.erase(existing);
@@ -1219,7 +1278,8 @@ index 0000000000000000000000000000000000000000..39e9470d92d548aaebdc0ed7b8d51cbb
 +    return accepted;
 +  }
 +
-+  bool beginGesture(int direction, float initialProgress) {
++  bool beginGesture(int direction, float startBookX, float fingerX,
++                    float turnProgress) {
 +    bool accepted = false;
 +    {
 +      std::lock_guard<std::mutex> lock(_mutex);
@@ -1281,7 +1341,12 @@ index 0000000000000000000000000000000000000000..39e9470d92d548aaebdc0ed7b8d51cbb
 +      turn.spread = false;
 +      turn.started = true;
 +      turn.interactive = true;
-+      turn.gestureProgress = std::clamp(initialProgress, 0.0f, 1.0f);
++      turn.motionPhase = MotionPhase::GestureDrag;
++      turn.tuning = _gestureTuning;
++      turn.startBookX = std::clamp(startBookX, 0.0f, 1.0f);
++      turn.weakGrip =
++          turn.startBookX < kFullGestureStartMinimumX;
++      updateGestureStateLocked(turn, fingerX, turnProgress);
 +      turn.paperColor = stock->paperColor;
 +      turn.startedAtSteadyMs = nowSteadyMs;
 +      _preferredDirection = normalizedDirection;
@@ -1296,7 +1361,7 @@ index 0000000000000000000000000000000000000000..39e9470d92d548aaebdc0ed7b8d51cbb
 +    return accepted;
 +  }
 +
-+  bool updateGesture(float progress) {
++  bool updateGesture(float fingerX, float turnProgress) {
 +    bool accepted = false;
 +    {
 +      std::lock_guard<std::mutex> lock(_mutex);
@@ -1304,7 +1369,7 @@ index 0000000000000000000000000000000000000000..39e9470d92d548aaebdc0ed7b8d51cbb
 +      if (turn == _turns.end() || turn->settling) {
 +        return false;
 +      }
-+      turn->gestureProgress = std::clamp(progress, 0.0f, 1.0f);
++      updateGestureStateLocked(*turn, fingerX, turnProgress);
 +      accepted = true;
 +    }
 +    if (accepted) {
@@ -1325,6 +1390,7 @@ index 0000000000000000000000000000000000000000..39e9470d92d548aaebdc0ed7b8d51cbb
 +      if (turn == _turns.end() || turn->settling) {
 +        return false;
 +      }
++      updateGestureStateLocked(*turn, fingerX, turn->gestureProgress);
 +      const float safeCommitEdge =
 +          std::clamp(slowCommitEdgeX, -0.5f, 0.95f);
 +      const float distance = std::clamp(
@@ -1339,8 +1405,10 @@ index 0000000000000000000000000000000000000000..39e9470d92d548aaebdc0ed7b8d51cbb
 +          (distance + velocity + acceleration) /
 +          std::clamp(pageWeight, 0.5f, 1.8f);
 +      const bool commit =
-+          score >= std::clamp(commitThreshold, 0.4f, 1.2f) - 1e-6f;
-+      settleGestureLocked(
++          turn->direction < 0 ||
++          (!turn->weakGrip &&
++           score >= std::clamp(commitThreshold, 0.4f, 1.2f) - 1e-6f);
++      releaseGestureLocked(
 +          *turn, commit, throwVelocity, minimumSpeedScale,
 +          maximumSpeedScale, velocityGain, steadyNowMs(), epochNowMs());
 +      accepted = true;
@@ -1359,8 +1427,12 @@ index 0000000000000000000000000000000000000000..39e9470d92d548aaebdc0ed7b8d51cbb
 +      if (turn == _turns.end() || turn->settling) {
 +        return false;
 +      }
-+      settleGestureLocked(*turn, false, 0.0f, 1.0f, 1.0f, 0.0f,
-+                           steadyNowMs(), epochNowMs());
++      const double nowEpochMs = epochNowMs();
++      _events.push_back(
++          {turn->id, "gesture-released", nowEpochMs, turn->direction});
++      _events.push_back(
++          {turn->id, "cancelled", nowEpochMs, turn->direction});
++      turn->completed = true;
 +      accepted = true;
 +    }
 +    if (accepted) {
@@ -1441,25 +1513,36 @@ index 0000000000000000000000000000000000000000..39e9470d92d548aaebdc0ed7b8d51cbb
 +        if (!turn.started) {
 +          continue;
 +        }
++        if (turn.completed) {
++          continue;
++        }
 +
-+        const float progress =
-+            progressForTurnLocked(turn, nowSteadyMs);
-+        const bool settleFinished =
-+            turn.interactive && turn.settling &&
-+            nowSteadyMs >= turn.settleStartedAtSteadyMs +
-+                               turn.settleDurationMs;
-+        if ((!turn.interactive && progress >= 1.0f) || settleFinished) {
++        const MotionSample sample =
++            sampleMotion(turn, nowSteadyMs);
++        if (sample.completed) {
 +          _events.push_back(
 +              {turn.id, turn.commitOnComplete ? "completed" : "cancelled",
 +               nowEpochMs, turn.direction});
 +          turn.completed = true;
 +          continue;
 +        }
-+        renderTurns.push_back(
-+            {preparedImageLocked(turn.frontImageId, turn.frontImage),
-+             preparedImageLocked(turn.backImageId, turn.backImage),
-+             turn.backgroundImage, turn.direction, turn.spread,
-+             turn.paperColor, progress});
++        RenderTurn renderTurn = {
++            preparedImageLocked(turn.frontImageId, turn.frontImage),
++            preparedImageLocked(turn.backImageId, turn.backImage),
++            turn.backgroundImage,
++            turn.direction,
++            turn.spread,
++            turn.paperColor,
++            {},
++            0,
++            0,
++            0,
++            0,
++            0,
++        };
++        buildRenderProfileLocked(
++            turn, sample.shape, nowSteadyMs, renderTurn);
++        renderTurns.push_back(std::move(renderTurn));
 +      }
 +
 +      _turns.erase(
@@ -1510,6 +1593,55 @@ index 0000000000000000000000000000000000000000..39e9470d92d548aaebdc0ed7b8d51cbb
 +  static constexpr double kBurstDurationMs = 260.0;
 +  static constexpr double kMaximumDurationMs = 900.0;
 +  static constexpr float kPi = 3.14159265358979323846f;
++  static constexpr float kMinimumPressedEdgeX = 0.035f;
++  static constexpr float kMaximumProfileBendAmplitude =
++      2.3382951135873746f;
++  static constexpr float kPressedSurfaceClearance = 0.015f;
++  static constexpr float kMaximumPressedRollTilt =
++      kPi - kMaximumProfileBendAmplitude - kPressedSurfaceClearance;
++  static constexpr float kPressedHingeTiltDistance =
++      0.27513626075612096f;
++  static constexpr float kSlowCommitEdgeX =
++      kMinimumPressedEdgeX - kPressedHingeTiltDistance;
++  static constexpr float kGestureLiftStartX = 0.5f;
++  static constexpr float kFullGestureStartMinimumX = 0.25f;
++  static constexpr float kWeakGripMaximumCompression = 0.04f;
++  static constexpr float kWeakGripCompressionPerPage = 0.2f;
++  static constexpr float kAutomaticPressDurationSeconds = 0.12f;
++  static constexpr float kIncomingSettleDurationSeconds = 0.52f;
++  static constexpr float kPropagationSpeedScale = 1.15f;
++  static constexpr float kSettlingPageStartProgress = 0.3f;
++  static constexpr float kMinimumRevertInitialSpeed = 0.65f;
++  static constexpr float kMaximumRevertInitialSpeed = 6.3f;
++  static constexpr float kRevertEaseOutInitialSlope = 3.0f;
++
++  enum class MotionPhase {
++    Automatic,
++    GestureDrag,
++    GestureTurn,
++    GestureSettle,
++    GestureRevert,
++  };
++
++  struct ProfileShape {
++    float rotation = 0;
++    float bendAmplitude = 0;
++    float curvatureUniformity = 0;
++    float landedLength = 0;
++  };
++
++  struct MotionSample {
++    ProfileShape shape;
++    float lifecycleProgress = 0;
++    bool completed = false;
++  };
++
++  struct PhysicalPoint {
++    float x = 0;
++    float depth = 0;
++    float normalX = 0;
++    float normalZ = 1;
++  };
 +
 +  struct Turn {
 +    std::string id;
@@ -1532,16 +1664,30 @@ index 0000000000000000000000000000000000000000..39e9470d92d548aaebdc0ed7b8d51cbb
 +    bool interactive = false;
 +    bool settling = false;
 +    bool commitOnComplete = true;
++    bool weakGrip = false;
++    bool hasPreviousProfile = false;
++    MotionPhase motionPhase = MotionPhase::Automatic;
++    MotionTuning tuning = {0.72f, 1.5f, 2.2f, 6.75f};
 +    SkColor paperColor = SK_ColorWHITE;
 +    double notBeforeSteadyMs = 0;
 +    double startedAtSteadyMs = 0;
 +    double durationMs = kBurstDurationMs;
 +    float baseProgress = 0;
 +    float gestureProgress = 0;
-+    float settleStartProgress = 0;
-+    float settleTargetProgress = 0;
++    float startBookX = 1;
++    float gestureFingerX = 1;
++    float pressedEdgeX = 1;
++    float heldRollTilt = 0;
++    float dragTurnProgress = 0;
++    float driveStartX = 1;
++    float driveStartProgress = 0;
++    float driveStartRotation = 0;
++    float driveSpeedScale = 1;
++    float previousCurvature = 0;
 +    double settleStartedAtSteadyMs = 0;
 +    double settleDurationMs = kMinimumDurationMs;
++    double previousProfileAtSteadyMs = 0;
++    std::array<PhysicalPoint, kProfilePointCount> previousProfile = {};
 +  };
 +
 +  struct RenderTurn {
@@ -1551,15 +1697,13 @@ index 0000000000000000000000000000000000000000..39e9470d92d548aaebdc0ed7b8d51cbb
 +    int direction;
 +    bool spread;
 +    SkColor paperColor;
-+    float progress;
++    std::array<PhysicalPoint, kProfilePointCount> profile;
++    float minimumX;
++    float maximumX;
++    float shadowCenter;
++    float shadowWidth;
++    float shadowStrength;
 +  };
-+
-+  struct ProfilePoint {
-+    float x;
-+    float depth;
-+    float tangentX;
-+  };
-+
 +  struct PreloadedImage {
 +    uint32_t sourceId;
 +    sk_sp<SkImage> source;
@@ -1635,33 +1779,286 @@ index 0000000000000000000000000000000000000000..39e9470d92d548aaebdc0ed7b8d51cbb
 +    return std::to_string(contentRevision) + "@" + pageKey;
 +  }
 +
-+  static float smoothProgress(float progress) {
-+    const float clamped = std::clamp(progress, 0.0f, 1.0f);
-+    return clamped * clamped * (3.0f - 2.0f * clamped);
++  static MotionTuning clampMotionTuning(MotionTuning tuning) {
++    return {
++        std::clamp(tuning.releaseX, 0.58f, 0.8f),
++        std::clamp(tuning.liftVelocity, 0.7f, 1.8f),
++        std::clamp(tuning.liftToLeft, 1.4f, 2.6f),
++        std::clamp(tuning.curvatureRelaxation, 3.5f, 14.0f),
++    };
 +  }
 +
-+  static float progressForTurnLocked(const Turn &turn, double nowSteadyMs) {
-+    if (turn.interactive) {
-+      if (!turn.settling) {
-+        return std::clamp(turn.gestureProgress, 0.0f, 1.0f);
-+      }
-+      const float settleProgress = static_cast<float>(
-+          std::max(0.0, nowSteadyMs - turn.settleStartedAtSteadyMs) /
-+          std::max(1.0, turn.settleDurationMs));
-+      const float settleFraction =
-+          std::clamp(settleProgress, 0.0f, 1.0f);
-+      return std::clamp(
-+          turn.settleStartProgress +
-+              (turn.settleTargetProgress - turn.settleStartProgress) *
-+                  settleFraction,
-+          0.0f, 1.0f);
++  static float bendAmplitudeForChord(float chord) {
++    if (chord >= 0.999999f) {
++      return 0;
 +    }
-+    const double elapsed = std::max(0.0, nowSteadyMs - turn.startedAtSteadyMs);
++    constexpr std::array<double, 11> coefficients = {
++        2.1667709839070377,
++        -0.18629174453685354,
++        0.02265270180455248,
++        -0.0037165828681793253,
++        0.0007038952663799921,
++        -0.00014500246546194032,
++        0.000031566578791633,
++        -0.000007135535298704449,
++        0.0000016623788064225635,
++        -0.0000003841457726910674,
++        0.00000009309814723863693,
++    };
++    const double safeChord =
++        std::clamp(static_cast<double>(chord),
++                   static_cast<double>(kMinimumPressedEdgeX), 0.999999);
++    const double x =
++        (2.0 * (safeChord - kMinimumPressedEdgeX)) /
++            (1.0 - kMinimumPressedEdgeX) -
++        1.0;
++    double beforePrevious = 0;
++    double previous = 0;
++    for (int index = static_cast<int>(coefficients.size()) - 1;
++         index >= 1; index -= 1) {
++      const double current =
++          2.0 * x * previous - beforePrevious + coefficients[index];
++      beforePrevious = previous;
++      previous = current;
++    }
++    const double normalized =
++        x * previous - beforePrevious + coefficients[0];
++    return static_cast<float>(
++        normalized * std::sqrt(std::max(0.0, 1.0 - safeChord)));
++  }
++
++  static float pressedRollCompleteness(float edgeX) {
++    const float safeEdge =
++        std::clamp(edgeX, kMinimumPressedEdgeX, 1.0f);
++    if (safeEdge >= 0.999999f) {
++      return 0;
++    }
++    return std::clamp(
++        bendAmplitudeForChord(safeEdge) /
++            bendAmplitudeForChord(kMinimumPressedEdgeX),
++        0.0f, 1.0f);
++  }
++
++  static float turnLandingStart(float rootTangent) {
++    const float swing =
++        std::clamp((kPi - rootTangent) / kPi, 0.0f, 1.0f);
++    return swing / (swing + 1.0f);
++  }
++
++  static ProfileShape pressedShape(float edgeX, float rotation) {
++    return {
++        std::clamp(rotation, 0.0f, kMaximumPressedRollTilt),
++        bendAmplitudeForChord(
++            std::clamp(edgeX, kMinimumPressedEdgeX, 1.0f)),
++        0,
++        0,
++    };
++  }
++
++  static ProfileShape turnShape(float progress, float startX,
++                                float startRotation,
++                                float curvatureRelaxation) {
++    const float safeProgress = std::clamp(progress, 0.0f, 1.0f);
++    const float startAmplitude = bendAmplitudeForChord(
++        std::clamp(startX, kMinimumPressedEdgeX, 1.0f));
++    const float rootTangent = startRotation + startAmplitude;
++    const float landingStart = turnLandingStart(rootTangent);
++    const bool landing = safeProgress > landingStart;
++    const float landedLength =
++        landing ? (safeProgress - landingStart) / (1.0f - landingStart)
++                : 0.0f;
++    const float remaining = std::clamp(1.0f - landedLength, 0.0f, 1.0f);
++    const float relaxation =
++        std::clamp(curvatureRelaxation, 3.5f, 14.0f);
++    const float curlRetention =
++        std::pow(remaining, 1.0f + relaxation / 14.0f);
++    const float bendAmplitude = startAmplitude * curlRetention;
++    const float swungRotation =
++        landingStart > 0
++            ? startRotation +
++                  (kPi - rootTangent) * (safeProgress / landingStart)
++            : kPi - bendAmplitude;
++    return {
++        landing ? kPi - bendAmplitude : swungRotation,
++        bendAmplitude,
++        1.0f - curlRetention * curlRetention * curlRetention,
++        landedLength,
++    };
++  }
++
++  static float gestureLiftRotationForFingerX(float fingerX) {
++    if (fingerX < kMinimumPressedEdgeX) {
++      return kMaximumPressedRollTilt;
++    }
++    const float progress = std::clamp(
++        (kGestureLiftStartX - fingerX) /
++            (kGestureLiftStartX - kSlowCommitEdgeX),
++        0.0f, 1.0f);
++    const float eased = 1.0f - (1.0f - progress) * (1.0f - progress);
++    return kMaximumPressedRollTilt * eased;
++  }
++
++  static float postHingeTurnProgress(float fingerX, float startBookX) {
++    return std::clamp(
++        (kMinimumPressedEdgeX - std::clamp(fingerX, -1.0f, 1.0f)) /
++            (kMinimumPressedEdgeX +
++             std::clamp(startBookX, 0.0f, 1.0f)),
++        0.0f, 1.0f);
++  }
++
++  static void updateGestureStateLocked(Turn &turn, float fingerX,
++                                       float turnProgress) {
++    turn.gestureFingerX = std::clamp(fingerX, -1.0f, 1.0f);
++    turn.gestureProgress = std::clamp(turnProgress, 0.0f, 1.0f);
++    if (turn.direction < 0) {
++      return;
++    }
++    if (turn.weakGrip) {
++      const float travel = std::max(0.0f, 1.0f - turn.gestureFingerX);
++      const float compression =
++          std::min(kWeakGripMaximumCompression,
++                   travel * kWeakGripCompressionPerPage);
++      turn.pressedEdgeX = 1.0f - compression;
++      turn.heldRollTilt = 0;
++      turn.dragTurnProgress = 0;
++      return;
++    }
++    turn.pressedEdgeX =
++        std::max(kMinimumPressedEdgeX, turn.gestureFingerX);
++    turn.heldRollTilt =
++        gestureLiftRotationForFingerX(turn.gestureFingerX);
++    turn.dragTurnProgress =
++        postHingeTurnProgress(turn.gestureFingerX, turn.startBookX);
++  }
++
++  static float automaticProgressForTurn(const Turn &turn,
++                                        double nowSteadyMs) {
++    const double elapsed =
++        std::max(0.0, nowSteadyMs - turn.startedAtSteadyMs);
 +    const float remainingProgress =
 +        static_cast<float>(elapsed / std::max(1.0, turn.durationMs));
-+    return std::clamp(turn.baseProgress +
-+                          (1.0f - turn.baseProgress) * remainingProgress,
-+                      0.0f, 1.0f);
++    return std::clamp(
++        turn.baseProgress +
++            (1.0f - turn.baseProgress) * remainingProgress,
++        0.0f, 1.0f);
++  }
++
++  static MotionSample sampleMotion(const Turn &turn, double nowSteadyMs) {
++    if (!turn.interactive) {
++      const float timeline =
++          automaticProgressForTurn(turn, nowSteadyMs);
++      if (turn.direction < 0) {
++        const float eased =
++            1.0f - (1.0f - timeline) * (1.0f - timeline);
++        const float progress =
++            kSettlingPageStartProgress +
++            (1.0f - kSettlingPageStartProgress) * eased;
++        return {
++            turnShape(progress, turn.tuning.releaseX, 0,
++                      turn.tuning.curvatureRelaxation),
++            timeline,
++            timeline >= 1.0f,
++        };
++      }
++      const float propagationSpeed =
++          turn.tuning.liftVelocity * turn.tuning.liftToLeft *
++          kPropagationSpeedScale;
++      const float turnDuration =
++          (turn.tuning.releaseX + 1.0f) /
++          std::max(0.1f, propagationSpeed);
++      const float totalDuration =
++          kAutomaticPressDurationSeconds + turnDuration;
++      const float pressFraction =
++          kAutomaticPressDurationSeconds / totalDuration;
++      if (timeline < pressFraction) {
++        const float pressProgress =
++            timeline / std::max(0.000001f, pressFraction);
++        const float edgeX =
++            1.0f + (turn.tuning.releaseX - 1.0f) * pressProgress;
++        return {pressedShape(edgeX, 0), timeline, false};
++      }
++      const float turnProgress =
++          (timeline - pressFraction) /
++          std::max(0.000001f, 1.0f - pressFraction);
++      return {
++          turnShape(turnProgress, turn.tuning.releaseX, 0,
++                    turn.tuning.curvatureRelaxation),
++          timeline,
++          timeline >= 1.0f,
++      };
++    }
++
++    if (turn.motionPhase == MotionPhase::GestureDrag) {
++      if (turn.direction < 0) {
++        const float progress =
++            kSettlingPageStartProgress +
++            (1.0f - kSettlingPageStartProgress) *
++                turn.gestureProgress;
++        return {
++            turnShape(progress, turn.tuning.releaseX, 0,
++                      turn.tuning.curvatureRelaxation),
++            turn.gestureProgress,
++            false,
++        };
++      }
++      if (turn.dragTurnProgress > 0) {
++        return {
++            turnShape(turn.dragTurnProgress, kMinimumPressedEdgeX,
++                      kMaximumPressedRollTilt,
++                      turn.tuning.curvatureRelaxation),
++            turn.dragTurnProgress,
++            false,
++        };
++      }
++      return {
++          pressedShape(turn.pressedEdgeX, turn.heldRollTilt),
++          0,
++          false,
++      };
++    }
++
++    const float segmentProgress = std::clamp(
++        static_cast<float>(
++            std::max(0.0, nowSteadyMs - turn.settleStartedAtSteadyMs) /
++            std::max(0.001, turn.settleDurationMs)),
++        0.0f, 1.0f);
++    if (turn.motionPhase == MotionPhase::GestureTurn) {
++      const float progress =
++          turn.driveStartProgress +
++          (1.0f - turn.driveStartProgress) * segmentProgress;
++      return {
++          turnShape(progress, turn.driveStartX,
++                    turn.driveStartRotation,
++                    turn.tuning.curvatureRelaxation),
++          progress,
++          segmentProgress >= 1.0f,
++      };
++    }
++    if (turn.motionPhase == MotionPhase::GestureSettle) {
++      const float eased =
++          1.0f - (1.0f - segmentProgress) *
++                      (1.0f - segmentProgress);
++      const float progress =
++          turn.driveStartProgress +
++          (1.0f - turn.driveStartProgress) * eased;
++      return {
++          turnShape(progress, turn.tuning.releaseX, 0,
++                    turn.tuning.curvatureRelaxation),
++          progress,
++          segmentProgress >= 1.0f,
++      };
++    }
++    const float eased =
++        1.0f - std::pow(1.0f - segmentProgress, 3.0f);
++    const float edgeX =
++        turn.driveStartX + (1.0f - turn.driveStartX) * eased;
++    const float rotation =
++        turn.driveStartRotation * (1.0f - eased);
++    return {
++        pressedShape(edgeX, rotation),
++        1.0f - segmentProgress,
++        segmentProgress >= 1.0f,
++    };
 +  }
 +
 +  std::vector<Turn>::iterator activeGestureLocked() {
@@ -1671,44 +2068,276 @@ index 0000000000000000000000000000000000000000..39e9470d92d548aaebdc0ed7b8d51cbb
 +        });
 +  }
 +
-+  void settleGestureLocked(Turn &turn, bool commit, float throwVelocity,
-+                           float minimumSpeedScale, float maximumSpeedScale,
-+                           float velocityGain, double nowSteadyMs,
-+                           double nowEpochMs) {
++  void consumeGestureLocked(Turn &turn, double nowEpochMs) {
++    _currentPageKey = turn.toPageKey;
++    _preferredDirection = turn.direction;
++    _events.push_back(
++        {turn.id, "consumed", nowEpochMs, turn.direction});
++    const auto stock = std::find_if(
++        _stock.begin(), _stock.end(), [&turn](const StockEntry &entry) {
++          return entry.id == turn.id;
++        });
++    if (stock != _stock.end()) {
++      _stock.erase(stock);
++    }
++  }
++
++  void releaseGestureLocked(Turn &turn, bool commit, float throwVelocity,
++                            float minimumSpeedScale,
++                            float maximumSpeedScale, float velocityGain,
++                            double nowSteadyMs, double nowEpochMs) {
 +    turn.settling = true;
 +    turn.commitOnComplete = commit;
-+    turn.settleStartProgress =
-+        std::clamp(turn.gestureProgress, 0.0f, 1.0f);
-+    turn.settleTargetProgress = commit ? 1.0f : 0.0f;
 +    turn.settleStartedAtSteadyMs = nowSteadyMs;
-+    const float safeMinimumSpeed =
-+        std::clamp(minimumSpeedScale, 0.5f, 1.5f);
-+    const float safeMaximumSpeed =
-+        std::clamp(maximumSpeedScale, safeMinimumSpeed, 3.0f);
-+    const float speedScale = std::clamp(
-+        safeMinimumSpeed + std::max(0.0f, throwVelocity) *
-+                               std::clamp(velocityGain, 0.1f, 1.2f),
-+        safeMinimumSpeed, safeMaximumSpeed);
-+    const float remaining =
-+        std::abs(turn.settleTargetProgress - turn.settleStartProgress);
-+    turn.settleDurationMs =
-+        std::clamp(320.0 * std::max(0.08f, remaining) / speedScale,
-+                   kMinimumDurationMs, kBurstDurationMs);
-+    if (commit) {
-+      _currentPageKey = turn.toPageKey;
-+      _preferredDirection = turn.direction;
-+      _events.push_back(
-+          {turn.id, "consumed", nowEpochMs, turn.direction});
-+      const auto stock = std::find_if(
-+          _stock.begin(), _stock.end(), [&turn](const StockEntry &entry) {
-+            return entry.id == turn.id;
-+          });
-+      if (stock != _stock.end()) {
-+        _stock.erase(stock);
-+      }
++    if (turn.direction < 0) {
++      turn.motionPhase = MotionPhase::GestureSettle;
++      turn.commitOnComplete = true;
++      turn.driveStartProgress =
++          kSettlingPageStartProgress +
++          (1.0f - kSettlingPageStartProgress) *
++              turn.gestureProgress;
++      const float remainingRatio =
++          (1.0f - turn.driveStartProgress) /
++          (1.0f - kSettlingPageStartProgress);
++      turn.settleDurationMs =
++          std::max(1000.0 / 60.0,
++                   1000.0 * kIncomingSettleDurationSeconds *
++                       remainingRatio);
++      consumeGestureLocked(turn, nowEpochMs);
++    } else if (commit) {
++      turn.motionPhase = MotionPhase::GestureTurn;
++      turn.driveStartX = turn.pressedEdgeX;
++      turn.driveStartProgress = turn.dragTurnProgress;
++      turn.driveStartRotation = turn.heldRollTilt;
++      const float safeMinimumSpeed =
++          std::clamp(minimumSpeedScale, 0.5f, 1.5f);
++      const float safeMaximumSpeed =
++          std::clamp(maximumSpeedScale, safeMinimumSpeed, 3.0f);
++      turn.driveSpeedScale = std::clamp(
++          safeMinimumSpeed +
++              std::max(0.0f, throwVelocity) *
++                  std::clamp(velocityGain, 0.1f, 1.2f),
++          safeMinimumSpeed, safeMaximumSpeed);
++      const float propagationSpeed =
++          turn.tuning.liftVelocity * turn.tuning.liftToLeft *
++          kPropagationSpeedScale * turn.driveSpeedScale;
++      const float remainingRotationRatio =
++          (kPi - turn.driveStartRotation) / kPi;
++      const float fullDuration =
++          ((turn.driveStartX + 1.0f) * remainingRotationRatio) /
++          std::max(0.1f, propagationSpeed);
++      turn.settleDurationMs =
++          std::max(0.001f,
++                   1000.0f * (1.0f - turn.driveStartProgress) *
++                       fullDuration);
++      consumeGestureLocked(turn, nowEpochMs);
++    } else {
++      turn.motionPhase = MotionPhase::GestureRevert;
++      turn.driveStartX =
++          std::clamp(turn.pressedEdgeX, kMinimumPressedEdgeX, 1.0f);
++      turn.driveStartRotation = turn.heldRollTilt;
++      const float completeness =
++          pressedRollCompleteness(turn.driveStartX);
++      const float distance = std::max(0.0f, 1.0f - turn.driveStartX);
++      const float initialSpeed =
++          kMinimumRevertInitialSpeed +
++          (kMaximumRevertInitialSpeed - kMinimumRevertInitialSpeed) *
++              completeness;
++      turn.settleDurationMs =
++          distance <= 0
++              ? 0.001
++              : 1000.0 * kRevertEaseOutInitialSlope * distance /
++                    initialSpeed;
 +    }
 +    _events.push_back(
 +        {turn.id, "gesture-released", nowEpochMs, turn.direction});
++  }
++
++  static float profileTangentAngle(float material,
++                                   const ProfileShape &shape) {
++    const float airborne = 1.0f - shape.landedLength;
++    if (shape.landedLength > 0 &&
++        (material <= shape.landedLength || airborne <= 0.000000001f)) {
++      return kPi;
++    }
++    const float curl =
++        shape.landedLength > 0
++            ? (material - shape.landedLength) / airborne
++            : material;
++    const float pinned = std::cos(kPi * curl);
++    return shape.rotation +
++           shape.bendAmplitude *
++               (pinned +
++                shape.curvatureUniformity *
++                    (1.0f - 2.0f * curl - pinned));
++  }
++
++  static float smoothstep(float minimum, float maximum, float value) {
++    const float progress =
++        std::clamp((value - minimum) / (maximum - minimum), 0.0f, 1.0f);
++    return progress * progress * (3.0f - 2.0f * progress);
++  }
++
++  static void buildPhysicalProfile(
++      const ProfileShape &shape,
++      std::array<PhysicalPoint, kProfilePointCount> &profile,
++      float &maximumLift) {
++    constexpr int segmentCount = kProfilePointCount - 1;
++    constexpr double quadratureOffset =
++        0.5 / 1.7320508075688772935;
++    constexpr double quadratureWeight =
++        0.5 / static_cast<double>(segmentCount);
++    double x = 0;
++    double depth = 0;
++    maximumLift = 0;
++    profile[0] = {0, 0, 0, 1};
++    for (int segment = 0; segment < segmentCount; segment += 1) {
++      const float firstMaterial = static_cast<float>(
++          (segment + 0.5 - quadratureOffset) / segmentCount);
++      const float secondMaterial = static_cast<float>(
++          (segment + 0.5 + quadratureOffset) / segmentCount);
++      const float firstAngle =
++          profileTangentAngle(firstMaterial, shape);
++      const float secondAngle =
++          profileTangentAngle(secondMaterial, shape);
++      x += (std::cos(firstAngle) + std::cos(secondAngle)) *
++           quadratureWeight;
++      depth += (std::sin(firstAngle) + std::sin(secondAngle)) *
++               quadratureWeight;
++      auto &point = profile[segment + 1];
++      point.x = std::abs(x) < 0.0000000001
++                    ? 0
++                    : static_cast<float>(x);
++      point.depth = std::abs(depth) < 0.0000000001
++                        ? 0
++                        : static_cast<float>(depth);
++      maximumLift = std::max(maximumLift, point.depth);
++    }
++    for (int index = 0; index < kProfilePointCount; index += 1) {
++      const auto &before = profile[std::max(0, index - 1)];
++      const auto &after =
++          profile[std::min(kProfilePointCount - 1, index + 1)];
++      const float tangentX = after.x - before.x;
++      const float tangentDepth = after.depth - before.depth;
++      const float tangentLength =
++          std::max(0.0000001f,
++                   std::hypot(tangentX, tangentDepth));
++      profile[index].normalX = -tangentDepth / tangentLength;
++      profile[index].normalZ = tangentX / tangentLength;
++    }
++  }
++
++  static void buildRenderProfileLocked(
++      Turn &turn, const ProfileShape &shape, double nowSteadyMs,
++      RenderTurn &renderTurn) {
++    std::array<PhysicalPoint, kProfilePointCount> physicalProfile;
++    float maximumLift = 0;
++    buildPhysicalProfile(shape, physicalProfile, maximumLift);
++
++    float meanSpeed = 0;
++    float edgeVelocityX = 0;
++    float flatteningRate = 0;
++    const float deltaSeconds =
++        turn.hasPreviousProfile
++            ? static_cast<float>(
++                  std::max(0.0, nowSteadyMs -
++                                    turn.previousProfileAtSteadyMs) /
++                  1000.0)
++            : 0;
++    if (deltaSeconds > 0.000001f) {
++      for (int index = 0; index < kProfilePointCount; index += 1) {
++        meanSpeed +=
++            std::hypot(
++                physicalProfile[index].x -
++                    turn.previousProfile[index].x,
++                physicalProfile[index].depth -
++                    turn.previousProfile[index].depth) /
++            deltaSeconds;
++      }
++      meanSpeed /= kProfilePointCount;
++      edgeVelocityX =
++          (physicalProfile.back().x -
++           turn.previousProfile.back().x) /
++          deltaSeconds;
++      flatteningRate =
++          std::max(0.0f,
++                   (turn.previousCurvature -
++                    std::abs(shape.bendAmplitude)) /
++                       deltaSeconds);
++    }
++
++    const float cameraBookX = turn.spread ? 0.0f : 0.5f;
++    renderTurn.minimumX = 0;
++    renderTurn.maximumX = 0;
++    for (int index = 0; index < kProfilePointCount; index += 1) {
++      const auto &physical = physicalProfile[index];
++      const float directedX = physical.x * turn.direction;
++      const float visibleDepth = std::max(0.0f, physical.depth);
++      const float perspectiveScale =
++          std::min(1.34f,
++                   4.0f /
++                       std::max(0.001f, 4.0f - visibleDepth));
++      const float projectedX =
++          cameraBookX +
++          (directedX - cameraBookX) * perspectiveScale;
++      renderTurn.profile[index] = {
++          projectedX,
++          physical.depth,
++          physical.normalX * turn.direction,
++          physical.normalZ,
++      };
++      renderTurn.minimumX =
++          std::min(renderTurn.minimumX, projectedX);
++      renderTurn.maximumX =
++          std::max(renderTurn.maximumX, projectedX);
++    }
++
++    const float directedEdgeX =
++        physicalProfile.back().x * turn.direction;
++    const float directedEdgeVelocityX =
++        edgeVelocityX * turn.direction;
++    const float sourceEdgeX = directedEdgeX * turn.direction;
++    const float sourceEdgeVelocityX =
++        directedEdgeVelocityX * turn.direction;
++    const float sourceSilhouette =
++        turn.direction > 0 ? renderTurn.maximumX
++                           : renderTurn.minimumX;
++    const float curl = std::clamp(
++        std::abs(shape.bendAmplitude) /
++            kMaximumProfileBendAmplitude,
++        0.0f, 1.0f);
++    const float flattening =
++        1.0f - std::exp(-flatteningRate / 8.0f);
++    const float outwardPush =
++        1.0f -
++        std::exp(-std::max(0.0f, sourceEdgeVelocityX) / 1.8f);
++    const float leftwardSpeed =
++        std::max(0.0f, -sourceEdgeVelocityX);
++    const float edgePresence =
++        smoothstep(-0.035f, 0.1f, sourceEdgeX);
++    const float leftwardFade =
++        1.0f / (1.0f + leftwardSpeed * 0.14f);
++    const float flatteningCompression =
++        curl * flattening * (0.62f + outwardPush * 0.38f);
++    const float baseStrength =
++        0.018f + maximumLift * 0.28f + meanSpeed * 0.011f +
++        flatteningCompression * 0.12f;
++    renderTurn.shadowCenter = sourceSilhouette;
++    renderTurn.shadowWidth = std::clamp(
++        0.045f + maximumLift * 0.12f + curl * 0.035f +
++            flatteningCompression * 0.045f,
++        0.045f, 0.28f);
++    renderTurn.shadowStrength = std::clamp(
++        baseStrength * edgePresence * leftwardFade,
++        0.0f, 0.34f);
++    if (renderTurn.shadowStrength < 0.0005f) {
++      renderTurn.shadowStrength = 0;
++    }
++
++    turn.previousProfile = physicalProfile;
++    turn.previousCurvature = std::abs(shape.bendAmplitude);
++    turn.previousProfileAtSteadyMs = nowSteadyMs;
++    turn.hasPreviousProfile = true;
 +  }
 +
 +  void stockPageTextureLocked(const std::string &pageKey,
@@ -1910,6 +2539,7 @@ index 0000000000000000000000000000000000000000..39e9470d92d548aaebdc0ed7b8d51cbb
 +    turn.pixelHeight = stock->pixelHeight;
 +    turn.direction = normalizedDirection;
 +    turn.spread = false;
++    turn.tuning = _automaticTuning;
 +    if (_turns.empty() &&
 +        nowSteadyMs > _nextLaunchSteadyMs + stock->launchIntervalMs) {
 +      _nextLaunchSteadyMs = nowSteadyMs;
@@ -2244,7 +2874,7 @@ index 0000000000000000000000000000000000000000..39e9470d92d548aaebdc0ed7b8d51cbb
 +        continue;
 +      }
 +      const float currentProgress =
-+          progressForTurnLocked(turn, nowSteadyMs);
++          automaticProgressForTurn(turn, nowSteadyMs);
 +      turn.baseProgress = currentProgress;
 +      turn.startedAtSteadyMs = nowSteadyMs;
 +      turn.durationMs =
@@ -2269,61 +2899,22 @@ index 0000000000000000000000000000000000000000..39e9470d92d548aaebdc0ed7b8d51cbb
 +        SkCanvas::kFast_SrcRectConstraint);
 +  }
 +
-+  static void buildProfile(const RenderTurn &turn,
-+                           std::array<ProfilePoint, kProfilePointCount> &points,
-+                           float &minimumX, float &maximumX) {
-+    const float eased = smoothProgress(turn.progress);
-+    const float baseAngle =
-+        (turn.direction > 0 ? eased : 1.0f - eased) * kPi;
-+    const float curlAmplitude = 0.86f * std::sin(baseAngle);
-+    constexpr float step = 1.0f / (kProfilePointCount - 1);
-+
-+    float physicalX = 0;
-+    float depth = 0;
-+    points[0] = {0, 0, std::cos(baseAngle + curlAmplitude)};
-+    minimumX = 0;
-+    maximumX = 0;
-+
-+    for (int index = 1; index < kProfilePointCount; index += 1) {
-+      const float materialMidpoint = (index - 0.5f) * step;
-+      const float angle =
-+          baseAngle + curlAmplitude * std::cos(kPi * materialMidpoint);
-+      physicalX += std::cos(angle) * step;
-+      depth += std::sin(angle) * step;
-+      depth = std::max(0.0f, depth);
-+
-+      constexpr float cameraBookX = 0.5f;
-+      constexpr float cameraDistance = 4.0f;
-+      constexpr float maximumScale = 1.34f;
-+      const float perspectiveScale =
-+          std::min(maximumScale,
-+                   cameraDistance /
-+                       std::max(0.001f, cameraDistance - depth));
-+      const float projectedX =
-+          cameraBookX + (physicalX - cameraBookX) * perspectiveScale;
-+      points[index] = {projectedX, depth, std::cos(angle)};
-+      minimumX = std::min(minimumX, projectedX);
-+      maximumX = std::max(maximumX, projectedX);
-+    }
-+  }
-+
 +  static void drawShadow(SkCanvas *canvas, float viewportWidth,
 +                         float viewportHeight, float paperWidth, float spineX,
-+                         int direction, float progress, float minimumX,
-+                         float maximumX) {
-+    const float presence = std::sin(kPi * std::clamp(progress, 0.0f, 1.0f));
-+    if (presence < 0.01f) {
++                         const RenderTurn &turn) {
++    if (turn.shadowStrength <= 0) {
 +      return;
 +    }
-+    const float centerBookX = direction > 0 ? maximumX : minimumX;
-+    const float centerX = spineX + centerBookX * paperWidth;
-+    const float radius = paperWidth * (0.035f + presence * 0.11f);
++    const float centerX =
++        spineX + turn.shadowCenter * paperWidth;
++    const float radius = paperWidth * turn.shadowWidth;
 +    const SkPoint gradientPoints[] = {
 +        {centerX - radius, 0},
 +        {centerX + radius, 0},
 +    };
 +    const unsigned char alpha =
-+        static_cast<unsigned char>(std::clamp(72.0f * presence, 0.0f, 72.0f));
++        static_cast<unsigned char>(
++            std::clamp(255.0f * turn.shadowStrength, 0.0f, 87.0f));
 +    const std::vector<SkColor4f> colors = {
 +        SkColor4f::FromColor(SkColorSetARGB(0, 0, 0, 0)),
 +        SkColor4f::FromColor(SkColorSetARGB(alpha, 0, 0, 0)),
@@ -2349,22 +2940,24 @@ index 0000000000000000000000000000000000000000..39e9470d92d548aaebdc0ed7b8d51cbb
 +                       float viewportHeight, const RenderTurn &turn) {
 +    const float paperWidth = turn.spread ? viewportWidth * 0.5f : viewportWidth;
 +    const float spineX = turn.spread ? paperWidth : 0.0f;
-+    std::array<ProfilePoint, kProfilePointCount> profile;
-+    float minimumX = 0;
-+    float maximumX = 0;
-+    buildProfile(turn, profile, minimumX, maximumX);
 +    drawShadow(canvas, viewportWidth, viewportHeight, paperWidth, spineX,
-+               turn.direction, turn.progress, minimumX, maximumX);
++               turn);
 +
 +    std::vector<Segment> segments;
 +    segments.reserve(kProfilePointCount - 1);
 +    for (int index = 0; index < kProfilePointCount - 1; index += 1) {
-+      const auto &before = profile[index];
-+      const auto &after = profile[index + 1];
++      const auto &before = turn.profile[index];
++      const auto &after = turn.profile[index + 1];
 +      const float beforeScale =
-+          std::min(1.34f, 4.0f / std::max(0.001f, 4.0f - before.depth));
++          std::min(
++              1.34f,
++              4.0f /
++                  std::max(0.001f, 4.0f - std::max(0.0f, before.depth)));
 +      const float afterScale =
-+          std::min(1.34f, 4.0f / std::max(0.001f, 4.0f - after.depth));
++          std::min(
++              1.34f,
++              4.0f /
++                  std::max(0.001f, 4.0f - std::max(0.0f, after.depth)));
 +      const float beforeX = spineX + before.x * paperWidth;
 +      const float afterX = spineX + after.x * paperWidth;
 +      const float beforeTop =
@@ -2377,9 +2970,16 @@ index 0000000000000000000000000000000000000000..39e9470d92d548aaebdc0ed7b8d51cbb
 +          viewportHeight * 0.5f + viewportHeight * 0.5f * afterScale;
 +      const bool frontFacing = afterX >= beforeX;
 +      const float deformation =
-+          1.0f - std::abs((before.tangentX + after.tangentX) * 0.5f);
++          1.0f -
++          std::abs((before.normalZ + after.normalZ) * 0.5f);
++      const bool sourceFacing =
++          (frontFacing ? 1 : -1) == turn.direction;
++      const float curvatureShadow = deformation * 0.16f;
++      const float undersideShadow =
++          sourceFacing ? 0.0f : deformation * 0.055f;
 +      const float shade =
-+          std::clamp(1.0f - deformation * 0.19f, 0.76f, 1.0f);
++          1.0f -
++          std::min(0.2f, curvatureShadow + undersideShadow);
 +      const unsigned char shadeByte =
 +          static_cast<unsigned char>(std::round(shade * 255.0f));
 +      const SkColor color =
@@ -2499,11 +3099,13 @@ index 0000000000000000000000000000000000000000..39e9470d92d548aaebdc0ed7b8d51cbb
 +  double _benchmarkIntervalMs = 100;
 +  double _benchmarkNextSteadyMs = 0;
 +  bool _inputEnabled = false;
++  MotionTuning _automaticTuning = {0.72f, 1.5f, 2.2f, 6.75f};
++  MotionTuning _gestureTuning = {0.72f, 1.35f, 2.0f, 7.0f};
 +};
 +
 +} // namespace RNSkia
 diff --git a/cpp/rnskia/RNSkPictureView.h b/cpp/rnskia/RNSkPictureView.h
-index 0059ea1c7ed47adb189095bc9f1110525668d11a..b8e6462bd304a615f5c6e849bedffbeefd4dfed8 100644
+index 0059ea1c7ed47adb189095bc9f1110525668d11a..79e2055b45dbb95495fa440043ec1124f19e05d7 100644
 --- a/cpp/rnskia/RNSkPictureView.h
 +++ b/cpp/rnskia/RNSkPictureView.h
 @@ -11,6 +11,7 @@
@@ -2524,7 +3126,7 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..b8e6462bd304a615f5c6e849bedffbee
 
    virtual ~RNSkPictureRenderer() = default;
 
-@@ -52,31 +54,134 @@ public:
+@@ -52,31 +54,148 @@ public:
    }
 
    void setPicture(sk_sp<SkPicture> picture) {
@@ -2586,16 +3188,30 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..b8e6462bd304a615f5c6e849bedffbee
 +    _pagerCompositor.setInputEnabled(enabled);
 +  }
 +
++  void configurePagerMotion(
++      float automaticReleaseX, float automaticLiftVelocity,
++      float automaticLiftToLeft, float automaticCurvatureRelaxation,
++      float gestureReleaseX, float gestureLiftVelocity,
++      float gestureLiftToLeft, float gestureCurvatureRelaxation) {
++    _pagerCompositor.configureMotion(
++        {automaticReleaseX, automaticLiftVelocity, automaticLiftToLeft,
++         automaticCurvatureRelaxation},
++        {gestureReleaseX, gestureLiftVelocity, gestureLiftToLeft,
++         gestureCurvatureRelaxation});
++  }
++
 +  bool consumePagerInput(int direction) {
 +    return _pagerCompositor.consumeInput(direction);
 +  }
 +
-+  bool beginPagerGesture(int direction, float initialProgress) {
-+    return _pagerCompositor.beginGesture(direction, initialProgress);
++  bool beginPagerGesture(int direction, float startBookX, float fingerX,
++                         float turnProgress) {
++    return _pagerCompositor.beginGesture(
++        direction, startBookX, fingerX, turnProgress);
 +  }
 +
-+  bool updatePagerGesture(float progress) {
-+    return _pagerCompositor.updateGesture(progress);
++  bool updatePagerGesture(float fingerX, float turnProgress) {
++    return _pagerCompositor.updateGesture(fingerX, turnProgress);
 +  }
 +
 +  bool endPagerGesture(float fingerX, float throwVelocity,
@@ -2663,7 +3279,7 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..b8e6462bd304a615f5c6e849bedffbee
  };
 
  class RNSkPictureView : public RNSkView {
-@@ -108,5 +213,102 @@ public:
+@@ -108,5 +227,117 @@ public:
        }
      }
    }
@@ -2714,19 +3330,34 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..b8e6462bd304a615f5c6e849bedffbee
 +        ->setPagerInputEnabled(enabled);
 +  }
 +
++  void configurePagerMotion(
++      float automaticReleaseX, float automaticLiftVelocity,
++      float automaticLiftToLeft, float automaticCurvatureRelaxation,
++      float gestureReleaseX, float gestureLiftVelocity,
++      float gestureLiftToLeft, float gestureCurvatureRelaxation) {
++    std::static_pointer_cast<RNSkPictureRenderer>(getRenderer())
++        ->configurePagerMotion(
++            automaticReleaseX, automaticLiftVelocity,
++            automaticLiftToLeft, automaticCurvatureRelaxation,
++            gestureReleaseX, gestureLiftVelocity, gestureLiftToLeft,
++            gestureCurvatureRelaxation);
++  }
++
 +  bool consumePagerInput(int direction) {
 +    return std::static_pointer_cast<RNSkPictureRenderer>(getRenderer())
 +        ->consumePagerInput(direction);
 +  }
 +
-+  bool beginPagerGesture(int direction, float initialProgress) {
++  bool beginPagerGesture(int direction, float startBookX, float fingerX,
++                         float turnProgress) {
 +    return std::static_pointer_cast<RNSkPictureRenderer>(getRenderer())
-+        ->beginPagerGesture(direction, initialProgress);
++        ->beginPagerGesture(
++            direction, startBookX, fingerX, turnProgress);
 +  }
 +
-+  bool updatePagerGesture(float progress) {
++  bool updatePagerGesture(float fingerX, float turnProgress) {
 +    return std::static_pointer_cast<RNSkPictureRenderer>(getRenderer())
-+        ->updatePagerGesture(progress);
++        ->updatePagerGesture(fingerX, turnProgress);
 +  }
 +
 +  bool endPagerGesture(float fingerX, float throwVelocity,
@@ -2873,3 +3504,6 @@ index 5181c713c7415a48544b95fbb826c56a81bc0787..6aebcfe94a3c80c39c5c46b5d805a62c
  };
 
  } // namespace RNSkia
+diff --git a/cpp/skia/include/private/base/README.md b/cpp/skia/include/private/base/README.md
+deleted file mode 100644
+index 7f4f17b228c2b8e664b462983d66f735c6383fe7..0000000000000000000000000000000000000000

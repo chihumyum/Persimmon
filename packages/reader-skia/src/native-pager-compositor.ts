@@ -20,6 +20,18 @@ export interface NativePagerCanvasHandle {
   getNativeId(): number;
 }
 
+export interface NativePagerMotionTuning {
+  readonly releaseX: number;
+  readonly liftVelocity: number;
+  readonly liftToLeft: number;
+  readonly curvatureRelaxation: number;
+}
+
+export interface NativePagerMotionConfig {
+  readonly automatic: NativePagerMotionTuning;
+  readonly gesture: NativePagerMotionTuning;
+}
+
 export interface NativePagerTurnCommand {
   readonly id: string;
   readonly frontImage: SkImage;
@@ -72,6 +84,18 @@ export interface NativePagerGestureRelease {
   readonly velocityGain: number;
 }
 
+export interface NativePagerGestureStart {
+  readonly direction: 1 | -1;
+  readonly startBookX: number;
+  readonly fingerX: number;
+  readonly turnProgress: number;
+}
+
+export interface NativePagerGestureUpdate {
+  readonly fingerX: number;
+  readonly turnProgress: number;
+}
+
 export function nativePagerCompositorAvailable(): boolean {
   return false;
 }
@@ -118,6 +142,13 @@ export function configureNativePagerInput(
   return false;
 }
 
+export function configureNativePagerMotion(
+  _canvas: NativePagerCanvasHandle | null,
+  _config: NativePagerMotionConfig,
+): boolean {
+  return false;
+}
+
 export function consumeNativePagerInputOnUI(
   _nativeId: number,
   _direction: 1 | -1,
@@ -127,15 +158,14 @@ export function consumeNativePagerInputOnUI(
 
 export function beginNativePagerGestureOnUI(
   _nativeId: number,
-  _direction: 1 | -1,
-  _initialProgress: number,
+  _start: NativePagerGestureStart,
 ): boolean | undefined {
   return undefined;
 }
 
 export function updateNativePagerGestureOnUI(
   _nativeId: number,
-  _progress: number,
+  _update: NativePagerGestureUpdate,
 ): boolean | undefined {
   return undefined;
 }

@@ -169,6 +169,7 @@ import {
 } from "./native-page-turn-pool";
 import {
   configureNativePagerInput,
+  configureNativePagerMotion,
   enqueueNativePagerPictureTurn,
   nativePagerCompositorAvailable,
   resetNativePagerCompositor,
@@ -3440,9 +3441,6 @@ function LazyReaderEngine({
       typeof processedPaperColor === "number"
         ? processedPaperColor >>> 0
         : 0xffffffff;
-    const durationMs = estimateAutomaticPageTurnDurationMs(
-      automaticPageTurnTuning,
-    );
     const playbackSpeed = automaticPageTurnTuning.playbackSpeed;
     const entryIdFor = (
       from: PageAddress,
@@ -3547,7 +3545,10 @@ function LazyReaderEngine({
           pixelHeight: frontRecording.pixelHeight,
           direction: edge.direction,
           contentRevision: imageVersion,
-          durationMs,
+          durationMs: estimateAutomaticPageTurnDurationMs(
+            automaticPageTurnTuning,
+            edge.direction,
+          ),
           launchIntervalMs: turnConcurrency.minimumTurnIntervalMs,
           paperColor,
         });
@@ -3601,6 +3602,20 @@ function LazyReaderEngine({
     if (!nativePagerCompositorEnabled || !readerCanvasRef.current) {
       return;
     }
+    configureNativePagerMotion(readerCanvasRef.current, {
+      automatic: automaticTuningForCore(automaticPageTurnTuning),
+      gesture: gestureTuningForCore(gesturePageTurnTuning),
+    });
+  }, [
+    automaticPageTurnTuning,
+    gesturePageTurnTuning,
+    nativePagerCompositorEnabled,
+    readerCanvasRef,
+  ]);
+  useEffect(() => {
+    if (!nativePagerCompositorEnabled || !readerCanvasRef.current) {
+      return;
+    }
     configureNativePagerInput(
       readerCanvasRef.current,
       nativePagerTapInputEnabled,
@@ -3622,9 +3637,6 @@ function LazyReaderEngine({
       typeof processedPaperColor === "number"
         ? processedPaperColor >>> 0
         : 0xffffffff;
-    const estimatedDurationMs = estimateAutomaticPageTurnDurationMs(
-      automaticPageTurnTuning,
-    );
     for (const turn of activeTurns) {
       if (
         turn.completed ||
@@ -3650,7 +3662,10 @@ function LazyReaderEngine({
         automaticTapPlaybackSpeeds.get(turn.id) ??
         automaticPageTurnTuning.playbackSpeed;
       const durationMs =
-        estimatedDurationMs *
+        estimateAutomaticPageTurnDurationMs(
+          automaticPageTurnTuning,
+          turn.direction,
+        ) *
         (automaticPageTurnTuning.playbackSpeed / Math.max(0.01, playbackSpeed));
       presentationRequiredTurnIdsRef.current.add(turn.id);
       presentedTurnIdsRef.current.add(turn.id);

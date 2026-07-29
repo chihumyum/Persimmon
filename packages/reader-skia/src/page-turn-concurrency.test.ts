@@ -11,6 +11,21 @@ import {
 } from "./page-turn-concurrency";
 
 describe("page turn concurrency", () => {
+  it("preserves the old direction-specific automatic lifetimes", () => {
+    expect(
+      estimateAutomaticPageTurnDurationMs(
+        DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
+        1,
+      ),
+    ).toBe(441);
+    expect(
+      estimateAutomaticPageTurnDurationMs(
+        DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
+        -1,
+      ),
+    ).toBe(400);
+  });
+
   it("sizes the pool from the compressed burst duration", () => {
     expect(
       calculatePageTurnConcurrency(DEFAULT_AUTOMATIC_PAGE_TURN_TUNING, 150),

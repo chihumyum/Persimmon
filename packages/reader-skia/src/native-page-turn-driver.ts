@@ -1,5 +1,4 @@
 import {
-  FULL_GESTURE_START_MIN_X,
   PAGE_TURN_WORKLET_DRAG,
   PAGE_TURN_WORKLET_IDLE,
   PAGE_TURN_WORKLET_NO_OUTCOME,
@@ -464,23 +463,33 @@ export function useNativePageTurnDriver({
               Math.abs(event.translationX) /
                 Math.max(1, physicalPageWidth * 0.72),
             );
+            const initialBookX = bookXForGestureTravel(
+              startBookX,
+              event.translationX,
+              direction,
+              physicalPageWidth,
+            );
+            const initialFingerX = Math.min(
+              1,
+              Math.max(-1, 1 + initialBookX - startBookX),
+            );
             const nativeGestureStarted =
               nativePagerGestureInputEnabled &&
               nativePagerNativeId !== undefined &&
-              !spread &&
-              startBookX >= FULL_GESTURE_START_MIN_X
-                ? beginNativePagerGestureOnUI(
-                    nativePagerNativeId,
+              !spread
+                ? beginNativePagerGestureOnUI(nativePagerNativeId, {
                     direction,
-                    initialProgress,
-                  )
+                    startBookX,
+                    fingerX: initialFingerX,
+                    turnProgress: initialProgress,
+                  })
                 : false;
             if (nativeGestureStarted === true) {
               gestureProbe.modify((probe) => {
                 probe.mode = 3;
                 probe.direction = direction;
                 probe.startBookX = startBookX;
-                probe.currentBookX = startBookX;
+                probe.currentBookX = initialBookX;
                 probe.throwVelocity = 0;
                 probe.throwAcceleration = 0;
                 probe.lastThrowVelocity = 0;
@@ -601,10 +610,16 @@ export function useNativePageTurnDriver({
             const updatedProbe = gestureProbe.value;
             const nativeUpdated =
               nativePagerNativeId !== undefined
-                ? updateNativePagerGestureOnUI(
-                    nativePagerNativeId,
-                    updatedProbe.turnProgress,
-                  )
+                ? updateNativePagerGestureOnUI(nativePagerNativeId, {
+                    fingerX: Math.min(
+                      1,
+                      Math.max(
+                        -1,
+                        1 + updatedProbe.currentBookX - updatedProbe.startBookX,
+                      ),
+                    ),
+                    turnProgress: updatedProbe.turnProgress,
+                  })
                 : undefined;
             if (nativeUpdated !== true) {
               // The native view may have been reset while the finger was

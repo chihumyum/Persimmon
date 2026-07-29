@@ -1,4 +1,7 @@
-import { automaticPageTurnSolverDurationSeconds } from "@persimmon/page-turn-core";
+import {
+  automaticPageTurnSolverDurationSeconds,
+  automaticPageTurnSolverDurationSecondsForDirection,
+} from "@persimmon/page-turn-core";
 
 import {
   automaticTuningForCore,
@@ -91,10 +94,16 @@ export function burstPageTurnPlaybackSpeed(
 
 export function estimateAutomaticPageTurnDurationMs(
   tuning: AutomaticPageTurnTuning,
+  direction?: 1 | -1,
 ): number {
   const coreTuning = automaticTuningForCore(tuning);
   const solverDurationSeconds =
-    automaticPageTurnSolverDurationSeconds(coreTuning);
+    direction === undefined
+      ? automaticPageTurnSolverDurationSeconds(coreTuning)
+      : automaticPageTurnSolverDurationSecondsForDirection(
+          coreTuning,
+          direction,
+        );
   return Math.ceil(
     (solverDurationSeconds / Math.max(0.01, tuning.playbackSpeed)) * 1000,
   );
