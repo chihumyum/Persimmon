@@ -179,6 +179,7 @@ import {
   takeNativePagerEvents,
   type NativePagerEvent,
 } from "./native-pager-compositor";
+import { bindNativePagerInput } from "./native-pager-input";
 import {
   buildNativePagerStockPlan,
   nativePagerBackgroundAddress,
@@ -3255,9 +3256,9 @@ function LazyReaderEngine({
         requestedTurnStartsRef.current.push(eventAtMs);
         deliveredTurnStartsRef.current.push(Date.now());
         rejectedTurnCountsRef.current.capture += 1;
-        if (!nativeBenchmarkActiveRef.current && eventDirection !== undefined) {
-          requestTurn(eventDirection, eventAtMs);
-        }
+        // `pagerConsumeInput` already returned false to the UI-thread tap
+        // driver, which owns the single RN fallback. Re-dispatching here would
+        // advance two pages for one cold-stock tap.
         return;
       }
       const directEntry = nativePagerStockEntriesRef.current.get(turnId);
@@ -3613,20 +3614,21 @@ function LazyReaderEngine({
     readerCanvasRef,
   ]);
   useEffect(() => {
-    if (!nativePagerCompositorEnabled || !readerCanvasRef.current) {
+    const canvas = readerCanvasRef.current;
+    if (!nativePagerCompositorEnabled || !canvas) {
       return;
     }
-    configureNativePagerInput(
-      readerCanvasRef.current,
+    return bindNativePagerInput(
+      canvas,
       nativePagerTapInputEnabled,
+      configureNativePagerInput,
     );
-    return () => {
-      configureNativePagerInput(readerCanvasRef.current, false);
-    };
   }, [
     nativePagerCompositorEnabled,
+    nativePagerCanvasId,
     nativePagerTapInputEnabled,
     readerCanvasRef,
+    readerGeneration,
   ]);
   useEffect(() => {
     if (!nativePagerCompositorEnabled || !readerCanvasRef.current) {

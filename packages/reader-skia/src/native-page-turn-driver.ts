@@ -42,6 +42,7 @@ import {
   endNativePagerGestureOnUI,
   updateNativePagerGestureOnUI,
 } from "./native-pager-compositor";
+import { nativePagerTapNeedsRNFallback } from "./native-pager-input";
 import { useStableRNDispatcher } from "./use-stable-rn-dispatcher";
 
 export interface NativePageTurnCommand {
@@ -806,7 +807,12 @@ export function useNativePageTurnDriver({
             nativePagerTapInputEnabled && nativePagerNativeId !== undefined
               ? consumeNativePagerInputOnUI(nativePagerNativeId, -1)
               : undefined;
-          if (!nativePagerTapInputEnabled || nativeResult === undefined) {
+          if (
+            nativePagerTapNeedsRNFallback(
+              nativePagerTapInputEnabled,
+              nativeResult,
+            )
+          ) {
             scheduleOnRN(dispatchTapTurn, -1, requestedAtMs);
           }
         } else if (event.x >= width * 0.76 && canTurnForward) {
@@ -814,7 +820,12 @@ export function useNativePageTurnDriver({
             nativePagerTapInputEnabled && nativePagerNativeId !== undefined
               ? consumeNativePagerInputOnUI(nativePagerNativeId, 1)
               : undefined;
-          if (!nativePagerTapInputEnabled || nativeResult === undefined) {
+          if (
+            nativePagerTapNeedsRNFallback(
+              nativePagerTapInputEnabled,
+              nativeResult,
+            )
+          ) {
             scheduleOnRN(dispatchTapTurn, 1, requestedAtMs);
           }
         } else if (
