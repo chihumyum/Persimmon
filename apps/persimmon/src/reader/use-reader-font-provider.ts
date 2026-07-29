@@ -16,8 +16,13 @@ import {
   type DataModule,
   type SkTypefaceFontProvider,
 } from "@shopify/react-native-skia";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Platform } from "react-native";
+
+import {
+  resolveReaderFontTransition,
+  type PreparedReaderFont,
+} from "./reader-font-transition";
 
 const READER_SERIF_FONT: DataModule =
   Platform.OS === "web"
@@ -56,6 +61,12 @@ interface LoadedFamily {
   readonly faces: readonly LoadedFace[];
 }
 
+interface FontLoadFailure {
+  readonly familyId: string;
+  readonly familyKey: string;
+  readonly message: string;
+}
+
 export interface ReaderFontProviderResult {
   readonly fontProvider: SkTypefaceFontProvider | null;
   readonly fontFamily: string;
@@ -88,6 +99,28 @@ function builtInFamilyName(familyId: string): string {
     : READER_SERIF_FAMILY_NAME;
 }
 
+function makeBuiltInProvider(
+  builtInProvider: SkTypefaceFontProvider,
+): SkTypefaceFontProvider {
+  const provider = Skia.TypefaceFontProvider.Make();
+  const normalStyle = {
+    weight: FontWeight.Normal,
+    width: FontWidth.Normal,
+    slant: FontSlant.Upright,
+  };
+  for (const familyName of [
+    READER_SERIF_FAMILY_NAME,
+    READER_SANS_FAMILY_NAME,
+    READER_MATH_FAMILY_NAME,
+  ]) {
+    provider.registerFont(
+      builtInProvider.matchFamilyStyle(familyName, normalStyle),
+      familyName,
+    );
+  }
+  return provider;
+}
+
 export function useReaderFontProvider(
   requestedFontId: string,
   families: readonly FontFamilyRecord[],
@@ -113,20 +146,25 @@ export function useReaderFontProvider(
     ]) ?? [],
   );
   const [loaded, setLoaded] = useState<LoadedFamily | undefined>(undefined);
-  const [error, setError] = useState<string | undefined>(undefined);
+  const [failure, setFailure] = useState<FontLoadFailure | undefined>(
+    undefined,
+  );
   const [loadedBookFonts, setLoadedBookFonts] = useState<
     LoadedBookFonts | undefined
+  >(undefined);
+  const previousPrepared = useRef<
+    PreparedReaderFont<SkTypefaceFontProvider> | undefined
   >(undefined);
 
   useEffect(() => {
     if (!selectedFamily || selectedFamily.source === "bundled") {
       setLoaded(undefined);
-      setError(undefined);
+      setFailure(undefined);
       return;
     }
     let cancelled = false;
     setLoaded(undefined);
-    setError(undefined);
+    setFailure(undefined);
     void Promise.all(
       selectedFamily.faces.map(async (face) => ({
         faceId: face.id,
@@ -138,7 +176,11 @@ export function useReaderFontProvider(
           return;
         }
         if (faces.some((face) => !face.bytes || face.bytes.byteLength === 0)) {
-          setError("字体文件缺失，已回退到内置衬线字体。");
+          setFailure({
+            familyId: selectedFamily.id,
+            familyKey: selectedFamilyKey,
+            message: "字体文件缺失，已回退到内置衬线字体。",
+          });
           return;
         }
         setLoaded({
@@ -152,7 +194,11 @@ export function useReaderFontProvider(
       })
       .catch(() => {
         if (!cancelled) {
-          setError("字体文件读取失败，已回退到内置衬线字体。");
+          setFailure({
+            familyId: selectedFamily.id,
+            familyKey: selectedFamilyKey,
+            message: "字体文件读取失败，已回退到内置衬线字体。",
+          });
         }
       });
     return () => {
@@ -217,10 +263,16 @@ export function useReaderFontProvider(
     !!loaded &&
     loaded.familyId === selectedFamily?.id &&
     loaded.familyKey === selectedFamilyKey;
+  const selectedExternalFailure =
+    failure &&
+    failure.familyId === selectedFamily?.id &&
+    failure.familyKey === selectedFamilyKey
+      ? failure.message
+      : undefined;
   const externalReady =
     selectedFamily?.source === "bundled" ||
     selectedExternalLoaded ||
-    error !== undefined;
+    selectedExternalFailure !== undefined;
   const bookFontsReady =
     !useBookEmbeddedFonts ||
     Object.keys(book.fontFamilies ?? {}).length === 0 ||
@@ -241,23 +293,7 @@ export function useReaderFontProvider(
     // Do not dispose providers during a font switch. Paragraphs and captured
     // page textures can outlive the React render that created them, so Skia
     // must release the provider only after those native references drain.
-    const provider = Skia.TypefaceFontProvider.Make();
-    const normalStyle = {
-      weight: FontWeight.Normal,
-      width: FontWidth.Normal,
-      slant: FontSlant.Upright,
-    };
-    for (const familyName of [
-      READER_SERIF_FAMILY_NAME,
-      READER_SANS_FAMILY_NAME,
-      READER_MATH_FAMILY_NAME,
-    ]) {
-      const typeface = builtInProvider.matchFamilyStyle(
-        familyName,
-        normalStyle,
-      );
-      provider.registerFont(typeface, familyName);
-    }
+    const provider = makeBuiltInProvider(builtInProvider);
     let selectedExternalValid = selectedFamily.source === "bundled";
     if (selectedFamily.source !== "bundled") {
       const runtimeName = runtimeFamilyName(selectedFamily.id);
@@ -308,15 +344,7 @@ export function useReaderFontProvider(
     selectedFamily,
   ]);
 
-  const fontFamily =
-    selectedFamily?.source === "bundled"
-      ? builtInFamilyName(selectedFamily.id)
-      : selectedFamily &&
-          selectedExternalLoaded &&
-          builtProvider.selectedExternalValid
-        ? runtimeFamilyName(selectedFamily.id)
-        : READER_SERIF_FAMILY_NAME;
-  const providerKey = JSON.stringify([
+  const requestedProviderKey = JSON.stringify([
     resolvedFontId,
     selectedFamilyKey,
     useBookEmbeddedFonts ? book.revisionId : undefined,
@@ -326,29 +354,84 @@ export function useReaderFontProvider(
         )
       : undefined,
   ]);
+  const prepared = useMemo<
+    PreparedReaderFont<SkTypefaceFontProvider> | undefined
+  >(() => {
+    if (!builtProvider.fontProvider || !selectedFamily) {
+      return undefined;
+    }
+    const selectedExternalInvalid =
+      selectedFamily.source !== "bundled" &&
+      selectedExternalLoaded &&
+      !builtProvider.selectedExternalValid;
+    const fontFamily =
+      selectedFamily.source === "bundled"
+        ? builtInFamilyName(selectedFamily.id)
+        : selectedExternalLoaded && builtProvider.selectedExternalValid
+          ? runtimeFamilyName(selectedFamily.id)
+          : READER_SERIF_FAMILY_NAME;
+    const preparedError =
+      selectedExternalFailure ??
+      (selectedExternalInvalid
+        ? "字体无法载入，已回退到内置衬线字体。"
+        : undefined);
+    return {
+      fontProvider: builtProvider.fontProvider,
+      fontFamily,
+      providerKey: requestedProviderKey,
+      ...(builtProvider.bookFontFamilyNames
+        ? { bookFontFamilyNames: builtProvider.bookFontFamilyNames }
+        : {}),
+      ...(preparedError ? { error: preparedError } : {}),
+    };
+  }, [
+    builtProvider,
+    requestedProviderKey,
+    selectedExternalFailure,
+    selectedExternalLoaded,
+    selectedFamily,
+  ]);
+  const fallback = useMemo<
+    PreparedReaderFont<SkTypefaceFontProvider> | undefined
+  >(() => {
+    if (!builtInProvider) {
+      return undefined;
+    }
+    return {
+      fontProvider: makeBuiltInProvider(builtInProvider),
+      fontFamily: READER_SERIF_FAMILY_NAME,
+      providerKey: "builtin:fallback",
+    };
+  }, [builtInProvider]);
+  const loading =
+    !builtInProvider ||
+    (!!selectedFamily &&
+      selectedFamily.source !== "bundled" &&
+      !externalReady) ||
+    !bookFontsReady;
+  // Font selection is a two-phase transition: keep the last committed provider
+  // mounted until every face for the next provider has been read and registered.
+  const transition = resolveReaderFontTransition({
+    ...(prepared ? { prepared } : {}),
+    ...(previousPrepared.current ? { previous: previousPrepared.current } : {}),
+    ...(fallback ? { fallback } : {}),
+    loading,
+  });
+
+  useEffect(() => {
+    if (prepared) {
+      previousPrepared.current = prepared;
+    }
+  }, [prepared]);
 
   return {
-    fontProvider: builtProvider.fontProvider,
-    fontFamily,
-    providerKey,
-    ...(builtProvider.bookFontFamilyNames
-      ? { bookFontFamilyNames: builtProvider.bookFontFamilyNames }
+    fontProvider: transition.active?.fontProvider ?? null,
+    fontFamily: transition.active?.fontFamily ?? READER_SERIF_FAMILY_NAME,
+    providerKey: transition.active?.providerKey ?? "unavailable",
+    ...(transition.active?.bookFontFamilyNames
+      ? { bookFontFamilyNames: transition.active.bookFontFamilyNames }
       : {}),
-    loading:
-      !builtInProvider ||
-      (!!selectedFamily &&
-        selectedFamily.source !== "bundled" &&
-        !externalReady &&
-        !error) ||
-      !bookFontsReady,
-    ...(error || !builtProvider.selectedExternalValid
-      ? {
-          error:
-            error ??
-            (selectedFamily?.source !== "bundled"
-              ? "字体无法载入，已回退到内置衬线字体。"
-              : undefined),
-        }
-      : {}),
+    loading: transition.loading,
+    ...(transition.error ? { error: transition.error } : {}),
   };
 }
