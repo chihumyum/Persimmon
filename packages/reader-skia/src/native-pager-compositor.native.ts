@@ -3,6 +3,7 @@ import type { SkImage, SkPicture } from "@shopify/react-native-skia";
 import type {
   NativePagerCanvasHandle,
   NativePagerEventRecord,
+  NativePagerGestureRelease,
   NativePagerPictureTurnCommand,
   NativePagerStockPictureCommand,
   NativePagerTurnCommand,
@@ -53,6 +54,25 @@ interface NativePagerSkiaViewApi {
   ) => void;
   pagerSetInputEnabled?: (nativeId: number, enabled: boolean) => void;
   pagerConsumeInput?: (nativeId: number, direction: 1 | -1) => boolean;
+  pagerBeginGesture?: (
+    nativeId: number,
+    direction: 1 | -1,
+    initialProgress: number,
+  ) => boolean;
+  pagerUpdateGesture?: (nativeId: number, progress: number) => boolean;
+  pagerEndGesture?: (
+    nativeId: number,
+    fingerX: number,
+    throwVelocity: number,
+    throwAcceleration: number,
+    pageWeight: number,
+    commitThreshold: number,
+    slowCommitEdgeX: number,
+    minimumSpeedScale: number,
+    maximumSpeedScale: number,
+    velocityGain: number,
+  ) => boolean;
+  pagerCancelGesture?: (nativeId: number) => boolean;
   pagerRunBenchmark?: (
     nativeId: number,
     count: number,
@@ -89,6 +109,10 @@ export function nativePagerCompositorAvailable(): boolean {
     typeof api.pagerStockPicture === "function" &&
     typeof api.pagerSetInputEnabled === "function" &&
     typeof api.pagerConsumeInput === "function" &&
+    typeof api.pagerBeginGesture === "function" &&
+    typeof api.pagerUpdateGesture === "function" &&
+    typeof api.pagerEndGesture === "function" &&
+    typeof api.pagerCancelGesture === "function" &&
     typeof api.pagerRunBenchmark === "function" &&
     typeof api.pagerTakeEvents === "function" &&
     typeof api.pagerReset === "function"
@@ -235,6 +259,69 @@ export function consumeNativePagerInputOnUI(
   "worklet";
   try {
     return nativePagerWorkletApi?.pagerConsumeInput?.(nativeId, direction);
+  } catch {
+    return undefined;
+  }
+}
+
+export function beginNativePagerGestureOnUI(
+  nativeId: number,
+  direction: 1 | -1,
+  initialProgress: number,
+): boolean | undefined {
+  "worklet";
+  try {
+    return nativePagerWorkletApi?.pagerBeginGesture?.(
+      nativeId,
+      direction,
+      initialProgress,
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+export function updateNativePagerGestureOnUI(
+  nativeId: number,
+  progress: number,
+): boolean | undefined {
+  "worklet";
+  try {
+    return nativePagerWorkletApi?.pagerUpdateGesture?.(nativeId, progress);
+  } catch {
+    return undefined;
+  }
+}
+
+export function endNativePagerGestureOnUI(
+  nativeId: number,
+  release: NativePagerGestureRelease,
+): boolean | undefined {
+  "worklet";
+  try {
+    return nativePagerWorkletApi?.pagerEndGesture?.(
+      nativeId,
+      release.fingerX,
+      release.throwVelocity,
+      release.throwAcceleration,
+      release.pageWeight,
+      release.commitThreshold,
+      release.slowCommitEdgeX,
+      release.minimumSpeedScale,
+      release.maximumSpeedScale,
+      release.velocityGain,
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+export function cancelNativePagerGestureOnUI(
+  nativeId: number,
+): boolean | undefined {
+  "worklet";
+  try {
+    return nativePagerWorkletApi?.pagerCancelGesture?.(nativeId);
   } catch {
     return undefined;
   }

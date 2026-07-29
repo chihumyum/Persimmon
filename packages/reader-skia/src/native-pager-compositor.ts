@@ -3,7 +3,10 @@ import type { SkImage, SkPicture } from "@shopify/react-native-skia";
 export type NativePagerEvent =
   | "consumed"
   | "started"
+  | "gesture-started"
+  | "gesture-released"
   | "completed"
+  | "cancelled"
   | "stock-miss";
 
 export interface NativePagerEventRecord {
@@ -57,6 +60,18 @@ export interface NativePagerStockPictureCommand {
   readonly paperColor: number;
 }
 
+export interface NativePagerGestureRelease {
+  readonly fingerX: number;
+  readonly throwVelocity: number;
+  readonly throwAcceleration: number;
+  readonly pageWeight: number;
+  readonly commitThreshold: number;
+  readonly slowCommitEdgeX: number;
+  readonly minimumSpeedScale: number;
+  readonly maximumSpeedScale: number;
+  readonly velocityGain: number;
+}
+
 export function nativePagerCompositorAvailable(): boolean {
   return false;
 }
@@ -106,6 +121,34 @@ export function configureNativePagerInput(
 export function consumeNativePagerInputOnUI(
   _nativeId: number,
   _direction: 1 | -1,
+): boolean | undefined {
+  return undefined;
+}
+
+export function beginNativePagerGestureOnUI(
+  _nativeId: number,
+  _direction: 1 | -1,
+  _initialProgress: number,
+): boolean | undefined {
+  return undefined;
+}
+
+export function updateNativePagerGestureOnUI(
+  _nativeId: number,
+  _progress: number,
+): boolean | undefined {
+  return undefined;
+}
+
+export function endNativePagerGestureOnUI(
+  _nativeId: number,
+  _release: NativePagerGestureRelease,
+): boolean | undefined {
+  return undefined;
+}
+
+export function cancelNativePagerGestureOnUI(
+  _nativeId: number,
 ): boolean | undefined {
   return undefined;
 }

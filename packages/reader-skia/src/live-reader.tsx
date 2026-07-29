@@ -584,11 +584,14 @@ function LazyReaderEngine({
     new Map<string, NativePagerStockEntryRecord>(),
   );
   const nativePagerDirectTurnIdsRef = useRef(new Set<string>());
+  const nativePagerGestureTurnIdsRef = useRef(new Set<string>());
   const nativePagerAcknowledgedPageKeyRef = useRef<string | undefined>(
     undefined,
   );
   const nativePagerReconciliationEpochsRef = useRef(new Set<string>());
   const [nativePagerDirectActiveCount, setNativePagerDirectActiveCount] =
+    useState(0);
+  const [nativePagerGestureActiveCount, setNativePagerGestureActiveCount] =
     useState(0);
   const nativeBenchmarkRevisionRef = useRef(0);
   const nativeBenchmarkActiveRef = useRef(false);
@@ -1098,9 +1101,11 @@ function LazyReaderEngine({
     nativePagerStockedEntryIdsRef.current.clear();
     nativePagerStockEntriesRef.current.clear();
     nativePagerDirectTurnIdsRef.current.clear();
+    nativePagerGestureTurnIdsRef.current.clear();
     nativePagerAcknowledgedPageKeyRef.current = undefined;
     nativePagerReconciliationEpochsRef.current.clear();
     setNativePagerDirectActiveCount(0);
+    setNativePagerGestureActiveCount(0);
     nativeBenchmarkActiveRef.current = false;
   }, [readerGeneration]);
   useEffect(() => {
@@ -3077,8 +3082,11 @@ function LazyReaderEngine({
     gesturesEnabled:
       !selectingText &&
       nativeBenchmarkCommand === undefined &&
-      nativePagerDirectActiveCount === 0,
+      nativePagerDirectActiveCount === nativePagerGestureActiveCount,
     nativePagerTapInputEnabled,
+    nativePagerGestureInputEnabled:
+      nativePagerTapInputEnabled &&
+      nativePagerDirectActiveCount === nativePagerGestureActiveCount,
     nativePagerNativeId: nativePagerCanvasId,
     width,
     height,
@@ -3252,16 +3260,56 @@ function LazyReaderEngine({
         return;
       }
       const directEntry = nativePagerStockEntriesRef.current.get(turnId);
-      if (event === "consumed") {
+      if (event === "gesture-started") {
         requestedTurnStartsRef.current.push(eventAtMs);
         deliveredTurnStartsRef.current.push(Date.now());
+        if (!directEntry || !readerGenerationIsCurrent()) {
+          rejectedTurnCountsRef.current.other += 1;
+          return;
+        }
+        acceptedTurnStartsRef.current.push(eventAtMs);
+        captureFeedDirectionRef.current = directEntry.direction;
+        nativePagerDirectTurnIdsRef.current.add(turnId);
+        nativePagerGestureTurnIdsRef.current.add(turnId);
+        setNativePagerGestureActiveCount(
+          nativePagerGestureTurnIdsRef.current.size,
+        );
+        setNativePagerDirectActiveCount(
+          nativePagerDirectTurnIdsRef.current.size,
+        );
+        presentationRequiredTurnIdsRef.current.add(turnId);
+        presentedTurnIdsRef.current.add(turnId);
+        nativePagerPlaybackSpeedsRef.current.set(
+          turnId,
+          directEntry.playbackSpeed,
+        );
+        presentationAckCountRef.current += 1;
+        recordScheduledTurnLaneStarted(
+          turnId,
+          eventAtMs,
+          directEntry.playbackSpeed,
+        );
+        return;
+      }
+      if (event === "gesture-released") {
+        return;
+      }
+      if (event === "consumed") {
+        const gestureTurnActive =
+          nativePagerGestureTurnIdsRef.current.has(turnId);
+        if (!gestureTurnActive) {
+          requestedTurnStartsRef.current.push(eventAtMs);
+          deliveredTurnStartsRef.current.push(Date.now());
+        }
         nativePagerStockedEntryIdsRef.current.delete(turnId);
         nativePagerStockEntriesRef.current.delete(turnId);
         if (!directEntry || !readerGenerationIsCurrent()) {
           rejectedTurnCountsRef.current.other += 1;
           return;
         }
-        acceptedTurnStartsRef.current.push(eventAtMs);
+        if (!gestureTurnActive) {
+          acceptedTurnStartsRef.current.push(eventAtMs);
+        }
         captureFeedDirectionRef.current = directEntry.direction;
         const acknowledgedEpoch = `${readerGeneration}:${nativePagerPageKey(directEntry.to)}`;
         nativePagerAcknowledgedPageKeyRef.current = acknowledgedEpoch;
@@ -3307,6 +3355,11 @@ function LazyReaderEngine({
         presentationRequiredTurnIdsRef.current.delete(turnId);
         presentedTurnIdsRef.current.delete(turnId);
         nativePagerPlaybackSpeedsRef.current.delete(turnId);
+        if (nativePagerGestureTurnIdsRef.current.delete(turnId)) {
+          setNativePagerGestureActiveCount(
+            nativePagerGestureTurnIdsRef.current.size,
+          );
+        }
         nativePagerDirectTurnIdsRef.current.delete(turnId);
         setNativePagerDirectActiveCount(
           nativePagerDirectTurnIdsRef.current.size,
@@ -3339,6 +3392,7 @@ function LazyReaderEngine({
       nativePagerStockedEntryIdsRef.current.clear();
       nativePagerStockEntriesRef.current.clear();
       nativePagerDirectTurnIdsRef.current.clear();
+      nativePagerGestureTurnIdsRef.current.clear();
       nativePagerAcknowledgedPageKeyRef.current = undefined;
       nativePagerReconciliationEpochsRef.current.clear();
     };
@@ -3360,8 +3414,10 @@ function LazyReaderEngine({
     nativePagerStockedEntryIdsRef.current.clear();
     nativePagerStockEntriesRef.current.clear();
     nativePagerDirectTurnIdsRef.current.clear();
+    nativePagerGestureTurnIdsRef.current.clear();
     nativePagerReconciliationEpochsRef.current.clear();
     setNativePagerDirectActiveCount(0);
+    setNativePagerGestureActiveCount(0);
     if (setNativePagerAnchor(readerCanvasRef.current, settledKey)) {
       nativePagerAcknowledgedPageKeyRef.current = settledEpoch;
     } else {

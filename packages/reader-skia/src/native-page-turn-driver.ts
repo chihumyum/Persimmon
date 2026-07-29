@@ -1,7 +1,9 @@
 import {
+  FULL_GESTURE_START_MIN_X,
   PAGE_TURN_WORKLET_DRAG,
   PAGE_TURN_WORKLET_IDLE,
   PAGE_TURN_WORKLET_NO_OUTCOME,
+  SLOW_COMMIT_EDGE_X,
   advancePageTurnWorklet,
   beginPageTurnWorkletDrag,
   cancelPageTurnWorkletDrag,
@@ -34,7 +36,13 @@ import {
   gestureTuningForCore,
   type GesturePageTurnTuning,
 } from "./gesture-page-turn-tuning";
-import { consumeNativePagerInputOnUI } from "./native-pager-compositor";
+import {
+  beginNativePagerGestureOnUI,
+  cancelNativePagerGestureOnUI,
+  consumeNativePagerInputOnUI,
+  endNativePagerGestureOnUI,
+  updateNativePagerGestureOnUI,
+} from "./native-pager-compositor";
 import { useStableRNDispatcher } from "./use-stable-rn-dispatcher";
 
 export interface NativePageTurnCommand {
@@ -60,6 +68,11 @@ interface NativePageTurnDriverOptions {
    * receives asynchronous reconciliation events.
    */
   readonly nativePagerTapInputEnabled?: boolean;
+  /**
+   * Gesture Handler remains the recognizer, while drag frames and release
+   * settlement execute inside the C++ pager compositor.
+   */
+  readonly nativePagerGestureInputEnabled?: boolean;
   readonly nativePagerNativeId?: number;
   readonly width: number;
   readonly height: number;
@@ -104,7 +117,8 @@ interface NativeGestureTarget {
 }
 
 interface NativeGestureProbe {
-  mode: 0 | 1 | 2;
+  // 0 idle, 1 Worklet interactive, 2 deferred RN request, 3 C++ pager.
+  mode: 0 | 1 | 2 | 3;
   direction: 1 | -1;
   startBookX: number;
   currentBookX: number;
@@ -182,14 +196,15 @@ function materialXForTouch(
 /**
  * Owns the complete native page-turn hot path.
  *
- * Gesture Handler recognizes input on the UI thread. The physical state
- * machine, profile integration, visible-face rasterization, and Skia shared
- * uniform buffer updates all run in the Reanimated UI runtime. The RN thread
- * receives only one begin event and one final outcome per turn.
+ * Gesture Handler recognizes input on the UI thread. Warm single-page
+ * gestures synchronously enter the C++ pager compositor, which owns the drag
+ * clock, release settlement, geometry, and draw loop. The existing Worklet
+ * state machine remains as a cold-texture and unsupported-layout fallback.
  */
 export function useNativePageTurnDriver({
   gesturesEnabled,
   nativePagerTapInputEnabled = false,
+  nativePagerGestureInputEnabled = false,
   nativePagerNativeId,
   width,
   height,
@@ -432,7 +447,7 @@ export function useNativePageTurnDriver({
 
           if (
             state.value.phase === PAGE_TURN_WORKLET_IDLE &&
-            !interactiveBlocked
+            (!interactiveBlocked || nativePagerGestureInputEnabled)
           ) {
             gestureRequestHandled.value = true;
             const startLocalX = event.x - event.translationX;
@@ -445,6 +460,51 @@ export function useNativePageTurnDriver({
             );
             const startBookY = clampUnit(startLocalY / height);
             const settlingIncomingPage = !spread && direction === -1;
+            const initialProgress = clampUnit(
+              Math.abs(event.translationX) /
+                Math.max(1, physicalPageWidth * 0.72),
+            );
+            const nativeGestureStarted =
+              nativePagerGestureInputEnabled &&
+              nativePagerNativeId !== undefined &&
+              !spread &&
+              startBookX >= FULL_GESTURE_START_MIN_X
+                ? beginNativePagerGestureOnUI(
+                    nativePagerNativeId,
+                    direction,
+                    initialProgress,
+                  )
+                : false;
+            if (nativeGestureStarted === true) {
+              gestureProbe.modify((probe) => {
+                probe.mode = 3;
+                probe.direction = direction;
+                probe.startBookX = startBookX;
+                probe.currentBookX = startBookX;
+                probe.throwVelocity = 0;
+                probe.throwAcceleration = 0;
+                probe.lastThrowVelocity = 0;
+                probe.lastTime = workletTimeSeconds();
+                probe.turnProgress = initialProgress;
+                return probe;
+              });
+              return;
+            }
+            if (interactiveBlocked) {
+              gestureProbe.modify((probe) => {
+                probe.mode = 2;
+                probe.direction = direction;
+                probe.startBookX = startBookX;
+                probe.currentBookX = startBookX;
+                probe.throwVelocity = 0;
+                probe.throwAcceleration = 0;
+                probe.lastThrowVelocity = 0;
+                probe.lastTime = workletTimeSeconds();
+                probe.turnProgress = initialProgress;
+                return probe;
+              });
+              return;
+            }
             gestureTarget.modify((target) => {
               target.bookX = startBookX;
               target.bookY = startBookY;
@@ -507,9 +567,10 @@ export function useNativePageTurnDriver({
               probe.direction,
               physicalPageWidth,
             );
+            const directionalTravel =
+              probe.direction === 1 ? -event.translationX : event.translationX;
             probe.turnProgress = clampUnit(
-              Math.abs(event.translationX) /
-                Math.max(1, physicalPageWidth * 0.72),
+              directionalTravel / Math.max(1, physicalPageWidth * 0.72),
             );
             const throwVelocity = Math.max(
               0,
@@ -534,6 +595,26 @@ export function useNativePageTurnDriver({
             return probe;
           });
           if (probeMode === 2) {
+            return;
+          }
+          if (probeMode === 3) {
+            const updatedProbe = gestureProbe.value;
+            const nativeUpdated =
+              nativePagerNativeId !== undefined
+                ? updateNativePagerGestureOnUI(
+                    nativePagerNativeId,
+                    updatedProbe.turnProgress,
+                  )
+                : undefined;
+            if (nativeUpdated !== true) {
+              // The native view may have been reset while the finger was
+              // down. Preserve the release as a deferred RN request instead
+              // of dropping the user's turn.
+              gestureProbe.modify((current) => {
+                current.mode = 2;
+                return current;
+              });
+            }
             return;
           }
         }
@@ -564,6 +645,43 @@ export function useNativePageTurnDriver({
         "worklet";
         const releasedAtSeconds = workletTimeSeconds();
         const probe = gestureProbe.value;
+        if (probe.mode === 3) {
+          const fingerX = Math.min(
+            1,
+            Math.max(-1, 1 + probe.currentBookX - probe.startBookX),
+          );
+          const nativeEnded =
+            nativePagerNativeId !== undefined
+              ? endNativePagerGestureOnUI(nativePagerNativeId, {
+                  fingerX,
+                  throwVelocity: probe.throwVelocity,
+                  throwAcceleration: probe.throwAcceleration,
+                  pageWeight: coreTuning.pageWeight,
+                  commitThreshold: coreTuning.gestureCommitThreshold,
+                  slowCommitEdgeX: SLOW_COMMIT_EDGE_X,
+                  minimumSpeedScale: coreTuning.gestureMinimumSpeedScale,
+                  maximumSpeedScale: coreTuning.gestureMaximumSpeedScale,
+                  velocityGain: coreTuning.gestureVelocityGain,
+                })
+              : undefined;
+          if (nativeEnded !== true) {
+            scheduleOnRN(dispatchGestureRelease, {
+              direction: probe.direction,
+              interactive: false,
+              startBookX: probe.startBookX,
+              currentBookX: probe.currentBookX,
+              throwVelocity: probe.throwVelocity,
+              throwAcceleration: probe.throwAcceleration,
+              turnProgress: probe.turnProgress,
+              settlingIncomingPage: !spread && probe.direction === -1,
+            });
+          }
+          gestureProbe.modify((current) => {
+            current.mode = 0;
+            return current;
+          });
+          return;
+        }
         if (probe.mode === 2) {
           scheduleOnRN(dispatchGestureRelease, {
             direction: probe.direction,
@@ -633,10 +751,15 @@ export function useNativePageTurnDriver({
       })
       .onFinalize((_event, success) => {
         "worklet";
+        const probeMode = gestureProbe.value.mode;
         gestureProbe.modify((probe) => {
           probe.mode = 0;
           return probe;
         });
+        if (!success && probeMode === 3 && nativePagerNativeId !== undefined) {
+          cancelNativePagerGestureOnUI(nativePagerNativeId);
+          return;
+        }
         if (success || state.value.phase !== PAGE_TURN_WORKLET_DRAG) {
           return;
         }
@@ -706,10 +829,12 @@ export function useNativePageTurnDriver({
     dispatchTapTurn,
     onePhysicalPixel,
     nativePagerTapInputEnabled,
+    nativePagerGestureInputEnabled,
     nativePagerNativeId,
     physicalPageWidth,
     spread,
     state,
+    coreTuning,
     width,
   ]);
 
