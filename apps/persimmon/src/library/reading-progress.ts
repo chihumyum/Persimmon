@@ -44,6 +44,20 @@ function boundedProgress(value: unknown): number | undefined {
     : undefined;
 }
 
+export function sameBookLocator(
+  left: BookLocator,
+  right: BookLocator,
+): boolean {
+  return (
+    left.bookId === right.bookId &&
+    left.revisionId === right.revisionId &&
+    left.position.sectionId === right.position.sectionId &&
+    left.position.blockId === right.position.blockId &&
+    left.position.offset === right.position.offset &&
+    left.affinity === right.affinity
+  );
+}
+
 /**
  * Accepts both the original locator-only records and the richer V2 progress
  * snapshots. Keeping this migration at the repository boundary lets the UI

@@ -13,7 +13,7 @@ import {
   sha256Hex,
   summaryFromManifest,
 } from "./shared";
-import { readingProgressFromStored } from "./reading-progress";
+import { readingProgressFromStored, sameBookLocator } from "./reading-progress";
 import {
   LIBRARY_SCHEMA_VERSION,
   LibraryError,
@@ -400,8 +400,11 @@ class NativeLibraryRepository implements LibraryRepository {
         locator,
         publicationProgress:
           requested ??
-          existing?.publicationProgress ??
+          (existing && sameBookLocator(existing.locator, locator)
+            ? existing.publicationProgress
+            : undefined) ??
           fallback?.publicationProgress ??
+          existing?.publicationProgress ??
           0,
         updatedAt: options?.updatedAt ?? new Date().toISOString(),
       }),

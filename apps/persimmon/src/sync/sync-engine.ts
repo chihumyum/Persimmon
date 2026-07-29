@@ -18,6 +18,32 @@ function locatorKey(locator: BookLocator): string {
   return JSON.stringify(locator);
 }
 
+function boundedPublicationProgress(
+  value: number | undefined,
+): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.min(1, Math.max(0, value))
+    : undefined;
+}
+
+function progressKey(
+  locator: BookLocator,
+  publicationProgress?: number,
+): string {
+  return JSON.stringify({
+    locator,
+    publicationProgress: boundedPublicationProgress(publicationProgress),
+  });
+}
+
+function eventWallTime(updatedAt: string | undefined, now: number): number {
+  if (!updatedAt) {
+    return now;
+  }
+  const parsed = Date.parse(updatedAt);
+  return Number.isFinite(parsed) ? Math.min(now, Math.max(0, parsed)) : now;
+}
+
 function revisionDigest(revisionId: string): string | undefined {
   const match = /^epub-revision:([a-f0-9]{64})$/.exec(revisionId);
   return match?.[1];
@@ -90,50 +116,34 @@ export class SyncEngine {
   }
 
   async noteBookDeleted(bookId: string): Promise<void> {
-    const state = this.requireState();
-    const clock = this.nextClock(this.now());
-    const books = {
-      ...state.books,
-      [bookId]: { kind: "delete", bookId, clock } satisfies SyncBookMutation,
-    };
-    const knownBooks = { ...state.knownBooks };
-    const knownProgress = { ...state.knownProgress };
-    delete knownBooks[bookId];
-    delete knownProgress[bookId];
-    this.state = {
-      ...state,
-      generation: state.generation + 1,
-      lastClock: clock,
-      books,
-      knownBooks,
-      knownProgress,
-    };
+    this.recordBookDelete(bookId, this.now());
     await this.persist();
   }
 
-  async noteProgress(locator: BookLocator): Promise<void> {
+  async noteProgress(
+    locator: BookLocator,
+    publicationProgress?: number,
+    updatedAt?: string,
+  ): Promise<void> {
     const state = this.requireState();
     if (!state.knownBooks[locator.bookId]) {
       return;
     }
-    const known = state.knownProgress[locator.bookId]?.locator;
-    if (known && locatorKey(known) === locatorKey(locator)) {
+    const normalizedProgress = boundedPublicationProgress(publicationProgress);
+    const known = state.knownProgress[locator.bookId];
+    if (
+      known &&
+      progressKey(known.locator, known.publicationProgress) ===
+        progressKey(locator, normalizedProgress)
+    ) {
       return;
     }
-    const clock = this.nextClock(this.now());
-    this.state = {
-      ...state,
-      generation: state.generation + 1,
-      lastClock: clock,
-      progress: {
-        ...state.progress,
-        [locator.bookId]: { clock, locator },
-      },
-      knownProgress: {
-        ...state.knownProgress,
-        [locator.bookId]: { locator },
-      },
-    };
+    const now = this.now();
+    this.recordProgress(
+      locator,
+      eventWallTime(updatedAt, now),
+      normalizedProgress,
+    );
     await this.persist();
   }
 
@@ -161,7 +171,12 @@ export class SyncEngine {
         this.recordBookUpsert(entry, this.now());
       }
       if (entry.locator && !preview.progress[entry.id]) {
-        this.recordProgress(entry.locator, this.now());
+        const now = this.now();
+        this.recordProgress(
+          entry.locator,
+          eventWallTime(entry.lastReadAt, now),
+          entry.readingProgress,
+        );
       }
     }
 
@@ -196,24 +211,13 @@ export class SyncEngine {
       }
     }
 
-    const ownRemote = newestOwnDocument(
-      snapshot.deviceDocuments,
-      this.requireState().deviceId,
-    );
-    const localDocument = deviceDocumentFromLocalState(this.requireState());
-    let stateFileId = ownRemote?.fileId;
-    if (!ownRemote || !documentsEqual(ownRemote.document, localDocument)) {
-      stateFileId = await cloud.saveDeviceDocument(
-        localDocument,
-        ownRemote?.fileId,
-      );
-    }
-
     const merged = mergeDeviceDocuments([
       ...snapshot.deviceDocuments
-        .filter((entry) => entry.document.deviceId !== localDocument.deviceId)
+        .filter(
+          (entry) => entry.document.deviceId !== this.requireState().deviceId,
+        )
         .map((entry) => entry.document),
-      localDocument,
+      deviceDocumentFromLocalState(this.requireState()),
     ]);
     if (merged.latestClock) {
       this.observe(merged.latestClock);
@@ -230,10 +234,12 @@ export class SyncEngine {
           removedBooks += 1;
         }
         this.markRemoteBookDeleted(bookId);
+        this.ensureOwnBookDeleted(bookId);
         continue;
       }
 
-      if (!local || local.revisionId !== mutation.revisionId) {
+      let resolvedLocal = local;
+      if (!resolvedLocal || resolvedLocal.revisionId !== mutation.revisionId) {
         const bytes = await cloud.downloadBook(
           mutation.revisionId,
           mutation.byteLength,
@@ -257,9 +263,11 @@ export class SyncEngine {
           throw new Error(`云端 EPUB 身份校验失败：${mutation.title}`);
         }
         localEntries.set(imported.id, imported);
+        resolvedLocal = imported;
         downloadedBooks += 1;
       }
       this.markRemoteBookPresent(mutation);
+      this.ensureOwnBookPresent(resolvedLocal);
     }
 
     localEntries = await this.localEntries();
@@ -274,16 +282,44 @@ export class SyncEngine {
       ) {
         continue;
       }
-      if (
+      const locatorChanged =
         !local.locator ||
-        locatorKey(local.locator) !== locatorKey(mutation.locator)
-      ) {
+        locatorKey(local.locator) !== locatorKey(mutation.locator);
+      const displayProgressChanged =
+        mutation.publicationProgress !== undefined &&
+        Math.abs((local.readingProgress ?? 0) - mutation.publicationProgress) >
+          0.000_001;
+      if (locatorChanged || displayProgressChanged) {
         await this.library.saveProgress(mutation.locator, {
+          ...(mutation.publicationProgress === undefined
+            ? {}
+            : { publicationProgress: mutation.publicationProgress }),
           updatedAt: new Date(mutation.clock.wallTime).toISOString(),
         });
         updatedProgress += 1;
       }
-      this.markRemoteProgress(mutation);
+      let normalizedProgress =
+        boundedPublicationProgress(mutation.publicationProgress) ??
+        (locatorChanged ? undefined : local.readingProgress);
+      if (normalizedProgress === undefined && locatorChanged) {
+        localEntries = await this.localEntries();
+        normalizedProgress = localEntries.get(bookId)?.readingProgress;
+      }
+      this.markRemoteProgress(mutation, normalizedProgress);
+      this.ensureOwnProgress(mutation.locator, normalizedProgress);
+    }
+
+    const ownRemote = newestOwnDocument(
+      snapshot.deviceDocuments,
+      this.requireState().deviceId,
+    );
+    const localDocument = deviceDocumentFromLocalState(this.requireState());
+    let stateFileId = ownRemote?.fileId;
+    if (!ownRemote || !documentsEqual(ownRemote.document, localDocument)) {
+      stateFileId = await cloud.saveDeviceDocument(
+        localDocument,
+        ownRemote?.fileId,
+      );
     }
 
     const completedAt = new Date(this.now()).toISOString();
@@ -313,7 +349,15 @@ export class SyncEngine {
 
   private async reconcileRepository(): Promise<void> {
     const state = this.requireState();
-    const entries = await this.localEntries();
+    const allEntries = (await this.library.listBooks()).filter(
+      (entry) => !entry.builtIn,
+    );
+    const presentBookIds = new Set(allEntries.map((entry) => entry.id));
+    const entries = new Map(
+      allEntries
+        .filter((entry) => entry.status === "ready")
+        .map((entry) => [entry.id, entry]),
+    );
     for (const entry of entries.values()) {
       if (state.knownBooks[entry.id]?.revisionId !== entry.revisionId) {
         const addedAt = Date.parse(entry.addedAt);
@@ -322,18 +366,26 @@ export class SyncEngine {
           Number.isFinite(addedAt) ? Math.min(addedAt, this.now()) : this.now(),
         );
       }
-      const knownLocator = this.requireState().knownProgress[entry.id]?.locator;
+      const knownProgress = this.requireState().knownProgress[entry.id];
       if (
         entry.locator &&
-        (!knownLocator ||
-          locatorKey(knownLocator) !== locatorKey(entry.locator))
+        (!knownProgress ||
+          progressKey(
+            knownProgress.locator,
+            knownProgress.publicationProgress,
+          ) !== progressKey(entry.locator, entry.readingProgress))
       ) {
-        this.recordProgress(entry.locator, this.now());
+        const now = this.now();
+        this.recordProgress(
+          entry.locator,
+          eventWallTime(entry.lastReadAt, now),
+          entry.readingProgress,
+        );
       }
     }
 
     for (const bookId of Object.keys(this.requireState().knownBooks)) {
-      if (!entries.has(bookId)) {
+      if (!presentBookIds.has(bookId)) {
         await this.noteBookDeleted(bookId);
       }
     }
@@ -375,21 +427,57 @@ export class SyncEngine {
     };
   }
 
-  private recordProgress(locator: BookLocator, wallTime: number): void {
+  private recordProgress(
+    locator: BookLocator,
+    wallTime: number,
+    publicationProgress?: number,
+  ): void {
     const state = this.requireState();
     const clock = this.nextClock(wallTime);
+    const normalizedProgress = boundedPublicationProgress(publicationProgress);
     this.state = {
       ...state,
       generation: state.generation + 1,
       lastClock: clock,
       progress: {
         ...state.progress,
-        [locator.bookId]: { clock, locator },
+        [locator.bookId]: {
+          clock,
+          locator,
+          ...(normalizedProgress === undefined
+            ? {}
+            : { publicationProgress: normalizedProgress }),
+        },
       },
       knownProgress: {
         ...state.knownProgress,
-        [locator.bookId]: { locator },
+        [locator.bookId]: {
+          locator,
+          ...(normalizedProgress === undefined
+            ? {}
+            : { publicationProgress: normalizedProgress }),
+        },
       },
+    };
+  }
+
+  private recordBookDelete(bookId: string, wallTime: number): void {
+    const state = this.requireState();
+    const clock = this.nextClock(wallTime);
+    const knownBooks = { ...state.knownBooks };
+    const knownProgress = { ...state.knownProgress };
+    delete knownBooks[bookId];
+    delete knownProgress[bookId];
+    this.state = {
+      ...state,
+      generation: state.generation + 1,
+      lastClock: clock,
+      books: {
+        ...state.books,
+        [bookId]: { kind: "delete", bookId, clock },
+      },
+      knownBooks,
+      knownProgress,
     };
   }
 
@@ -465,13 +553,52 @@ export class SyncEngine {
     this.state = { ...state, knownBooks, knownProgress };
   }
 
-  private markRemoteProgress(mutation: SyncProgressMutation): void {
+  private ensureOwnBookDeleted(bookId: string): void {
+    if (this.requireState().books[bookId]?.kind !== "delete") {
+      this.recordBookDelete(bookId, this.now());
+    }
+  }
+
+  private ensureOwnBookPresent(entry: LibraryBookSummary): void {
+    const mutation = this.requireState().books[entry.id];
+    if (
+      mutation?.kind !== "upsert" ||
+      mutation.revisionId !== entry.revisionId
+    ) {
+      this.recordBookUpsert(entry, this.now());
+    }
+  }
+
+  private ensureOwnProgress(
+    locator: BookLocator,
+    publicationProgress?: number,
+  ): void {
+    const mutation = this.requireState().progress[locator.bookId];
+    if (
+      !mutation ||
+      progressKey(mutation.locator, mutation.publicationProgress) !==
+        progressKey(locator, publicationProgress)
+    ) {
+      this.recordProgress(locator, this.now(), publicationProgress);
+    }
+  }
+
+  private markRemoteProgress(
+    mutation: SyncProgressMutation,
+    publicationProgress?: number,
+  ): void {
     const state = this.requireState();
+    const normalizedProgress = boundedPublicationProgress(publicationProgress);
     this.state = {
       ...state,
       knownProgress: {
         ...state.knownProgress,
-        [mutation.locator.bookId]: { locator: mutation.locator },
+        [mutation.locator.bookId]: {
+          locator: mutation.locator,
+          ...(normalizedProgress === undefined
+            ? {}
+            : { publicationProgress: normalizedProgress }),
+        },
       },
     };
   }

@@ -84,7 +84,12 @@ function isProgressMutation(
     isClock(value.clock) &&
     value.clock.deviceId === expectedDeviceId &&
     isLocator(value.locator) &&
-    value.locator.bookId === expectedBookId
+    value.locator.bookId === expectedBookId &&
+    (value.publicationProgress === undefined ||
+      (typeof value.publicationProgress === "number" &&
+        Number.isFinite(value.publicationProgress) &&
+        value.publicationProgress >= 0 &&
+        value.publicationProgress <= 1))
   );
 }
 

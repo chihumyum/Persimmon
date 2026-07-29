@@ -8,6 +8,25 @@ export type LibrarySort = "recent" | "added" | "title";
 
 const FINISHED_THRESHOLD = 0.995;
 
+function normalizedSearchText(value: string): string {
+  return value.trim().toLocaleLowerCase();
+}
+
+export function searchLibraryEntries(
+  entries: readonly LibraryBookSummary[],
+  query: string,
+): LibraryBookSummary[] {
+  const normalizedQuery = normalizedSearchText(query);
+  if (!normalizedQuery) {
+    return [...entries];
+  }
+  return entries.filter(
+    (entry) =>
+      normalizedSearchText(entry.title).includes(normalizedQuery) ||
+      normalizedSearchText(entry.author ?? "").includes(normalizedQuery),
+  );
+}
+
 export function readingStatusForEntry(
   entry: LibraryBookSummary,
 ): LibraryReadingStatus {

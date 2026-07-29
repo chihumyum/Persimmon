@@ -19,6 +19,7 @@ import android.view.MenuItem
 import android.view.View
 import android.view.textclassifier.TextClassification
 import android.view.textclassifier.TextClassificationManager
+import expo.modules.kotlin.Promise
 import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -31,9 +32,13 @@ private const val MENU_ITEM_WEB_SEARCH = 0x10002
 private const val MENU_ITEM_PROCESS_TEXT_START = 0x20000
 private const val MENU_GROUP_SMART_ACTIONS = 0x30000
 private const val MENU_ITEM_SMART_ACTION_START = 0x30000
+private const val MENU_ITEM_BOOK_DETAILS = 0x40001
+private const val MENU_ITEM_BOOK_SYNC = 0x40002
+private const val MENU_ITEM_BOOK_DELETE = 0x40003
 
 class PersimmonSelectionMenuModule : Module() {
   private var actionMode: ActionMode? = null
+  private var bookMenuPromise: Promise? = null
   private var presentationGeneration = 0
   private val classificationExecutor = Executors.newSingleThreadExecutor()
 
@@ -54,6 +59,7 @@ class PersimmonSelectionMenuModule : Module() {
           return@post
         }
         actionMode?.finish()
+        resolveBookMenu(null)
 
         val density = decorView.resources.displayMetrics.density.toDouble()
         val anchorInWindow = Rect(
@@ -140,10 +146,109 @@ class PersimmonSelectionMenuModule : Module() {
       }
     }.runOnQueue(Queues.MAIN)
 
+    AsyncFunction("showBookMenu") {
+      syncLabel: String,
+      canDelete: Boolean,
+      x: Double,
+      y: Double,
+      width: Double,
+      height: Double,
+      promise: Promise ->
+      val activity = appContext.currentActivity
+      if (activity == null) {
+        promise.resolve(null)
+        return@AsyncFunction
+      }
+      val decorView = activity.window.decorView
+      val generation = ++presentationGeneration
+      decorView.post {
+        if (generation != presentationGeneration) {
+          promise.resolve(null)
+          return@post
+        }
+        actionMode?.finish()
+        resolveBookMenu(null)
+        bookMenuPromise = promise
+
+        val density = decorView.resources.displayMetrics.density.toDouble()
+        val anchorInWindow = Rect(
+          (x * density).roundToInt(),
+          (y * density).roundToInt(),
+          ((x + max(1.0, width)) * density).roundToInt(),
+          ((y + max(1.0, height)) * density).roundToInt()
+        )
+        val callback = object : ActionMode.Callback2() {
+          override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+            menu
+              .add(
+                Menu.NONE,
+                MENU_ITEM_BOOK_DETAILS,
+                Menu.NONE,
+                activity.getString(R.string.persimmon_book_details)
+              )
+              .setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+            if (syncLabel.isNotBlank()) {
+              menu
+                .add(Menu.NONE, MENU_ITEM_BOOK_SYNC, Menu.NONE, syncLabel)
+                .setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+            }
+            if (canDelete) {
+              menu
+                .add(
+                  Menu.NONE,
+                  MENU_ITEM_BOOK_DELETE,
+                  Menu.NONE,
+                  activity.getString(R.string.persimmon_book_delete)
+                )
+                .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+            }
+            return true
+          }
+
+          override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean = false
+
+          override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
+            val action = when (item.itemId) {
+              MENU_ITEM_BOOK_DETAILS -> "details"
+              MENU_ITEM_BOOK_SYNC -> "sync"
+              MENU_ITEM_BOOK_DELETE -> "delete"
+              else -> return false
+            }
+            resolveBookMenu(action)
+            mode.finish()
+            return true
+          }
+
+          override fun onDestroyActionMode(mode: ActionMode) {
+            if (actionMode === mode) {
+              actionMode = null
+            }
+            resolveBookMenu(null)
+          }
+
+          override fun onGetContentRect(mode: ActionMode, view: View, outRect: Rect) {
+            val viewLocation = IntArray(2)
+            view.getLocationInWindow(viewLocation)
+            outRect.set(
+              anchorInWindow.left - viewLocation[0],
+              anchorInWindow.top - viewLocation[1],
+              anchorInWindow.right - viewLocation[0],
+              anchorInWindow.bottom - viewLocation[1]
+            )
+          }
+        }
+        actionMode = decorView.startActionMode(callback, ActionMode.TYPE_FLOATING)
+        if (actionMode == null) {
+          resolveBookMenu(null)
+        }
+      }
+    }.runOnQueue(Queues.MAIN)
+
     AsyncFunction("hide") {
       presentationGeneration += 1
       actionMode?.finish()
       actionMode = null
+      resolveBookMenu(null)
     }.runOnQueue(Queues.MAIN)
 
     OnDestroy {
@@ -152,8 +257,15 @@ class PersimmonSelectionMenuModule : Module() {
       appContext.currentActivity?.runOnUiThread {
         actionMode?.finish()
         actionMode = null
+        resolveBookMenu(null)
       }
     }
+  }
+
+  private fun resolveBookMenu(result: String?) {
+    val promise = bookMenuPromise ?: return
+    bookMenuPromise = null
+    promise.resolve(result)
   }
 
   private fun addShareAction(context: Context, menu: Menu, text: String) {

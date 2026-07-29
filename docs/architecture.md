@@ -39,7 +39,8 @@ book-core
 - `page-turn-core`：从独立 demo 移植的连续曲率模型，无 React /
   Skia 依赖。手指压住纸张时用 Euler-elastica 受压模式；越过书脊后纸卷贴着落纸的那一页往外滚，已经落下的纸平铺，剩下的卷曲率逐渐均匀化、半径不断变大，直到摊平。
 - `reader-skia`：章节懒分页、SkParagraph、实时页面、图片 LRU、临时页面纹理与网格动画。
-- `apps/persimmon`：UI、文件选择、Repository、平台生命周期。
+- `apps/persimmon`：书架 / Reader
+  UI、文件选择、Repository、同步编排与平台生命周期。
 
 ESLint 对这些边界有硬约束：核心包不能引用 Expo / React
 Native，渲染器不能引用存储，UI 不能绕过 Repository 直接访问 IndexedDB /
@@ -103,6 +104,26 @@ persimmon-library-v2/
 导入先完整写入 staging 并校验，再在同卷内 rename。更新已有书时，旧目录先变为replacement
 backup；启动恢复会覆盖“旧目录已备份”和“新目录已落地”两个中断点。因此崩溃后保留旧版或新版完整书籍，不会留下半本书。AsyncStorage 只保存小型索引、进度和设置。
 
+## 书架与平台交互
+
+书架保持一个窄的 UI 边界：卡片只读取
+`LibraryBookSummary`，封面 bytes 仍通过 Repository 获取，不直接碰平台存储。所有卡片占用相同的排版舞台，但封面按固有宽高比
+`contain`
+并靠下对齐；舞台空余区域就是书架背景，不用白色容器补齐。这样横版、方版与常规竖版封面可以共享同一基线，同时阴影仍只包住真实封面。
+
+搜索只匹配规范化后的书名和作者，不把章节正文载入内存。主题、Google
+Drive 和可关闭的同步提示统一放在设置弹层；同步提示可见性作为本机 UI 偏好保存，不参与云同步。
+
+Native 书卡长按通过平台 adapter 打开系统菜单：
+
+- iOS：`UIEditMenuInteraction`；
+- Android：floating `ActionMode`；
+- Web：回退到应用内书籍详情弹层。
+
+菜单只返回 `details` / `sync` / `delete`
+意图，实际存储和同步仍由应用层回调执行。Reader 中的目录同样是浮层，不改变页面宽度，也不会触发重排；Android
+hardware back 先关闭打开的浮层，没有浮层时再退出 Reader 到书架。
+
 ## Google Drive 同步
 
 `SyncEngine` 位于 `LibraryRepository` 之上，UI 不直接操作 Drive。云端使用隐藏
@@ -121,6 +142,8 @@ SyncEngine ── per-device mutation document ── Google Drive appDataFolder
 delete 和进度使用 HLC 排序；同一本 EPUB 由 SHA-256 `bookId` / `revisionId`
 确定身份。上传时先完成 resumable EPUB
 upload，再发布引用它的设备状态。下载时校验长度和 SHA-256 后才进入 Repository 的原子导入路径。
+
+已授权设备会在冷启动、回到前台和前台每 60 秒同步；导入、删除或阅读位置变化后再以 1.5 秒合并窗口触发同步。首次关联的新设备在连接成功后立即执行同一条 sync 路径：合并远端设备文档、下载缺失 EPUB、原子导入、应用远端进度，然后把采用后的状态写进自己的设备文档。远端状态因此不会只存在于一次运行的内存里。
 
 Native 授权由 Google Sign-In SDK 管理；Web 使用 Google Identity
 Services 的短期 token。同步凭证只授予
@@ -143,11 +166,19 @@ active turn (at most one)
 阅读进度保存：
 
 ```text
-bookId + revisionId + sectionId + blockId + UTF-16 offset
+stable locator:
+  bookId + revisionId + sectionId + blockId + UTF-16 offset
+
+display metadata:
+  publicationProgress (0...1) + updatedAt
 ```
 
 字号或窗口变化后，根据 `PageLocationIndex`
-重新定位；持久化层从不把页码当作稳定锚点。
+重新定位；持久化层从不把页码或百分比当作稳定锚点。`publicationProgress`
+只负责书架与页眉显示，并和 locator 一起参与“是否有新进度”的判断，避免位置已相同但百分比仍旧。
+
+Reader 的高频进度回调进入单写者
+`ProgressWriteQueue`：同一时间最多一个本地 + 同步状态写入，写入期间的新回调折叠成最新快照。失败时只有在没有更新快照的情况下才重试旧值，避免较慢的旧写入晚于新位置完成并把进度倒退。离开 Reader、应用进入后台或组件卸载时会立即 flush；常态下使用短防抖减少 I/O。
 
 图片按需从 Repository 取 bytes，由 Skia 解码。LRU 预算为 Web 64 MiB、Native 32
 MiB；当前页、相邻页和目标页资源被 pin，淘汰或卸载时显式 dispose。

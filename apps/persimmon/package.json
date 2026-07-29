@@ -53,6 +53,13 @@
     "react-native-web": "^0.21.0",
     "react-native-worklets": "0.10.3"
   },
+  "expo": {
+    "install": {
+      "exclude": [
+        "react-native-worklets"
+      ]
+    }
+  },
   "version": "0.1.0",
   "private": true,
   "devDependencies": {

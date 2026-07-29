@@ -5,6 +5,7 @@ import type { LibraryBookSummary } from "./types";
 import {
   readingProgressPercent,
   readingStatusForEntry,
+  searchLibraryEntries,
   selectLibraryEntries,
 } from "./library-view";
 
@@ -91,5 +92,30 @@ describe("library view state", () => {
     expect(
       selectLibraryEntries(entries, "all", "title").map(({ id }) => id),
     ).toEqual(["book-a", "book-b"]);
+  });
+
+  it("searches only normalized titles and authors", () => {
+    const entries = [
+      entry("architecture", {
+        title: "Software Architecture",
+        author: "Mark Richards",
+        sourceName: "unrelated.epub",
+      }),
+      entry("networking", {
+        title: "Computer Networking",
+        author: "James Kurose",
+        sourceName: "architecture.epub",
+      }),
+    ];
+
+    expect(
+      searchLibraryEntries(entries, "  ARCHITECTURE ").map(({ id }) => id),
+    ).toEqual(["architecture"]);
+    expect(searchLibraryEntries(entries, "kurose").map(({ id }) => id)).toEqual(
+      ["networking"],
+    );
+    expect(
+      searchLibraryEntries(entries, "unrelated.epub").map(({ id }) => id),
+    ).toEqual([]);
   });
 });

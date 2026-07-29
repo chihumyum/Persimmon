@@ -31,6 +31,11 @@ export type SyncBookMutation = SyncBookUpsert | SyncBookDelete;
 export interface SyncProgressMutation {
   readonly clock: HybridClock;
   readonly locator: BookLocator;
+  /**
+   * Denormalized display value. The locator remains authoritative, but carrying
+   * this avoids showing a stale percentage after a cross-device merge.
+   */
+  readonly publicationProgress?: number;
 }
 
 export interface DeviceSyncDocument {
@@ -47,6 +52,7 @@ export interface KnownBook {
 
 export interface KnownProgress {
   readonly locator: BookLocator;
+  readonly publicationProgress?: number;
 }
 
 export interface SyncAccountState {

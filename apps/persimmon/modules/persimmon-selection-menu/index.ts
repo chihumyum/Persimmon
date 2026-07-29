@@ -8,6 +8,10 @@ export interface SelectionMenuRect {
   readonly height: number;
 }
 
+export type BookMenuRect = SelectionMenuRect;
+
+export type BookMenuAction = "details" | "sync" | "delete";
+
 interface PersimmonSelectionMenuNativeModule {
   show(
     text: string,
@@ -16,6 +20,14 @@ interface PersimmonSelectionMenuNativeModule {
     width: number,
     height: number,
   ): Promise<void>;
+  showBookMenu(
+    syncLabel: string,
+    canDelete: boolean,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ): Promise<BookMenuAction | null>;
   hide(): Promise<void>;
 }
 
@@ -35,4 +47,24 @@ export async function showSelectionMenu(
 
 export async function hideSelectionMenu(): Promise<void> {
   await nativeModule?.hide();
+}
+
+export async function showBookMenu(
+  syncLabel: string,
+  canDelete: boolean,
+  rect: BookMenuRect,
+): Promise<BookMenuAction | undefined> {
+  if (!nativeModule) {
+    return undefined;
+  }
+  return (
+    (await nativeModule.showBookMenu(
+      syncLabel,
+      canDelete,
+      rect.x,
+      rect.y,
+      rect.width,
+      rect.height,
+    )) ?? undefined
+  );
 }

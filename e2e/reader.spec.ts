@@ -149,6 +149,27 @@ test.beforeEach(async ({ page }) => {
   await page.reload();
 });
 
+test("searches only title and author and keeps shelf controls in settings", async ({
+  page,
+}) => {
+  await page.getByRole("button", { name: "搜索书名或作者" }).click();
+  const search = page.getByRole("textbox", { name: "搜索书名或作者" });
+  await search.fill("Persimmon");
+  await expect(
+    page.getByRole("button", { name: "打开 柿子熟了" }).last(),
+  ).toBeVisible();
+
+  await search.fill("深秋");
+  await expect(page.getByText("没有匹配的书", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "取消" }).click();
+
+  await page.getByRole("button", { name: "打开设置" }).click();
+  await expect(page.getByText("Google Drive", { exact: true })).toBeVisible();
+  await page.getByRole("radio", { name: "深色" }).click();
+  await expect(page.getByRole("radio", { name: "深色" })).toBeChecked();
+  await page.getByRole("button", { name: "完成" }).click();
+});
+
 test("ships footnote and endnote fixtures in the built-in demo book", async ({
   page,
 }) => {
@@ -245,7 +266,8 @@ test("imports, reads, navigates, resumes, and deletes a local EPUB", async ({
 
   await page.getByRole("button", { name: "返回书架" }).click();
   page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: "删除 E2E 柿子书" }).click();
+  await page.getByRole("button", { name: "更多 E2E 柿子书 操作" }).click();
+  await page.getByRole("button", { name: "从书架和云端删除" }).click();
   await expect(
     page.getByRole("button", { name: "打开 E2E 柿子书" }),
   ).toHaveCount(0);

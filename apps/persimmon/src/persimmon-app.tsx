@@ -20,7 +20,6 @@ import {
   View,
 } from "react-native";
 
-import { UiText as Text } from "./components/ui-text";
 import { demoSummary } from "./library/demo";
 import { BUILTIN_FONT_FAMILIES } from "./fonts/builtin-fonts";
 import { downloadFontFamily } from "./fonts/download-font";
@@ -32,6 +31,7 @@ import {
   type LibraryBookSummary,
   type OpenedLibraryBook,
 } from "./library/repository";
+import { ProgressWriteQueue } from "./library/progress-write-queue";
 import {
   DEFAULT_READER_SETTINGS,
   LibraryError,
@@ -80,19 +80,9 @@ function LoadingScreen({ theme }: { readonly theme: ReaderTheme }) {
     <View
       style={[styles.loadingScreen, { backgroundColor: theme.surrounding }]}
     >
-      <View style={[styles.brandMark, { backgroundColor: theme.accent }]}>
-        <Text style={[styles.brandMarkText, { color: theme.panelRaised }]}>
-          柿
-        </Text>
-      </View>
       <ActivityIndicator color={theme.accent} />
     </View>
   );
-}
-
-interface PendingReaderProgress {
-  readonly progress: ReaderProgress;
-  readonly updatedAt: string;
 }
 
 export function PersimmonApp() {
@@ -122,7 +112,19 @@ export function PersimmonApp() {
   const progressTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
-  const pendingProgress = useRef<PendingReaderProgress | undefined>(undefined);
+  const progressWriter = useRef<ProgressWriteQueue | undefined>(undefined);
+  progressWriter.current ??= new ProgressWriteQueue(async (snapshot) => {
+    await libraryRepository.saveProgress(snapshot.progress.locator, {
+      publicationProgress: snapshot.progress.publicationProgress,
+      updatedAt: snapshot.updatedAt,
+    });
+    await googleDriveSyncService.noteProgress(
+      snapshot.progress.locator,
+      snapshot.progress.publicationProgress,
+      snapshot.updatedAt,
+    );
+  });
+  const persistProgressRef = useRef<() => Promise<void>>(async () => undefined);
   const settingsTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
@@ -324,52 +326,50 @@ export function PersimmonApp() {
   );
 
   const persistPendingProgress = useCallback(async () => {
-    const pending = pendingProgress.current;
-    if (!pending) {
-      return;
-    }
-    pendingProgress.current = undefined;
     if (progressTimer.current) {
       clearTimeout(progressTimer.current);
       progressTimer.current = undefined;
     }
     try {
-      await libraryRepository.saveProgress(pending.progress.locator, {
-        publicationProgress: pending.progress.publicationProgress,
-        updatedAt: pending.updatedAt,
-      });
-      await googleDriveSyncService.noteProgress(pending.progress.locator);
+      await progressWriter.current?.flush();
     } catch {
-      pendingProgress.current ??= pending;
-      setError("阅读进度保存失败。");
-    }
-  }, []);
-
-  const updateProgress = useCallback(
-    (progress: ReaderProgress) => {
-      const updatedAt = new Date().toISOString();
-      setEntries((current) =>
-        current.map((entry) =>
-          entry.id === progress.locator.bookId
-            ? {
-                ...entry,
-                locator: progress.locator,
-                readingProgress: progress.publicationProgress,
-                lastReadAt: updatedAt,
-              }
-            : entry,
-        ),
-      );
-      pendingProgress.current = { progress, updatedAt };
+      setError("阅读进度保存失败，将自动重试。");
       if (progressTimer.current) {
         clearTimeout(progressTimer.current);
       }
-      progressTimer.current = setTimeout(() => {
-        void persistPendingProgress();
-      }, 250);
-    },
-    [persistPendingProgress],
-  );
+      if (progressWriter.current?.hasPending()) {
+        progressTimer.current = setTimeout(() => {
+          progressTimer.current = undefined;
+          void persistProgressRef.current();
+        }, 1_500);
+      }
+    }
+  }, []);
+  persistProgressRef.current = persistPendingProgress;
+
+  const updateProgress = useCallback((progress: ReaderProgress) => {
+    const updatedAt = new Date().toISOString();
+    setEntries((current) =>
+      current.map((entry) =>
+        entry.id === progress.locator.bookId
+          ? {
+              ...entry,
+              locator: progress.locator,
+              readingProgress: progress.publicationProgress,
+              lastReadAt: updatedAt,
+            }
+          : entry,
+      ),
+    );
+    progressWriter.current?.enqueue({ progress, updatedAt });
+    if (progressTimer.current) {
+      clearTimeout(progressTimer.current);
+    }
+    progressTimer.current = setTimeout(() => {
+      progressTimer.current = undefined;
+      void persistProgressRef.current();
+    }, 250);
+  }, []);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextState) => {
@@ -479,6 +479,19 @@ export function PersimmonApp() {
     [refreshLibrary],
   );
 
+  const syncBook = useCallback(async (entry: LibraryBookSummary) => {
+    setError(null);
+    await googleDriveSyncService.syncNow();
+    const refreshedEntries = await libraryRepository.listBooks();
+    setEntries(refreshedEntries);
+    const refreshed = refreshedEntries.find(
+      (candidate) => candidate.id === entry.id,
+    );
+    if (entry.status === "needs-reimport" && refreshed?.status !== "ready") {
+      setError("云端没有可用于修复这本书的 EPUB，请重新导入原文件。");
+    }
+  }, []);
+
   if (!hydrated || (!readerUiFontLoaded && !readerUiFontError)) {
     return <LoadingScreen theme={appTheme} />;
   }
@@ -532,6 +545,9 @@ export function PersimmonApp() {
       onColorModeChange={updateColorMode}
       onImport={importBook}
       onOpen={(bookId) => void openBook(bookId)}
+      onSyncBook={(entry) => {
+        void syncBook(entry);
+      }}
       onSyncNow={() => {
         void googleDriveSyncService.syncNow();
       }}
@@ -540,20 +556,6 @@ export function PersimmonApp() {
 }
 
 const styles = StyleSheet.create({
-  brandMark: {
-    alignItems: "center",
-    backgroundColor: "#df5d2c",
-    borderRadius: 25,
-    height: 78,
-    justifyContent: "center",
-    marginBottom: 24,
-    width: 78,
-  },
-  brandMarkText: {
-    color: "#fffaf2",
-    fontSize: 38,
-    fontWeight: "700",
-  },
   loadingScreen: {
     alignItems: "center",
     backgroundColor: "#f7f1e8",

@@ -8,6 +8,7 @@ import {
   type LibraryRepository,
   type OpenedLibraryBook,
   type ReaderSettings,
+  type SaveProgressOptions,
 } from "../library/types";
 import { SyncEngine } from "./sync-engine";
 import {
@@ -68,10 +69,20 @@ class FakeLibrary implements LibraryRepository {
     return undefined;
   }
 
-  async saveProgress(locator: BookLocator): Promise<void> {
+  async saveProgress(
+    locator: BookLocator,
+    options?: SaveProgressOptions,
+  ): Promise<void> {
     const entry = this.books.get(locator.bookId);
     if (entry) {
-      this.books.set(locator.bookId, { ...entry, locator });
+      this.books.set(locator.bookId, {
+        ...entry,
+        locator,
+        ...(options?.publicationProgress === undefined
+          ? {}
+          : { readingProgress: options.publicationProgress }),
+        ...(options?.updatedAt ? { lastReadAt: options.updatedAt } : {}),
+      });
     }
   }
 
@@ -205,6 +216,7 @@ describe("SyncEngine", () => {
             deviceId: "remote-device",
           },
           locator,
+          publicationProgress: 0.73,
         },
       },
     };
@@ -228,7 +240,21 @@ describe("SyncEngine", () => {
 
     expect(result.downloadedBooks).toBe(1);
     expect(result.updatedProgress).toBe(1);
-    expect((await library.listBooks())[0]?.locator).toEqual(locator);
+    expect((await library.listBooks())[0]).toMatchObject({
+      locator,
+      readingProgress: 0.73,
+    });
+    expect(cloud.savedDocument?.books[BOOK_ID]).toMatchObject({
+      kind: "upsert",
+      revisionId: REVISION_ID,
+    });
+    expect(cloud.savedDocument?.progress[BOOK_ID]).toMatchObject({
+      locator,
+      publicationProgress: 0.73,
+    });
+    expect(cloud.savedDocument?.books[BOOK_ID]?.clock.deviceId).toBe(
+      "local-device",
+    );
   });
 
   it("applies a newer remote tombstone without re-uploading the stale EPUB", async () => {
@@ -273,5 +299,61 @@ describe("SyncEngine", () => {
     expect(result.removedBooks).toBe(1);
     expect(cloud.uploadedBooks).toBe(0);
     expect(await library.listBooks()).toEqual([]);
+  });
+
+  it("does not turn a present needs-reimport book into a cloud tombstone", async () => {
+    const library = new FakeLibrary();
+    library.books.set(BOOK_ID, {
+      ...summary(),
+      status: "needs-reimport",
+    });
+    const localState: LocalSyncState = {
+      ...emptyLocalState(),
+      knownBooks: {
+        [BOOK_ID]: { revisionId: REVISION_ID },
+      },
+    };
+    const store = new MemoryStateStore(localState);
+    const remoteDocument: DeviceSyncDocument = {
+      schemaVersion: SYNC_SCHEMA_VERSION,
+      deviceId: "remote-device",
+      generation: 1,
+      books: {
+        [BOOK_ID]: {
+          kind: "upsert",
+          clock: {
+            wallTime: 100,
+            counter: 0,
+            deviceId: "remote-device",
+          },
+          bookId: BOOK_ID,
+          revisionId: REVISION_ID,
+          fileName: "cloud.epub",
+          title: "Cloud Book",
+          addedAt: "2026-01-01T00:00:00.000Z",
+          byteLength: EPUB_BYTES.byteLength,
+        },
+      },
+      progress: {},
+    };
+    const cloud = new FakeCloud({
+      account: { id: "account" },
+      deviceDocuments: [
+        { fileId: "remote-state-file", document: remoteDocument },
+      ],
+    });
+    const engine = new SyncEngine(
+      library,
+      store,
+      async () => ABC_DIGEST,
+      () => 1_000,
+    );
+
+    await engine.initialize();
+    const result = await engine.sync(cloud);
+
+    expect(result.downloadedBooks).toBe(1);
+    expect((await library.listBooks())[0]?.status).toBe("ready");
+    expect(cloud.savedDocument?.books[BOOK_ID]?.kind).toBe("upsert");
   });
 });

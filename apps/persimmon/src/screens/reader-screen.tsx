@@ -1,4 +1,4 @@
-import type { BookNavigationItem, BookPosition } from "@persimmon/book-core";
+import type { BookPosition } from "@persimmon/book-core";
 import type { FontFamilyRecord } from "@persimmon/font-core";
 import type { ReaderLayoutMode, ReaderProgress } from "@persimmon/reader-skia";
 import {
@@ -17,7 +17,6 @@ import {
   ActivityIndicator,
   Platform,
   Pressable,
-  ScrollView,
   StatusBar,
   StyleSheet,
   View,
@@ -39,9 +38,14 @@ import type {
 import { navigationLabelsForPosition } from "../reader/navigation-path";
 import { READER_UI_FONT_FAMILY } from "../reader/reader-ui-typography";
 import { ToolbarBreadcrumbCarousel } from "../reader/toolbar-breadcrumb-carousel";
+import { useAndroidReaderBack } from "../reader/use-android-reader-back";
 import { PageTurnTuningPanel } from "./page-turn-tuning-panel";
 import { ReadingLayoutPanel } from "./reading-layout-panel";
 import { ReadingStylePanel } from "./reading-style-panel";
+import {
+  flattenNavigation,
+  TableOfContentsPanel,
+} from "./table-of-contents-panel";
 
 const ReaderSurface = React.lazy(() => import("../reader/reader-surface"));
 
@@ -52,21 +56,6 @@ interface Viewport {
 
 interface ReaderFrame extends Viewport {
   readonly layout: ReaderLayoutMode;
-}
-
-interface NavigationRow {
-  readonly item: BookNavigationItem;
-  readonly depth: number;
-}
-
-function flattenNavigation(
-  items: readonly BookNavigationItem[],
-  depth = 0,
-): NavigationRow[] {
-  return items.flatMap((item) => [
-    { item, depth },
-    ...flattenNavigation(item.children ?? [], depth + 1),
-  ]);
 }
 
 export interface ReaderScreenProps {
@@ -141,6 +130,18 @@ export function ReaderScreen({
     () => flattenNavigation(opened.book.navigation ?? []),
     [opened.book.navigation],
   );
+
+  const closePanels = useCallback(() => {
+    setTocVisible(false);
+    setStyleVisible(false);
+    setLayoutVisible(false);
+    setTuningVisible(false);
+  }, []);
+  useAndroidReaderBack({
+    panelVisible: tocVisible || styleVisible || layoutVisible || tuningVisible,
+    onBack,
+    onClosePanels: closePanels,
+  });
 
   const cancelLayoutFrame = useCallback(() => {
     if (layoutFrameRef.current) {
@@ -263,6 +264,7 @@ export function ReaderScreen({
       setStyleVisible(false);
       setLayoutVisible(false);
       setTuningVisible(false);
+      setTocVisible(false);
     }
     setControlsVisible((visible) => !visible);
   }, [controlsVisible, turning]);
@@ -552,53 +554,15 @@ export function ReaderScreen({
         />
       ) : null}
 
-      {tocVisible ? (
-        <View
-          style={[
-            styles.tocPanel,
-            {
-              backgroundColor: theme.panel,
-              paddingBottom: insets.bottom,
-              paddingTop: insets.top,
-              shadowColor: theme.shadow,
-            },
-          ]}
-        >
-          <View style={[styles.tocHeader, { borderBottomColor: theme.border }]}>
-            <Text style={[styles.tocTitle, { color: theme.text }]}>目录</Text>
-            <Pressable
-              accessibilityLabel="关闭目录"
-              accessibilityRole="button"
-              onPress={() => setTocVisible(false)}
-            >
-              <Text style={[styles.tocClose, { color: theme.accentStrong }]}>
-                关闭
-              </Text>
-            </Pressable>
-          </View>
-          <ScrollView>
-            {navigationRows.map(({ item, depth }) => (
-              <Pressable
-                key={item.id}
-                accessibilityLabel={`跳转到 ${item.label}`}
-                accessibilityRole="button"
-                onPress={() => jumpTo(item.target)}
-                style={[
-                  styles.tocRow,
-                  { borderBottomColor: theme.border },
-                  { paddingLeft: 18 + Math.min(depth, 3) * 16 },
-                ]}
-              >
-                <Text
-                  numberOfLines={2}
-                  style={[styles.tocRowText, { color: theme.controlText }]}
-                >
-                  {item.label}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </View>
+      {!turning && !selecting && controlsVisible && tocVisible ? (
+        <TableOfContentsPanel
+          currentPosition={currentPosition}
+          rows={navigationRows}
+          theme={theme}
+          top={insets.top + 52}
+          onClose={() => setTocVisible(false)}
+          onSelect={jumpTo}
+        />
       ) : null}
     </View>
   );
@@ -716,62 +680,6 @@ const styles = StyleSheet.create({
   },
   layoutButton: {
     minWidth: 46,
-  },
-  tocClose: {
-    color: "#b94b24",
-    fontFamily: READER_UI_FONT_FAMILY,
-    fontSize: 14,
-    includeFontPadding: false,
-    letterSpacing: 0.2,
-    lineHeight: 20,
-  },
-  tocHeader: {
-    alignItems: "center",
-    borderBottomColor: "#e4d8cb",
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    padding: 18,
-  },
-  tocPanel: {
-    bottom: 0,
-    left: 0,
-    maxWidth: 390,
-    position: "absolute",
-    top: 0,
-    width: "88%",
-    zIndex: 30,
-    ...(Platform.OS === "web"
-      ? { boxShadow: "8px 0 24px rgba(61, 48, 38, 0.18)" }
-      : {
-          elevation: 12,
-          shadowColor: "#3d3026",
-          shadowOffset: { width: 8, height: 0 },
-          shadowOpacity: 0.18,
-          shadowRadius: 24,
-        }),
-  },
-  tocRow: {
-    borderBottomColor: "#eee5dc",
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    paddingRight: 16,
-    paddingVertical: 13,
-  },
-  tocRowText: {
-    color: "#4d443d",
-    fontFamily: READER_UI_FONT_FAMILY,
-    fontSize: 14,
-    includeFontPadding: false,
-    letterSpacing: 0.15,
-    lineHeight: 20,
-  },
-  tocTitle: {
-    color: "#3e3731",
-    fontFamily: READER_UI_FONT_FAMILY,
-    fontSize: 18,
-    includeFontPadding: false,
-    letterSpacing: 0.2,
-    lineHeight: 25,
   },
   typeButtonText: {
     color: "#5c534b",

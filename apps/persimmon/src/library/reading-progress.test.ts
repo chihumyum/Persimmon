@@ -1,7 +1,7 @@
 import type { BookLocator } from "@persimmon/book-core";
 import { describe, expect, it } from "vitest";
 
-import { readingProgressFromStored } from "./reading-progress";
+import { readingProgressFromStored, sameBookLocator } from "./reading-progress";
 
 const LOCATOR: BookLocator = {
   bookId: "book",
@@ -47,5 +47,18 @@ describe("persisted reading progress", () => {
         SECTION_IDS,
       ),
     ).toBeUndefined();
+  });
+
+  it("compares every stable locator field", () => {
+    expect(sameBookLocator(LOCATOR, { ...LOCATOR })).toBe(true);
+    expect(
+      sameBookLocator(LOCATOR, {
+        ...LOCATOR,
+        position: { ...LOCATOR.position, offset: 1 },
+      }),
+    ).toBe(false);
+    expect(sameBookLocator(LOCATOR, { ...LOCATOR, affinity: "forward" })).toBe(
+      false,
+    );
   });
 });

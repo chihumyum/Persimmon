@@ -13,7 +13,7 @@ import {
   sha256Hex,
   summaryFromManifest,
 } from "./shared";
-import { readingProgressFromStored } from "./reading-progress";
+import { readingProgressFromStored, sameBookLocator } from "./reading-progress";
 import {
   LibraryError,
   type BookSource,
@@ -329,8 +329,11 @@ class IndexedDbLibraryRepository implements LibraryRepository {
           )?.publicationProgress;
     const publicationProgress =
       requested ??
-      existing?.publicationProgress ??
+      (existing && sameBookLocator(existing.locator, locator)
+        ? existing.publicationProgress
+        : undefined) ??
       fallback?.publicationProgress ??
+      existing?.publicationProgress ??
       0;
     await database.put("progress", {
       bookId: locator.bookId,

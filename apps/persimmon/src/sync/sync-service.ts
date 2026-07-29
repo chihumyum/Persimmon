@@ -142,9 +142,15 @@ class GoogleDriveSyncService {
     this.scheduleSync();
   }
 
-  async noteProgress(locator: BookLocator): Promise<void> {
+  async noteProgress(
+    locator: BookLocator,
+    publicationProgress?: number,
+    updatedAt?: string,
+  ): Promise<void> {
     await this.ensureEngine();
-    await this.enqueue(() => this.engine.noteProgress(locator));
+    await this.enqueue(() =>
+      this.engine.noteProgress(locator, publicationProgress, updatedAt),
+    );
     this.scheduleSync();
   }
 
