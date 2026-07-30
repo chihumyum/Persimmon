@@ -5,7 +5,11 @@ import {
   type PageTurnCaptureAddresses,
 } from "./page-turn-textures";
 
-export const NATIVE_PAGER_STOCK_RADIUS = 12;
+// Eight transitions give the native compositor an 800 ms runway at 10 pps.
+// Reconciliation refills one edge at a time as native acknowledges turns, so
+// a wider eager radius only retains more full-page SkPictures without
+// increasing the sustainable consumption rate.
+export const NATIVE_PAGER_STOCK_RADIUS = 8;
 
 export interface NativePagerStockEdge {
   readonly from: PageAddress;

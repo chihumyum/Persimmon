@@ -4,23 +4,34 @@ import {
   runOnRuntimeAsync,
   type WorkletRuntime,
 } from "react-native-worklets";
+import { Platform } from "react-native";
 
 import {
   capturedPageFromImage,
+  rasterizeRecordedPageCapture,
   type CapturedPage,
   type RecordedPageCapture,
 } from "./page-capture";
 
-export const PAGE_CAPTURE_RASTER_WORKER_COUNT = 2;
+const supportsCrossRuntimeSkiaRaster = Platform.OS !== "ios";
 
-const rasterWorkers: readonly WorkletRuntime[] = Array.from(
-  { length: PAGE_CAPTURE_RASTER_WORKER_COUNT },
-  (_, index) =>
-    createWorkletRuntime({
-      name: `persimmon-page-raster-${index + 1}`,
-    }),
-);
+export const PAGE_CAPTURE_RASTER_WORKER_COUNT = supportsCrossRuntimeSkiaRaster
+  ? 2
+  : 1;
+
+let rasterWorkers: readonly WorkletRuntime[] | undefined;
 let nextWorker = 0;
+
+function getRasterWorkers(): readonly WorkletRuntime[] {
+  rasterWorkers ??= Array.from(
+    { length: PAGE_CAPTURE_RASTER_WORKER_COUNT },
+    (_, index) =>
+      createWorkletRuntime({
+        name: `persimmon-page-raster-${index + 1}`,
+      }),
+  );
+  return rasterWorkers;
+}
 
 interface RasterWorkerResult {
   readonly image: SkImage;
@@ -74,8 +85,19 @@ function rasterizePictureOnWorker(
 export async function rasterizePageCaptureOffThread(
   recording: RecordedPageCapture,
 ): Promise<CapturedPage | null> {
-  const workerIndex = nextWorker++ % rasterWorkers.length;
-  const worker = rasterWorkers[workerIndex]!;
+  if (!supportsCrossRuntimeSkiaRaster) {
+    // A SkPicture is a JSI HostObject tied to the runtime that created it.
+    // Passing it into a second Hermes runtime on iOS retained two extra heaps
+    // and made the RN runtime fail in HostObject::get under memory pressure.
+    // Native Pager turns do not use this compatibility path; keeping the
+    // fallback on the owning runtime preserves correctness without reducing
+    // native Pager throughput.
+    return rasterizeRecordedPageCapture(recording);
+  }
+
+  const workers = getRasterWorkers();
+  const workerIndex = nextWorker++ % workers.length;
+  const worker = workers[workerIndex]!;
   const result = await runOnRuntimeAsync(
     worker,
     rasterizePictureOnWorker,

@@ -451,7 +451,7 @@ index cc5007733e92caaf643c1b18c8be2cef52b477dd..1a75aa6cc61f4e6260fcdd252cb68f5b
  #pragma clang diagnostic pop
  
 +#if !TARGET_OS_OSX
-+@interface RNSkDisplayLinkTarget : NSObject {
++@interface RNSkPagerDisplayLinkTarget : NSObject {
 +  CADisplayLink *_displayLink;
 +  std::function<void()> _pendingTask;
 +}
@@ -459,7 +459,7 @@ index cc5007733e92caaf643c1b18c8be2cef52b477dd..1a75aa6cc61f4e6260fcdd252cb68f5b
 +- (void)invalidate;
 +@end
 +
-+@implementation RNSkDisplayLinkTarget
++@implementation RNSkPagerDisplayLinkTarget
 +
 +- (instancetype)init {
 +  self = [super init];
@@ -508,16 +508,16 @@ index cc5007733e92caaf643c1b18c8be2cef52b477dd..1a75aa6cc61f4e6260fcdd252cb68f5b
 +public:
 +  RNSkDisplayLinkScheduler() {
 +    if (NSThread.isMainThread) {
-+      _target = [[RNSkDisplayLinkTarget alloc] init];
++      _target = [[RNSkPagerDisplayLinkTarget alloc] init];
 +    } else {
 +      dispatch_sync(dispatch_get_main_queue(), ^{
-+        _target = [[RNSkDisplayLinkTarget alloc] init];
++        _target = [[RNSkPagerDisplayLinkTarget alloc] init];
 +      });
 +    }
 +  }
 +
 +  ~RNSkDisplayLinkScheduler() {
-+    RNSkDisplayLinkTarget *target = _target;
++    RNSkPagerDisplayLinkTarget *target = _target;
 +    _target = nil;
 +    if (NSThread.isMainThread) {
 +      [target invalidate];
@@ -529,7 +529,7 @@ index cc5007733e92caaf643c1b18c8be2cef52b477dd..1a75aa6cc61f4e6260fcdd252cb68f5b
 +  }
 +
 +  void schedule(std::function<void()> task) {
-+    RNSkDisplayLinkTarget *target = _target;
++    RNSkPagerDisplayLinkTarget *target = _target;
 +    if (target == nil || !task) {
 +      return;
 +    }
@@ -543,7 +543,7 @@ index cc5007733e92caaf643c1b18c8be2cef52b477dd..1a75aa6cc61f4e6260fcdd252cb68f5b
 +  }
 +
 +private:
-+  __strong RNSkDisplayLinkTarget *_target = nil;
++  __strong RNSkPagerDisplayLinkTarget *_target = nil;
 +};
 +#else
 +class RNSkDisplayLinkScheduler {};
@@ -1194,7 +1194,7 @@ new file mode 100644
 index 0000000000000000000000000000000000000000..876575767020de09a339ad09847d1e23938b1298
 --- /dev/null
 +++ b/cpp/rnskia/RNSkPagerCompositor.h
-@@ -0,0 +1,2424 @@
+@@ -0,0 +1,2463 @@
 +#pragma once
 +
 +#include <algorithm>
@@ -1882,9 +1882,11 @@ index 0000000000000000000000000000000000000000..876575767020de09a339ad09847d1e23
 +  static constexpr size_t kMaximumRetainedPagePictureCount = 32;
 +  // Four preferred-direction pages plus a three-page reversal runway are
 +  // enough for the dedicated render thread to refill at 10 turns/second.
-+  // Keeping this at eight avoids pinning another ~64 MB of full-resolution
-+  // page textures on a 1680x2520 device.
++  // The count remains a safety ceiling for spread mode; the byte ceiling is
++  // authoritative so a single-column page cannot consume twice the budget.
 +  static constexpr size_t kMaximumPreparedPageCount = 8;
++  static constexpr size_t kMaximumPreparedPageBytes =
++      72 * 1024 * 1024;
 +  static constexpr double kMinimumDurationMs = 72.0;
 +  // Direct taps use the original immediate-launch timeline. Gesture turns
 +  // never enter this compression path and can preempt the entire tap lane.
@@ -2852,6 +2854,14 @@ index 0000000000000000000000000000000000000000..876575767020de09a339ad09847d1e23
 +    return page->image;
 +  }
 +
++  static size_t estimatedPageTextureBytes(const PageTexture &page) {
++    if (page.pixelWidth <= 0 || page.pixelHeight <= 0) {
++      return 0;
++    }
++    return static_cast<size_t>(page.pixelWidth) *
++           static_cast<size_t>(page.pixelHeight) * 4;
++  }
++
 +  double directInputDurationLocked(double nowSteadyMs,
 +                                   double stockDurationMs) {
 +    if (_lastDirectInputSteadyMs <= 0 ||
@@ -3083,41 +3093,10 @@ index 0000000000000000000000000000000000000000..876575767020de09a339ad09847d1e23
 +      return;
 +    }
 +    PendingPageTexture candidate;
++    size_t evictedTextureBytes = 0;
 +    {
 +      std::lock_guard<std::mutex> lock(_mutex);
 +      const auto prioritizedPageKeys = prioritizedPageKeysLocked();
-+      const size_t preparedPageCount = std::count_if(
-+          _pageTextures.begin(), _pageTextures.end(),
-+          [](const PageTexture &entry) { return entry.image != nullptr; });
-+      if (preparedPageCount >= kMaximumPreparedPageCount) {
-+        const auto oldestUnprotected = std::min_element(
-+            _pageTextures.begin(), _pageTextures.end(),
-+            [&prioritizedPageKeys](const PageTexture &left,
-+                                   const PageTexture &right) {
-+              const auto evictable =
-+                  [&prioritizedPageKeys](const PageTexture &entry) {
-+                    return entry.image != nullptr &&
-+                           std::find(prioritizedPageKeys.begin(),
-+                                     prioritizedPageKeys.end(),
-+                                     entry.pageKey) ==
-+                               prioritizedPageKeys.end();
-+                  };
-+              const bool leftEvictable = evictable(left);
-+              const bool rightEvictable = evictable(right);
-+              if (leftEvictable != rightEvictable) {
-+                return leftEvictable;
-+              }
-+              return left.lastUsed < right.lastUsed;
-+            });
-+        if (oldestUnprotected != _pageTextures.end() &&
-+            oldestUnprotected->image != nullptr &&
-+            std::find(prioritizedPageKeys.begin(),
-+                      prioritizedPageKeys.end(),
-+                      oldestUnprotected->pageKey) ==
-+                prioritizedPageKeys.end()) {
-+          oldestUnprotected->image = nullptr;
-+        }
-+      }
 +      for (const auto &pageKey : prioritizedPageKeys) {
 +        const auto page = std::find_if(
 +            _pageTextures.begin(), _pageTextures.end(),
@@ -3134,6 +3113,66 @@ index 0000000000000000000000000000000000000000..876575767020de09a339ad09847d1e23
 +                     page->pixelHeight};
 +        break;
 +      }
++      if (candidate.picture != nullptr) {
++        size_t preparedPageCount = 0;
++        size_t preparedPageBytes = 0;
++        for (const auto &page : _pageTextures) {
++          if (page.image == nullptr) {
++            continue;
++          }
++          preparedPageCount += 1;
++          preparedPageBytes += estimatedPageTextureBytes(page);
++        }
++        const size_t candidateBytes =
++            static_cast<size_t>(candidate.pixelWidth) *
++            static_cast<size_t>(candidate.pixelHeight) * 4;
++        const size_t byteBudget =
++            std::max(kMaximumPreparedPageBytes, candidateBytes);
++        while (preparedPageCount >= kMaximumPreparedPageCount ||
++               preparedPageBytes + candidateBytes > byteBudget) {
++          auto eviction = _pageTextures.end();
++          size_t evictionPriority = 0;
++          for (auto page = _pageTextures.begin();
++               page != _pageTextures.end(); page += 1) {
++            if (page->image == nullptr ||
++                page->pageKey == candidate.pageKey) {
++              continue;
++            }
++            const auto priority = std::find(
++                prioritizedPageKeys.begin(), prioritizedPageKeys.end(),
++                page->pageKey);
++            const size_t priorityIndex =
++                priority == prioritizedPageKeys.end()
++                    ? prioritizedPageKeys.size() + 1
++                    : static_cast<size_t>(
++                          priority - prioritizedPageKeys.begin());
++            if (eviction == _pageTextures.end() ||
++                priorityIndex > evictionPriority ||
++                (priorityIndex == evictionPriority &&
++                 page->lastUsed < eviction->lastUsed)) {
++              eviction = page;
++              evictionPriority = priorityIndex;
++            }
++          }
++          if (eviction == _pageTextures.end()) {
++            break;
++          }
++          const size_t evictionBytes =
++              estimatedPageTextureBytes(*eviction);
++          eviction->image = nullptr;
++          preparedPageCount -= 1;
++          preparedPageBytes =
++              preparedPageBytes > evictionBytes
++                  ? preparedPageBytes - evictionBytes
++                  : 0;
++          evictedTextureBytes += evictionBytes;
++        }
++      }
++    }
++    if (evictedTextureBytes > 0) {
++      // Released render targets otherwise sit in Ganesh's scratch cache and
++      // each settled page can add another full-resolution allocation.
++      directContext->purgeUnlockedResources(evictedTextureBytes, true);
 +    }
 +    if (candidate.picture == nullptr) {
 +      return;

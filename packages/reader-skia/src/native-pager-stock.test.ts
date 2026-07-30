@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildNativePagerStockPlan,
+  NATIVE_PAGER_STOCK_RADIUS,
   nativePagerPageKey,
   nativePagerTransitionPictures,
   trimNativePagerReconciliationEntries,
@@ -115,6 +116,17 @@ describe("native pager picture stock", () => {
       ]),
     );
     expect(plan).toHaveLength(8);
+  });
+
+  it("keeps eight transitions of runway in each direction by default", () => {
+    const plan = buildNativePagerStockPlan(
+      page(10),
+      adjacentFor(21),
+      NATIVE_PAGER_STOCK_RADIUS,
+    );
+
+    expect(Math.max(...plan.map((edge) => edge.distance))).toBe(8);
+    expect(plan).toHaveLength(NATIVE_PAGER_STOCK_RADIUS * 4);
   });
 
   it("stops cleanly at publication boundaries without duplicate edges", () => {

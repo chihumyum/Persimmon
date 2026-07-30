@@ -123,51 +123,70 @@ const nativePagerWorkletApi = (
   }
 ).SkiaViewApi;
 
-function pagerApi(): NativePagerSkiaViewApi | undefined {
-  return (
-    globalThis as typeof globalThis & {
-      SkiaViewApi?: NativePagerSkiaViewApi;
-    }
-  ).SkiaViewApi;
-}
+// Reading a method from SkiaViewApi creates a JSI HostFunction wrapper. Cache
+// every RN-runtime method once instead of recreating wrappers on each render,
+// stock entry, input event, and 16 ms event poll.
+const nativePagerRnApi = {
+  protocolVersion: nativePagerWorkletApi?.pagerProtocolVersion,
+  preload: nativePagerWorkletApi?.pagerPreload,
+  enqueue: nativePagerWorkletApi?.pagerEnqueue,
+  enqueuePicture: nativePagerWorkletApi?.pagerEnqueuePicture,
+  setAnchor: nativePagerWorkletApi?.pagerSetAnchor,
+  stockPicture: nativePagerWorkletApi?.pagerStockPicture,
+  setInputEnabled: nativePagerWorkletApi?.pagerSetInputEnabled,
+  configureMotion: nativePagerWorkletApi?.pagerConfigureMotion,
+  consumeInput: nativePagerWorkletApi?.pagerConsumeInput,
+  beginGesture: nativePagerWorkletApi?.pagerBeginGesture,
+  updateGesture: nativePagerWorkletApi?.pagerUpdateGesture,
+  endGesture: nativePagerWorkletApi?.pagerEndGesture,
+  cancelGesture: nativePagerWorkletApi?.pagerCancelGesture,
+  runBenchmark: nativePagerWorkletApi?.pagerRunBenchmark,
+  takeEvents: nativePagerWorkletApi?.pagerTakeEvents,
+  reset: nativePagerWorkletApi?.pagerReset,
+};
+
+let nativePagerAvailability: boolean | undefined;
 
 export function nativePagerCompositorAvailable(): boolean {
-  const api = pagerApi();
+  if (nativePagerAvailability !== undefined) {
+    return nativePagerAvailability;
+  }
   let protocolVersion = 0;
   try {
-    protocolVersion = api?.pagerProtocolVersion?.() ?? 0;
+    protocolVersion = nativePagerRnApi.protocolVersion?.() ?? 0;
   } catch {
+    nativePagerAvailability = false;
     return false;
   }
-  return (
+  nativePagerAvailability =
     protocolVersion >= 2 &&
-    typeof api?.pagerEnqueue === "function" &&
-    typeof api.pagerEnqueuePicture === "function" &&
-    typeof api.pagerSetAnchor === "function" &&
-    typeof api.pagerStockPicture === "function" &&
-    typeof api.pagerSetInputEnabled === "function" &&
-    typeof api.pagerConfigureMotion === "function" &&
-    typeof api.pagerConsumeInput === "function" &&
-    typeof api.pagerBeginGesture === "function" &&
-    typeof api.pagerUpdateGesture === "function" &&
-    typeof api.pagerEndGesture === "function" &&
-    typeof api.pagerCancelGesture === "function" &&
-    typeof api.pagerRunBenchmark === "function" &&
-    typeof api.pagerTakeEvents === "function" &&
-    typeof api.pagerReset === "function"
-  );
+    typeof nativePagerRnApi.enqueue === "function" &&
+    typeof nativePagerRnApi.enqueuePicture === "function" &&
+    typeof nativePagerRnApi.setAnchor === "function" &&
+    typeof nativePagerRnApi.stockPicture === "function" &&
+    typeof nativePagerRnApi.setInputEnabled === "function" &&
+    typeof nativePagerRnApi.configureMotion === "function" &&
+    typeof nativePagerRnApi.consumeInput === "function" &&
+    typeof nativePagerRnApi.beginGesture === "function" &&
+    typeof nativePagerRnApi.updateGesture === "function" &&
+    typeof nativePagerRnApi.endGesture === "function" &&
+    typeof nativePagerRnApi.cancelGesture === "function" &&
+    typeof nativePagerRnApi.runBenchmark === "function" &&
+    typeof nativePagerRnApi.takeEvents === "function" &&
+    typeof nativePagerRnApi.reset === "function";
+  return nativePagerAvailability;
 }
 
 export function enqueueNativePagerPictureTurn(
   canvas: NativePagerCanvasHandle | null,
   command: NativePagerPictureTurnCommand,
 ): boolean {
-  const api = pagerApi();
-  if (!canvas || typeof api?.pagerEnqueuePicture !== "function") {
+  const enqueuePicture = nativePagerRnApi.enqueuePicture;
+  if (!canvas || !enqueuePicture) {
     return false;
   }
   try {
-    api.pagerEnqueuePicture(
+    enqueuePicture(
       canvas.getNativeId(),
       command.id,
       command.frontPicture,
@@ -193,12 +212,12 @@ export function enqueueNativePagerTurn(
   canvas: NativePagerCanvasHandle | null,
   command: NativePagerTurnCommand,
 ): boolean {
-  const api = pagerApi();
-  if (!canvas || typeof api?.pagerEnqueue !== "function") {
+  const enqueue = nativePagerRnApi.enqueue;
+  if (!canvas || !enqueue) {
     return false;
   }
   try {
-    api.pagerEnqueue(
+    enqueue(
       canvas.getNativeId(),
       command.id,
       command.frontImage,
@@ -220,12 +239,12 @@ export function preloadNativePagerImage(
   canvas: NativePagerCanvasHandle | null,
   image: SkImage,
 ): boolean {
-  const api = pagerApi();
-  if (!canvas || typeof api?.pagerPreload !== "function") {
+  const preload = nativePagerRnApi.preload;
+  if (!canvas || !preload) {
     return false;
   }
   try {
-    api.pagerPreload(canvas.getNativeId(), image);
+    preload(canvas.getNativeId(), image);
     return true;
   } catch {
     return false;
@@ -236,12 +255,12 @@ export function setNativePagerAnchor(
   canvas: NativePagerCanvasHandle | null,
   pageKey: string,
 ): boolean {
-  const api = pagerApi();
-  if (!canvas || typeof api?.pagerSetAnchor !== "function") {
+  const setAnchor = nativePagerRnApi.setAnchor;
+  if (!canvas || !setAnchor) {
     return false;
   }
   try {
-    api.pagerSetAnchor(canvas.getNativeId(), pageKey);
+    setAnchor(canvas.getNativeId(), pageKey);
     return true;
   } catch {
     return false;
@@ -252,12 +271,12 @@ export function stockNativePagerPicture(
   canvas: NativePagerCanvasHandle | null,
   command: NativePagerStockPictureCommand,
 ): boolean {
-  const api = pagerApi();
-  if (!canvas || typeof api?.pagerStockPicture !== "function") {
+  const stockPicture = nativePagerRnApi.stockPicture;
+  if (!canvas || !stockPicture) {
     return false;
   }
   try {
-    api.pagerStockPicture(
+    stockPicture(
       canvas.getNativeId(),
       command.id,
       command.fromPageKey,
@@ -289,12 +308,12 @@ export function configureNativePagerInput(
   canvas: NativePagerCanvasHandle | null,
   enabled: boolean,
 ): boolean {
-  const api = pagerApi();
-  if (!canvas || typeof api?.pagerSetInputEnabled !== "function") {
+  const setInputEnabled = nativePagerRnApi.setInputEnabled;
+  if (!canvas || !setInputEnabled) {
     return false;
   }
   try {
-    api.pagerSetInputEnabled(canvas.getNativeId(), enabled);
+    setInputEnabled(canvas.getNativeId(), enabled);
     return true;
   } catch {
     return false;
@@ -305,12 +324,12 @@ export function configureNativePagerMotion(
   canvas: NativePagerCanvasHandle | null,
   config: NativePagerMotionConfig,
 ): boolean {
-  const api = pagerApi();
-  if (!canvas || typeof api?.pagerConfigureMotion !== "function") {
+  const configureMotion = nativePagerRnApi.configureMotion;
+  if (!canvas || !configureMotion) {
     return false;
   }
   try {
-    api.pagerConfigureMotion(
+    configureMotion(
       canvas.getNativeId(),
       config.automatic.releaseX,
       config.automatic.liftVelocity,
@@ -413,12 +432,12 @@ export function runNativePagerBenchmark(
   intervalMs: number,
   direction: 1 | -1,
 ): boolean {
-  const api = pagerApi();
-  if (!canvas || typeof api?.pagerRunBenchmark !== "function") {
+  const runBenchmark = nativePagerRnApi.runBenchmark;
+  if (!canvas || !runBenchmark) {
     return false;
   }
   try {
-    api.pagerRunBenchmark(canvas.getNativeId(), count, intervalMs, direction);
+    runBenchmark(canvas.getNativeId(), count, intervalMs, direction);
     return true;
   } catch {
     return false;
@@ -428,12 +447,12 @@ export function runNativePagerBenchmark(
 export function takeNativePagerEvents(
   canvas: NativePagerCanvasHandle | null,
 ): readonly NativePagerEventRecord[] {
-  const api = pagerApi();
-  if (!canvas || typeof api?.pagerTakeEvents !== "function") {
+  const takeEvents = nativePagerRnApi.takeEvents;
+  if (!canvas || !takeEvents) {
     return [];
   }
   try {
-    return api.pagerTakeEvents(canvas.getNativeId());
+    return takeEvents(canvas.getNativeId());
   } catch {
     return [];
   }
@@ -442,10 +461,10 @@ export function takeNativePagerEvents(
 export function resetNativePagerCompositor(
   canvas: NativePagerCanvasHandle | null,
 ): void {
-  const api = pagerApi();
-  if (canvas && typeof api?.pagerReset === "function") {
+  const reset = nativePagerRnApi.reset;
+  if (canvas && reset) {
     try {
-      api.pagerReset(canvas.getNativeId());
+      reset(canvas.getNativeId());
     } catch {
       // The Fabric view may already be unregistered during teardown.
     }
