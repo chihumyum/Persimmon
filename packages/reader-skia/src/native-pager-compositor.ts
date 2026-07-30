@@ -47,6 +47,9 @@ export interface NativePagerTurnCommand {
 export interface NativePagerPictureTurnCommand {
   readonly id: string;
   readonly frontPicture: SkPicture;
+  readonly backPicture?: SkPicture;
+  readonly backgroundLeftPicture?: SkPicture;
+  readonly backgroundRightPicture?: SkPicture;
   readonly pixelWidth: number;
   readonly pixelHeight: number;
   readonly direction: 1 | -1;
@@ -61,11 +64,18 @@ export interface NativePagerStockPictureCommand {
   readonly id: string;
   readonly fromPageKey: string;
   readonly toPageKey: string;
+  readonly frontPageKey: string;
+  readonly backPageKey?: string;
+  readonly backgroundLeftPageKey?: string;
+  readonly backgroundRightPageKey?: string;
   readonly frontPicture: SkPicture;
-  readonly backgroundPicture: SkPicture;
+  readonly backPicture?: SkPicture;
+  readonly backgroundLeftPicture?: SkPicture;
+  readonly backgroundRightPicture?: SkPicture;
   readonly pixelWidth: number;
   readonly pixelHeight: number;
   readonly direction: 1 | -1;
+  readonly spread: boolean;
   readonly contentRevision: number;
   readonly durationMs: number;
   readonly launchIntervalMs: number;

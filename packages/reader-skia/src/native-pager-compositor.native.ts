@@ -13,6 +13,7 @@ import type {
 } from "./native-pager-compositor";
 
 interface NativePagerSkiaViewApi {
+  pagerProtocolVersion?: () => number;
   pagerPreload?: (nativeId: number, image: SkImage) => void;
   pagerEnqueue?: (
     nativeId: number,
@@ -30,6 +31,9 @@ interface NativePagerSkiaViewApi {
     nativeId: number,
     turnId: string,
     frontPicture: SkPicture,
+    backPicture: SkPicture | null,
+    backgroundLeftPicture: SkPicture | null,
+    backgroundRightPicture: SkPicture | null,
     pixelWidth: number,
     pixelHeight: number,
     direction: 1 | -1,
@@ -45,11 +49,18 @@ interface NativePagerSkiaViewApi {
     entryId: string,
     fromPageKey: string,
     toPageKey: string,
+    frontPageKey: string,
+    backPageKey: string | null,
+    backgroundLeftPageKey: string | null,
+    backgroundRightPageKey: string | null,
     frontPicture: SkPicture,
-    backgroundPicture: SkPicture,
+    backPicture: SkPicture | null,
+    backgroundLeftPicture: SkPicture | null,
+    backgroundRightPicture: SkPicture | null,
     pixelWidth: number,
     pixelHeight: number,
     direction: 1 | -1,
+    spread: boolean,
     contentRevision: number,
     durationMs: number,
     launchIntervalMs: number,
@@ -122,7 +133,14 @@ function pagerApi(): NativePagerSkiaViewApi | undefined {
 
 export function nativePagerCompositorAvailable(): boolean {
   const api = pagerApi();
+  let protocolVersion = 0;
+  try {
+    protocolVersion = api?.pagerProtocolVersion?.() ?? 0;
+  } catch {
+    return false;
+  }
   return (
+    protocolVersion >= 2 &&
     typeof api?.pagerEnqueue === "function" &&
     typeof api.pagerEnqueuePicture === "function" &&
     typeof api.pagerSetAnchor === "function" &&
@@ -153,6 +171,9 @@ export function enqueueNativePagerPictureTurn(
       canvas.getNativeId(),
       command.id,
       command.frontPicture,
+      command.backPicture ?? null,
+      command.backgroundLeftPicture ?? null,
+      command.backgroundRightPicture ?? null,
       command.pixelWidth,
       command.pixelHeight,
       command.direction,
@@ -241,11 +262,18 @@ export function stockNativePagerPicture(
       command.id,
       command.fromPageKey,
       command.toPageKey,
+      command.frontPageKey,
+      command.backPageKey ?? null,
+      command.backgroundLeftPageKey ?? null,
+      command.backgroundRightPageKey ?? null,
       command.frontPicture,
-      command.backgroundPicture,
+      command.backPicture ?? null,
+      command.backgroundLeftPicture ?? null,
+      command.backgroundRightPicture ?? null,
       command.pixelWidth,
       command.pixelHeight,
       command.direction,
+      command.spread,
       command.contentRevision,
       command.durationMs,
       command.launchIntervalMs,

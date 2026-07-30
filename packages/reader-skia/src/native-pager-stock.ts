@@ -1,4 +1,9 @@
 import { samePageAddress, type PageAddress } from "./section-navigation";
+import { pageTurnBackgroundSlots } from "./page-turn-background";
+import {
+  pageTurnCaptureAddresses,
+  type PageTurnCaptureAddresses,
+} from "./page-turn-textures";
 
 export const NATIVE_PAGER_STOCK_RADIUS = 12;
 
@@ -9,22 +14,33 @@ export interface NativePagerStockEdge {
   readonly distance: number;
 }
 
-export function nativePagerPageKey(address: PageAddress): string {
-  return `${address.sectionIndex}:${address.pageIndex}`;
+export interface NativePagerTransitionPictures<T> {
+  readonly faces: PageTurnCaptureAddresses<T>;
+  readonly backgroundLeft?: T;
+  readonly backgroundRight?: T;
 }
 
-/**
- * Resolves the stationary page underneath a native page curl.
- *
- * Forward turns peel the current page away and reveal the destination.
- * Backward turns unfold the destination over the still-visible current page.
- */
-export function nativePagerBackgroundAddress(
-  from: PageAddress,
-  to: PageAddress,
+export function nativePagerTransitionPictures<T>(
+  layout: "single" | "spread",
   direction: 1 | -1,
-): PageAddress {
-  return direction === 1 ? to : from;
+  current: readonly (T | undefined)[],
+  target: readonly (T | undefined)[],
+): NativePagerTransitionPictures<T> {
+  const backgrounds = pageTurnBackgroundSlots(
+    layout,
+    direction,
+    current,
+    target,
+  );
+  return {
+    faces: pageTurnCaptureAddresses(layout, direction, current, target),
+    backgroundLeft: backgrounds[0],
+    backgroundRight: layout === "spread" ? backgrounds[1] : undefined,
+  };
+}
+
+export function nativePagerPageKey(address: PageAddress): string {
+  return `${address.sectionIndex}:${address.pageIndex}`;
 }
 
 /**

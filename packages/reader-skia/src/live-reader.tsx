@@ -179,11 +179,14 @@ import {
   takeNativePagerEvents,
   type NativePagerEvent,
 } from "./native-pager-compositor";
-import { bindNativePagerInput } from "./native-pager-input";
+import {
+  bindNativePagerInput,
+  resolveNativePagerGestureInputPolicy,
+} from "./native-pager-input";
 import {
   buildNativePagerStockPlan,
-  nativePagerBackgroundAddress,
   nativePagerPageKey,
+  nativePagerTransitionPictures,
   trimNativePagerReconciliationEntries,
 } from "./native-pager-stock";
 import {
@@ -463,8 +466,7 @@ function LazyReaderEngine({
     [automaticPageTurnTuning],
   );
   const nativePagerCompositorEnabled =
-    Platform.OS === "android" &&
-    layout === "single" &&
+    (Platform.OS === "android" || Platform.OS === "ios") &&
     pageTurnAnimation === "natural" &&
     nativePagerCompositorAvailable();
   const pagesPerView = layout === "spread" ? 2 : 1;
@@ -3080,15 +3082,18 @@ function LazyReaderEngine({
     !selectingText &&
     nativeBenchmarkCommand === undefined &&
     activeTurns.length === 0;
+  const nativePagerGestureInputPolicy = resolveNativePagerGestureInputPolicy({
+    selectionActive: selectingText,
+    benchmarkActive: nativeBenchmarkCommand !== undefined,
+    nativePagerInputReady: nativePagerTapInputEnabled,
+    directTapActive:
+      nativePagerDirectActiveCount !== nativePagerGestureActiveCount,
+  });
   const nativePageTurn = useNativePageTurnDriver({
-    gesturesEnabled:
-      !selectingText &&
-      nativeBenchmarkCommand === undefined &&
-      nativePagerDirectActiveCount === nativePagerGestureActiveCount,
+    gesturesEnabled: nativePagerGestureInputPolicy.recognizerEnabled,
     nativePagerTapInputEnabled,
     nativePagerGestureInputEnabled:
-      nativePagerTapInputEnabled &&
-      nativePagerDirectActiveCount === nativePagerGestureActiveCount,
+      nativePagerGestureInputPolicy.nativeGestureInputEnabled,
     nativePagerNativeId: nativePagerCanvasId,
     width,
     height,
@@ -3515,24 +3520,33 @@ function LazyReaderEngine({
         nextEdgeIndex += 1;
         const currentSlots = captureSlotsForView(edge.from);
         const targetSlots = captureSlotsForView(edge.to);
-        const frontMetadata = pageTurnCaptureAddresses(
-          "single",
+        const pictures = nativePagerTransitionPictures(
+          layout,
           edge.direction,
           currentSlots,
           targetSlots,
-        ).front;
-        const backgroundAddress = nativePagerBackgroundAddress(
-          edge.from,
-          edge.to,
-          edge.direction,
         );
-        const backgroundMetadata = captureSlotsForView(backgroundAddress)[0];
-        if (!frontMetadata || !backgroundMetadata) {
+        const frontMetadata = pictures.faces.front;
+        const backMetadata = pictures.faces.back;
+        if (!frontMetadata || (layout === "spread" && !backMetadata)) {
           continue;
         }
         const frontRecording = recordingFor(frontMetadata);
-        const backgroundRecording = recordingFor(backgroundMetadata);
-        if (!frontRecording || !backgroundRecording) {
+        const backRecording = backMetadata
+          ? recordingFor(backMetadata)
+          : undefined;
+        const backgroundLeftRecording = pictures.backgroundLeft
+          ? recordingFor(pictures.backgroundLeft)
+          : undefined;
+        const backgroundRightRecording = pictures.backgroundRight
+          ? recordingFor(pictures.backgroundRight)
+          : undefined;
+        if (
+          !frontRecording ||
+          (backMetadata && !backRecording) ||
+          (pictures.backgroundLeft && !backgroundLeftRecording) ||
+          (pictures.backgroundRight && !backgroundRightRecording)
+        ) {
           continue;
         }
         const entryId = entryIdFor(edge.from, edge.to, edge.direction);
@@ -3540,11 +3554,24 @@ function LazyReaderEngine({
           id: entryId,
           fromPageKey: nativePagerPageKey(edge.from),
           toPageKey: nativePagerPageKey(edge.to),
+          frontPageKey: pageCaptureIdentity(frontMetadata).key,
+          backPageKey: backMetadata
+            ? pageCaptureIdentity(backMetadata).key
+            : undefined,
+          backgroundLeftPageKey: pictures.backgroundLeft
+            ? pageCaptureIdentity(pictures.backgroundLeft).key
+            : undefined,
+          backgroundRightPageKey: pictures.backgroundRight
+            ? pageCaptureIdentity(pictures.backgroundRight).key
+            : undefined,
           frontPicture: frontRecording.picture,
-          backgroundPicture: backgroundRecording.picture,
+          backPicture: backRecording?.picture,
+          backgroundLeftPicture: backgroundLeftRecording?.picture,
+          backgroundRightPicture: backgroundRightRecording?.picture,
           pixelWidth: frontRecording.pixelWidth,
           pixelHeight: frontRecording.pixelHeight,
           direction: edge.direction,
+          spread: layout === "spread",
           contentRevision: imageVersion,
           durationMs: estimateAutomaticPageTurnDurationMs(
             automaticPageTurnTuning,
@@ -3589,6 +3616,7 @@ function LazyReaderEngine({
     createRecordedPageCapture,
     crispTapCaptureQuality.desiredScale,
     imageVersion,
+    layout,
     nativePagerCompositorEnabled,
     nativePagerStockPlan,
     pageCaptureIdentity,
@@ -3649,15 +3677,53 @@ function LazyReaderEngine({
       ) {
         continue;
       }
-      const addresses = captureAddressesForTurn(turn);
-      if (!addresses.front || !pageReadyForCapture(addresses.front.address)) {
+      const pictures = nativePagerTransitionPictures(
+        layout,
+        turn.direction,
+        captureSlotsForView(turn.from),
+        captureSlotsForView(turn.to),
+      );
+      const frontMetadata = pictures.faces.front;
+      const backMetadata = pictures.faces.back;
+      const captureMetadata = [
+        frontMetadata,
+        backMetadata,
+        pictures.backgroundLeft,
+        pictures.backgroundRight,
+      ];
+      if (
+        !frontMetadata ||
+        (layout === "spread" && !backMetadata) ||
+        captureMetadata.some(
+          (metadata) =>
+            metadata !== undefined && !pageReadyForCapture(metadata.address),
+        )
+      ) {
         continue;
       }
-      const recording = createRecordedPageCapture(
-        pageCaptureIdentity(addresses.front),
-        crispTapCaptureQuality.desiredScale,
+      const recordings = captureMetadata.map((metadata) =>
+        metadata
+          ? createRecordedPageCapture(
+              pageCaptureIdentity(metadata),
+              crispTapCaptureQuality.desiredScale,
+            )
+          : undefined,
       );
-      if (!recording) {
+      const [
+        frontRecording,
+        backRecording,
+        backgroundLeftRecording,
+        backgroundRightRecording,
+      ] = recordings;
+      if (
+        !frontRecording ||
+        captureMetadata.some(
+          (metadata, index) => metadata !== undefined && !recordings[index],
+        )
+      ) {
+        for (const recording of recordings) {
+          recording?.dispose();
+        }
         continue;
       }
       const playbackSpeed =
@@ -3676,18 +3742,23 @@ function LazyReaderEngine({
       try {
         accepted = enqueueNativePagerPictureTurn(readerCanvasRef.current, {
           id: turn.id,
-          frontPicture: recording.picture,
-          pixelWidth: recording.pixelWidth,
-          pixelHeight: recording.pixelHeight,
+          frontPicture: frontRecording.picture,
+          backPicture: backRecording?.picture,
+          backgroundLeftPicture: backgroundLeftRecording?.picture,
+          backgroundRightPicture: backgroundRightRecording?.picture,
+          pixelWidth: frontRecording.pixelWidth,
+          pixelHeight: frontRecording.pixelHeight,
           direction: turn.direction,
-          spread: false,
+          spread: layout === "spread",
           startAtMs: turn.startAtMs,
           durationMs,
           launchIntervalMs: turnConcurrency.minimumTurnIntervalMs,
           paperColor,
         });
       } finally {
-        recording.dispose();
+        for (const recording of recordings) {
+          recording?.dispose();
+        }
       }
       if (!accepted) {
         presentationRequiredTurnIdsRef.current.delete(turn.id);
@@ -3702,9 +3773,10 @@ function LazyReaderEngine({
     activeTurns,
     automaticPageTurnTuning,
     automaticTapPlaybackSpeeds,
-    captureAddressesForTurn,
+    captureSlotsForView,
     createRecordedPageCapture,
     crispTapCaptureQuality.desiredScale,
+    layout,
     markScheduledTurnLanePrepared,
     nativePagerCompositorEnabled,
     pageCaptureIdentity,

@@ -196,10 +196,10 @@ function materialXForTouch(
 /**
  * Owns the complete native page-turn hot path.
  *
- * Gesture Handler recognizes input on the UI thread. Warm single-page
- * gestures synchronously enter the C++ pager compositor, which owns the drag
- * clock, release settlement, geometry, and draw loop. The existing Worklet
- * state machine remains as a cold-texture and unsupported-layout fallback.
+ * Gesture Handler recognizes input on the UI thread. Warm gestures
+ * synchronously enter the C++ pager compositor, which owns the drag clock,
+ * release settlement, geometry, and draw loop. The existing Worklet state
+ * machine remains as the cold-texture fallback.
  */
 export function useNativePageTurnDriver({
   gesturesEnabled,
@@ -476,8 +476,7 @@ export function useNativePageTurnDriver({
             );
             const nativeGestureStarted =
               nativePagerGestureInputEnabled &&
-              nativePagerNativeId !== undefined &&
-              !spread
+              nativePagerNativeId !== undefined
                 ? beginNativePagerGestureOnUI(nativePagerNativeId, {
                     direction,
                     startBookX,
@@ -792,8 +791,9 @@ export function useNativePageTurnDriver({
 
     const tap = Gesture.Tap()
       // Native pager taps remain live while earlier curls are still on screen.
-      // The pan path stays disabled until those turns settle, so a drag cannot
-      // accidentally enter the RN scheduler during a native burst.
+      // Pan recognition also stays live: a warm C++ gesture preempts those
+      // sheets, while a cold gesture remains a deferred RN request until the
+      // native reconciliation events have caught up.
       .enabled(gesturesEnabled || nativePagerTapInputEnabled)
       .maxDistance(8)
       .onEnd((event, success) => {

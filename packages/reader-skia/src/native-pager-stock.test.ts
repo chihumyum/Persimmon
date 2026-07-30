@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildNativePagerStockPlan,
-  nativePagerBackgroundAddress,
   nativePagerPageKey,
+  nativePagerTransitionPictures,
   trimNativePagerReconciliationEntries,
 } from "./native-pager-stock";
 import type { PageAddress } from "./section-navigation";
@@ -18,12 +18,49 @@ function adjacentFor(pageCount: number) {
 }
 
 describe("native pager picture stock", () => {
-  it("keeps the current page underneath a backward curl", () => {
-    expect(nativePagerBackgroundAddress(page(5), page(4), -1)).toEqual(page(5));
+  it("maps all four physical page roles for a forward spread", () => {
+    expect(
+      nativePagerTransitionPictures(
+        "spread",
+        1,
+        [page(2), page(3)],
+        [page(4), page(5)],
+      ),
+    ).toEqual({
+      faces: { front: page(3), back: page(4) },
+      backgroundLeft: page(2),
+      backgroundRight: page(5),
+    });
   });
 
-  it("reveals the destination underneath a forward curl", () => {
-    expect(nativePagerBackgroundAddress(page(5), page(6), 1)).toEqual(page(6));
+  it("mirrors spread faces while preserving the stationary outer pages", () => {
+    expect(
+      nativePagerTransitionPictures(
+        "spread",
+        -1,
+        [page(4), page(5)],
+        [page(2), page(3)],
+      ),
+    ).toEqual({
+      faces: { front: page(3), back: page(4) },
+      backgroundLeft: page(2),
+      backgroundRight: page(5),
+    });
+  });
+
+  it("allows an intentionally blank outer slot at a spread boundary", () => {
+    expect(
+      nativePagerTransitionPictures(
+        "spread",
+        -1,
+        [page(4)],
+        [page(2), page(3)],
+      ),
+    ).toEqual({
+      faces: { front: page(3), back: page(4) },
+      backgroundLeft: page(2),
+      backgroundRight: undefined,
+    });
   });
 
   it("evicts distant reconciliation records before old reverse runway", () => {
