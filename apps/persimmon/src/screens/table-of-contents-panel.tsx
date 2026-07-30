@@ -1,15 +1,13 @@
 import type { BookNavigationItem, BookPosition } from "@persimmon/book-core";
 import type { ReaderTheme } from "@persimmon/reader-skia";
-import {
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-} from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 
+import {
+  ReaderFloatingPanel,
+  ReaderPanelHeader,
+} from "../components/reader-floating-panel";
 import { UiText as Text } from "../components/ui-text";
-import { READER_UI_FONT_FAMILY } from "../reader/reader-ui-typography";
+import { uiRadius, uiSpace } from "../components/ui-tokens";
 
 export interface NavigationRow {
   readonly item: BookNavigationItem;
@@ -44,35 +42,21 @@ export function TableOfContentsPanel({
   onSelect,
 }: TableOfContentsPanelProps) {
   return (
-    <View
-      style={[
-        styles.panel,
-        {
-          backgroundColor: theme.panel,
-          borderColor: theme.border,
-          shadowColor: theme.shadow,
-          top,
-        },
-      ]}
+    <ReaderFloatingPanel
+      maxHeight="72%"
+      maxWidth={380}
+      padding={uiSpace.md}
+      theme={theme}
+      top={top}
     >
-      <View style={styles.header}>
-        <View>
-          <Text style={[styles.eyebrow, { color: theme.accentStrong }]}>
-            CONTENTS
-          </Text>
-          <Text style={[styles.title, { color: theme.text }]}>目录</Text>
-        </View>
-        <Pressable
-          accessibilityLabel="关闭目录"
-          accessibilityRole="button"
-          onPress={onClose}
-          style={styles.closeButton}
-        >
-          <Text style={[styles.closeText, { color: theme.accentStrong }]}>
-            完成
-          </Text>
-        </Pressable>
-      </View>
+      <ReaderPanelHeader
+        closeAccessibilityLabel="关闭目录"
+        eyebrow="本书导航"
+        theme={theme}
+        title="目录"
+        style={styles.header}
+        onClose={onClose}
+      />
       <ScrollView
         contentContainerStyle={styles.rows}
         showsVerticalScrollIndicator={false}
@@ -121,55 +105,18 @@ export function TableOfContentsPanel({
           );
         })}
       </ScrollView>
-    </View>
+    </ReaderFloatingPanel>
   );
 }
 
 const styles = StyleSheet.create({
-  closeButton: {
-    paddingHorizontal: 4,
-    paddingVertical: 6,
-  },
-  closeText: {
-    fontFamily: READER_UI_FONT_FAMILY,
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  eyebrow: {
-    fontFamily: READER_UI_FONT_FAMILY,
-    fontSize: 9,
-    fontWeight: "700",
-    letterSpacing: 1.2,
-  },
   header: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingBottom: 10,
-    paddingHorizontal: 4,
-  },
-  panel: {
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    maxHeight: "72%",
-    maxWidth: 380,
-    padding: 12,
-    position: "absolute",
-    right: Platform.OS === "web" ? 30 : 12,
-    width: "88%",
-    zIndex: 26,
-    ...(Platform.OS === "web"
-      ? { boxShadow: "0 8px 28px rgba(0, 0, 0, 0.22)" }
-      : {
-          elevation: 9,
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.22,
-          shadowRadius: 16,
-        }),
+    paddingBottom: uiSpace.sm + uiSpace.xxs,
+    paddingHorizontal: uiSpace.xs,
   },
   row: {
     alignItems: "center",
-    borderRadius: 11,
+    borderRadius: uiRadius.control,
     flexDirection: "row",
     minHeight: 46,
     paddingRight: 10,
@@ -180,7 +127,6 @@ const styles = StyleSheet.create({
   },
   rowText: {
     flex: 1,
-    fontFamily: READER_UI_FONT_FAMILY,
     fontSize: 13,
     includeFontPadding: false,
     letterSpacing: 0.1,
@@ -191,11 +137,5 @@ const styles = StyleSheet.create({
     height: 18,
     marginRight: 9,
     width: 3,
-  },
-  title: {
-    fontFamily: READER_UI_FONT_FAMILY,
-    fontSize: 19,
-    fontWeight: "700",
-    marginTop: 1,
   },
 });

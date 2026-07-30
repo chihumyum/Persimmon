@@ -2,7 +2,6 @@ import { useCallback, useMemo, useRef } from "react";
 import type { ReaderTheme } from "@persimmon/reader-skia/theme";
 import {
   PanResponder,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,7 +10,12 @@ import {
   type LayoutChangeEvent,
 } from "react-native";
 
+import {
+  ReaderFloatingPanel,
+  ReaderPanelHeader,
+} from "../components/reader-floating-panel";
 import { UiText as Text } from "../components/ui-text";
+import { uiSpace } from "../components/ui-tokens";
 import {
   DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
   type ReaderGesturePageTurnTuning,
@@ -180,37 +184,23 @@ export function PageTurnTuningPanel({
   );
 
   return (
-    <View
-      style={[
-        styles.panel,
-        {
-          backgroundColor: theme.panel,
-          borderColor: theme.border,
-          shadowColor: theme.shadow,
-          bottom,
-        },
-      ]}
+    <ReaderFloatingPanel
+      bottom={bottom}
+      maxHeight="82%"
+      maxWidth={330}
+      padding={14}
+      theme={theme}
+      width="84%"
+      style={styles.panel}
     >
-      <View style={styles.header}>
-        <View>
-          <Text style={[styles.eyebrow, { color: theme.accentStrong }]}>
-            NATURAL PAGE TURN
-          </Text>
-          <Text style={[styles.title, { color: theme.text }]}>
-            手势翻页常量
-          </Text>
-        </View>
-        <Pressable
-          accessibilityLabel="关闭翻页曲线"
-          accessibilityRole="button"
-          onPress={onClose}
-          style={styles.closeButton}
-        >
-          <Text style={[styles.closeText, { color: theme.accentStrong }]}>
-            关闭
-          </Text>
-        </Pressable>
-      </View>
+      <ReaderPanelHeader
+        closeAccessibilityLabel="关闭翻页曲线"
+        eyebrow="开发工具"
+        theme={theme}
+        title="手势翻页常量"
+        style={styles.header}
+        onClose={onClose}
+      />
 
       <ScrollView
         contentContainerStyle={styles.sliderList}
@@ -339,30 +329,15 @@ export function PageTurnTuningPanel({
           </Text>
         </Pressable>
       </View>
-    </View>
+    </ReaderFloatingPanel>
   );
 }
 
 const styles = StyleSheet.create({
-  closeButton: {
-    paddingHorizontal: 4,
-    paddingVertical: 6,
-  },
-  closeText: {
-    color: "#b94b24",
-    fontSize: 13,
-    fontWeight: "600",
-  },
   equation: {
     color: "#8a7d72",
     fontSize: 12,
     fontVariant: ["tabular-nums"],
-  },
-  eyebrow: {
-    color: "#b94b24",
-    fontSize: 9,
-    fontWeight: "700",
-    letterSpacing: 1.2,
   },
   footer: {
     alignItems: "center",
@@ -371,32 +346,10 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   header: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 3,
+    marginBottom: uiSpace.xxs + uiSpace.hairline,
   },
   panel: {
-    backgroundColor: "rgba(251, 247, 240, 0.98)",
-    borderColor: "rgba(91, 76, 65, 0.14)",
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    maxHeight: "82%",
-    maxWidth: 330,
-    padding: 14,
-    position: "absolute",
-    right: Platform.OS === "web" ? 30 : 12,
-    width: "84%",
     zIndex: 25,
-    ...(Platform.OS === "web"
-      ? { boxShadow: "0 8px 28px rgba(61, 48, 38, 0.18)" }
-      : {
-          elevation: 8,
-          shadowColor: "#3d3026",
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.18,
-          shadowRadius: 16,
-        }),
   },
   resetText: {
     color: "#b94b24",
@@ -460,11 +413,5 @@ const styles = StyleSheet.create({
     color: "#8a7d72",
     fontSize: 11,
     fontVariant: ["tabular-nums"],
-  },
-  title: {
-    color: "#3e3731",
-    fontSize: 15,
-    fontWeight: "700",
-    marginTop: 1,
   },
 });

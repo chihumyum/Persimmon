@@ -18,8 +18,9 @@ EPUB 阅读器。它不使用 WebView：EPUB 会先被编译成版本化、平�
 - Android 系统返回键先关闭 Reader 浮层，再返回书架；
 - Chromium / WebKit 自动端到端测试，以及 iOS / Android 无 UI bundle 门禁。
 
-架构说明见
-[docs/architecture.md](docs/architecture.md)，当前验收证据与真机清单见
+架构说明见 [docs/architecture.md](docs/architecture.md)，应用 UI
+token 与组件规范见
+[docs/design-system.md](docs/design-system.md)，当前验收证据与真机清单见
 [docs/mvp-acceptance.md](docs/mvp-acceptance.md)，Google
 Cloud 凭证创建和双设备验收见
 [docs/google-drive-sync.md](docs/google-drive-sync.md)。

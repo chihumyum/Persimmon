@@ -3,9 +3,14 @@ import type {
   ReaderPageTurnAnimation,
   ReaderTheme,
 } from "@persimmon/reader-skia";
-import { Platform, Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 
+import {
+  ReaderFloatingPanel,
+  ReaderPanelHeader,
+} from "../components/reader-floating-panel";
 import { UiText as Text } from "../components/ui-text";
+import { uiRadius, uiSpace } from "../components/ui-tokens";
 
 interface ReadingLayoutPanelProps {
   readonly layout: ReaderLayoutMode;
@@ -64,35 +69,14 @@ export function ReadingLayoutPanel({
   onLayoutChange,
 }: ReadingLayoutPanelProps) {
   return (
-    <View
-      style={[
-        styles.panel,
-        {
-          backgroundColor: theme.panel,
-          borderColor: theme.border,
-          bottom,
-          shadowColor: theme.shadow,
-        },
-      ]}
-    >
-      <View style={styles.header}>
-        <View>
-          <Text style={[styles.eyebrow, { color: theme.accentStrong }]}>
-            READING LAYOUT
-          </Text>
-          <Text style={[styles.title, { color: theme.text }]}>阅读布局</Text>
-        </View>
-        <Pressable
-          accessibilityLabel="关闭阅读布局"
-          accessibilityRole="button"
-          onPress={onClose}
-          style={styles.closeButton}
-        >
-          <Text style={[styles.closeText, { color: theme.accentStrong }]}>
-            完成
-          </Text>
-        </Pressable>
-      </View>
+    <ReaderFloatingPanel bottom={bottom} theme={theme} style={styles.panel}>
+      <ReaderPanelHeader
+        closeAccessibilityLabel="关闭阅读布局"
+        eyebrow="阅读设置"
+        theme={theme}
+        title="阅读布局"
+        onClose={onClose}
+      />
 
       <View style={styles.section}>
         <Text style={[styles.sectionLabel, { color: theme.controlText }]}>
@@ -224,7 +208,7 @@ export function ReadingLayoutPanel({
           })}
         </View>
       </View>
-    </View>
+    </ReaderFloatingPanel>
   );
 }
 
@@ -234,37 +218,19 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   animationGroup: {
-    borderRadius: 13,
-    gap: 3,
-    padding: 3,
+    borderRadius: uiRadius.card,
+    gap: uiSpace.xxs + uiSpace.hairline,
+    padding: uiSpace.xxs + uiSpace.hairline,
   },
   animationOption: {
     alignItems: "center",
-    borderRadius: 11,
+    borderRadius: uiRadius.control,
     borderWidth: 1,
     flexDirection: "row",
-    gap: 12,
+    gap: uiSpace.md,
     minHeight: 58,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  closeButton: {
-    paddingHorizontal: 4,
-    paddingVertical: 6,
-  },
-  closeText: {
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  eyebrow: {
-    fontSize: 9,
-    fontWeight: "700",
-    letterSpacing: 1.2,
-  },
-  header: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
+    paddingHorizontal: uiSpace.md,
+    paddingVertical: uiSpace.sm + uiSpace.hairline,
   },
   layoutIcon: {
     fontSize: 22,
@@ -274,12 +240,12 @@ const styles = StyleSheet.create({
   },
   layoutOption: {
     alignItems: "center",
-    borderRadius: 13,
+    borderRadius: uiRadius.card,
     borderWidth: 1,
     flex: 1,
     minHeight: 106,
-    paddingHorizontal: 8,
-    paddingVertical: 11,
+    paddingHorizontal: uiSpace.sm,
+    paddingVertical: uiSpace.sm + uiSpace.xxs + uiSpace.hairline,
   },
   optionDescription: {
     fontSize: 10,
@@ -292,30 +258,14 @@ const styles = StyleSheet.create({
   },
   optionRow: {
     flexDirection: "row",
-    gap: 9,
+    gap: uiSpace.sm + uiSpace.hairline,
   },
   panel: {
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: 17,
-    maxWidth: 360,
-    padding: 16,
-    position: "absolute",
-    right: Platform.OS === "web" ? 30 : 12,
-    width: "88%",
-    zIndex: 26,
-    ...(Platform.OS === "web"
-      ? { boxShadow: "0 8px 28px rgba(0, 0, 0, 0.22)" }
-      : {
-          elevation: 9,
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.22,
-          shadowRadius: 16,
-        }),
+    gap: uiSpace.lg + uiSpace.hairline,
   },
   radio: {
     alignItems: "center",
-    borderRadius: 8,
+    borderRadius: uiRadius.small,
     borderWidth: 1.5,
     height: 16,
     justifyContent: "center",
@@ -327,16 +277,11 @@ const styles = StyleSheet.create({
     width: 8,
   },
   section: {
-    gap: 8,
+    gap: uiSpace.sm,
   },
   sectionLabel: {
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 0.3,
-  },
-  title: {
-    fontSize: 19,
-    fontWeight: "700",
-    marginTop: 1,
   },
 });

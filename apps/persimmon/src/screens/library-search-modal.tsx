@@ -11,6 +11,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { UiIcon } from "../components/ui-icon";
+import { uiBackdropColor } from "../components/ui-shadow";
+import { UiEmptyState } from "../components/ui-state-message";
 import { UiText as Text } from "../components/ui-text";
 import type { LibraryBookSummary } from "../library/repository";
 
@@ -51,6 +54,7 @@ export function LibrarySearchModal({
         style={[
           styles.backdrop,
           {
+            backgroundColor: uiBackdropColor(theme, "soft"),
             paddingBottom: Math.max(insets.bottom, 14),
             paddingTop: Math.max(insets.top, 14),
           },
@@ -74,12 +78,12 @@ export function LibrarySearchModal({
                 { backgroundColor: theme.panelMuted },
               ]}
             >
-              <Text
-                accessibilityElementsHidden
-                style={[styles.searchIcon, { color: theme.secondaryText }]}
-              >
-                ⌕
-              </Text>
+              <UiIcon
+                color={theme.secondaryText}
+                name="search"
+                size={18}
+                style={styles.searchIcon}
+              />
               <TextInput
                 accessibilityLabel="搜索书名或作者"
                 autoCapitalize="none"
@@ -100,11 +104,7 @@ export function LibrarySearchModal({
                   onPress={() => onQueryChange("")}
                   style={styles.clearButton}
                 >
-                  <Text
-                    style={[styles.clearText, { color: theme.secondaryText }]}
-                  >
-                    ×
-                  </Text>
+                  <UiIcon color={theme.secondaryText} name="close" size={15} />
                 </Pressable>
               ) : null}
             </View>
@@ -125,16 +125,12 @@ export function LibrarySearchModal({
             showsVerticalScrollIndicator={false}
           >
             {query && entries.length === 0 ? (
-              <View style={styles.empty}>
-                <Text style={[styles.emptyTitle, { color: theme.text }]}>
-                  没有匹配的书
-                </Text>
-                <Text
-                  style={[styles.emptyBody, { color: theme.secondaryText }]}
-                >
-                  只搜索书名和作者。
-                </Text>
-              </View>
+              <UiEmptyState
+                body="只搜索书名和作者。"
+                style={styles.empty}
+                theme={theme}
+                title="没有匹配的书"
+              />
             ) : null}
             {query
               ? entries.map((entry) => (
@@ -166,15 +162,11 @@ export function LibrarySearchModal({
                         {entry.author ?? "未知作者"}
                       </Text>
                     </View>
-                    <Text
-                      accessibilityElementsHidden
-                      style={[
-                        styles.resultChevron,
-                        { color: theme.secondaryText },
-                      ]}
-                    >
-                      ›
-                    </Text>
+                    <UiIcon
+                      color={theme.secondaryText}
+                      name="chevronRight"
+                      size={17}
+                    />
                   </Pressable>
                 ))
               : null}
@@ -188,7 +180,6 @@ export function LibrarySearchModal({
 const styles = StyleSheet.create({
   backdrop: {
     alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.24)",
     flex: 1,
     paddingHorizontal: 14,
   },
@@ -207,22 +198,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 32,
   },
-  clearText: {
-    fontSize: 22,
-    lineHeight: 24,
-  },
   empty: {
-    alignItems: "center",
     paddingHorizontal: 20,
     paddingVertical: 42,
-  },
-  emptyBody: {
-    fontSize: 13,
-    marginTop: 5,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: "700",
   },
   input: {
     flex: 1,
@@ -251,10 +229,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     marginTop: 2,
-  },
-  resultChevron: {
-    fontSize: 25,
-    fontWeight: "300",
   },
   resultCopy: {
     flex: 1,
@@ -285,9 +259,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
   },
   searchIcon: {
-    fontSize: 21,
     marginRight: 5,
-    marginTop: -2,
   },
   searchRow: {
     alignItems: "center",

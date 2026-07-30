@@ -46,6 +46,15 @@ ESLint 对这些边界有硬约束：核心包不能引用 Expo / React
 Native，渲染器不能引用存储，UI 不能绕过 Repository 直接访问 IndexedDB /
 AsyncStorage / FileSystem。
 
+### 应用设计系统
+
+应用层使用一套代码优先的轻量设计系统。`ReaderTheme`
+是 Reader 与应用界面的语义颜色来源； `apps/persimmon/src/components`
+内的 token、排版、按钮、分段控件、Modal
+surface 和 Reader 浮层负责一致的尺寸与交互状态。它们只依赖主题与 React
+Native，不得引用 Repository、同步或分页实现。完整约束与开发期双栏策略见
+[design-system.md](design-system.md)。
+
 ## EPUB 编译边界
 
 导入分为以下步骤：

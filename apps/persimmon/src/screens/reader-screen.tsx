@@ -16,7 +16,6 @@ import React, {
 import {
   ActivityIndicator,
   Platform,
-  Pressable,
   StatusBar,
   StyleSheet,
   View,
@@ -25,7 +24,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AsyncSkia } from "../../components/async-skia";
-import { UiText as Text } from "../components/ui-text";
+import { UiButton } from "../components/ui-button";
+import { uiSize, uiSpace } from "../components/ui-tokens";
 import type {
   LibraryBookSummary,
   OpenedLibraryBook,
@@ -36,7 +36,6 @@ import type {
   ReaderPageTurnTuning,
 } from "../library/types";
 import { navigationLabelsForPosition } from "../reader/navigation-path";
-import { READER_UI_FONT_FAMILY } from "../reader/reader-ui-typography";
 import { ToolbarBreadcrumbCarousel } from "../reader/toolbar-breadcrumb-carousel";
 import { useAndroidReaderBack } from "../reader/use-android-reader-back";
 import { PageTurnTuningPanel } from "./page-turn-tuning-panel";
@@ -378,141 +377,84 @@ export function ReaderScreen({
       {!turning && !selecting && controlsVisible ? (
         <View
           pointerEvents="box-none"
-          style={[styles.topControls, { top: insets.top + 8 }]}
+          style={[styles.topControls, { top: insets.top }]}
         >
-          <Pressable
+          <UiButton
             accessibilityLabel="返回书架"
-            accessibilityRole="button"
+            label="书架"
+            leadingIcon="back"
             onPress={onBack}
-            style={[
-              styles.floatingButton,
-              styles.backButton,
-              {
-                backgroundColor: theme.panel,
-                borderColor: theme.border,
-                shadowColor: theme.shadow,
-              },
-            ]}
-          >
-            <Text
-              style={[styles.accentButtonText, { color: theme.accentStrong }]}
-            >
-              ‹ 书架
-            </Text>
-          </Pressable>
-          <Pressable
+            style={styles.backButton}
+            textTone="accent"
+            theme={theme}
+            variant="chrome"
+          />
+          <UiButton
             accessibilityLabel="打开目录"
-            accessibilityRole="button"
             disabled={navigationRows.length === 0}
+            iconOnly
+            label="目录"
+            leadingIcon="toc"
             onPress={() => {
               setStyleVisible(false);
               setLayoutVisible(false);
               setTuningVisible(false);
               setTocVisible((visible) => !visible);
             }}
-            style={[
-              styles.floatingButton,
-              {
-                backgroundColor: theme.panel,
-                borderColor: theme.border,
-                shadowColor: theme.shadow,
-              },
-            ]}
-          >
-            <Text
-              style={[styles.floatingButtonText, { color: theme.controlText }]}
-            >
-              目录
-            </Text>
-          </Pressable>
+            theme={theme}
+            variant="chrome"
+          />
         </View>
       ) : null}
 
       {!turning && !selecting && controlsVisible ? (
         <View
           pointerEvents="box-none"
-          style={[styles.bottomControls, { bottom: insets.bottom + 8 }]}
+          style={[styles.bottomControls, { bottom: insets.bottom }]}
         >
           <View pointerEvents="box-none" style={styles.controlGroup}>
-            <Pressable
+            <UiButton
               accessibilityLabel="打开阅读布局"
-              accessibilityRole="button"
+              iconOnly
+              label="布局"
+              leadingIcon="layout"
               onPress={() => {
                 setStyleVisible(false);
                 setTuningVisible(false);
                 setTocVisible(false);
                 setLayoutVisible((visible) => !visible);
               }}
-              style={[
-                styles.floatingButton,
-                styles.layoutButton,
-                {
-                  backgroundColor: theme.panel,
-                  borderColor: theme.border,
-                  shadowColor: theme.shadow,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.floatingButtonText,
-                  { color: theme.controlText },
-                ]}
-              >
-                布局
-              </Text>
-            </Pressable>
-            <Pressable
+              theme={theme}
+              variant="chrome"
+            />
+            <UiButton
               accessibilityLabel="调节翻页常量"
-              accessibilityRole="button"
+              iconOnly
+              label="曲线"
+              leadingIcon="tuning"
               onPress={() => {
                 setStyleVisible(false);
                 setLayoutVisible(false);
                 setTocVisible(false);
                 setTuningVisible((visible) => !visible);
               }}
-              style={[
-                styles.floatingButton,
-                {
-                  backgroundColor: theme.panel,
-                  borderColor: theme.border,
-                  shadowColor: theme.shadow,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.floatingButtonText,
-                  { color: theme.controlText },
-                ]}
-              >
-                曲线
-              </Text>
-            </Pressable>
-            <Pressable
+              theme={theme}
+              variant="chrome"
+            />
+            <UiButton
               accessibilityLabel="打开阅读样式"
-              accessibilityRole="button"
+              iconOnly
+              label="Aa"
+              leadingIcon="typography"
               onPress={() => {
                 setTuningVisible(false);
                 setLayoutVisible(false);
                 setTocVisible(false);
                 setStyleVisible((visible) => !visible);
               }}
-              style={[
-                styles.floatingButton,
-                {
-                  backgroundColor: theme.panel,
-                  borderColor: theme.border,
-                  shadowColor: theme.shadow,
-                },
-              ]}
-            >
-              <Text
-                style={[styles.typeButtonText, { color: theme.controlText }]}
-              >
-                Aa
-              </Text>
-            </Pressable>
+              theme={theme}
+              variant="chrome"
+            />
           </View>
         </View>
       ) : null}
@@ -520,7 +462,9 @@ export function ReaderScreen({
       {!turning && !selecting && controlsVisible && tuningVisible ? (
         <PageTurnTuningPanel
           theme={theme}
-          bottom={insets.bottom + 52}
+          bottom={
+            insets.bottom + uiSize.readerChrome + uiSize.readerChromePanelGap
+          }
           tuning={pageTurnTuning}
           onChange={onPageTurnTuningChange}
           onClose={() => setTuningVisible(false)}
@@ -532,7 +476,9 @@ export function ReaderScreen({
           layout={layout}
           pageTurnAnimation={pageTurnAnimation}
           theme={theme}
-          bottom={insets.bottom + 52}
+          bottom={
+            insets.bottom + uiSize.readerChrome + uiSize.readerChromePanelGap
+          }
           onAnimationChange={onPageTurnAnimationChange}
           onClose={() => setLayoutVisible(false)}
           onLayoutChange={handleLayoutChange}
@@ -545,7 +491,9 @@ export function ReaderScreen({
           fontFamilies={fontFamilies}
           hasBookFonts={Object.keys(opened.book.fontFamilies ?? {}).length > 0}
           theme={theme}
-          bottom={insets.bottom + 52}
+          bottom={
+            insets.bottom + uiSize.readerChrome + uiSize.readerChromePanelGap
+          }
           onChange={onAppearanceChange}
           onClose={() => setStyleVisible(false)}
           onDownloadFont={onDownloadFont}
@@ -559,7 +507,7 @@ export function ReaderScreen({
           currentPosition={currentPosition}
           rows={navigationRows}
           theme={theme}
-          top={insets.top + 52}
+          top={insets.top + uiSize.readerChrome + uiSize.readerChromePanelGap}
           onClose={() => setTocVisible(false)}
           onSelect={jumpTo}
         />
@@ -635,58 +583,11 @@ const styles = StyleSheet.create({
   },
   controlGroup: {
     flexDirection: "row",
-    gap: 7,
+    gap: uiSpace.sm,
     pointerEvents: "box-none",
-  },
-  floatingButton: {
-    alignItems: "center",
-    backgroundColor: "rgba(251, 247, 240, 0.94)",
-    borderColor: "rgba(91, 76, 65, 0.13)",
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    height: 36,
-    justifyContent: "center",
-    minWidth: 42,
-    paddingHorizontal: 10,
-    ...(Platform.OS === "web"
-      ? { boxShadow: "0 2px 9px rgba(61, 48, 38, 0.10)" }
-      : {
-          elevation: 2,
-          shadowColor: "#3d3026",
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.1,
-          shadowRadius: 5,
-        }),
-  },
-  floatingButtonText: {
-    color: "#6e6259",
-    fontSize: 13,
-    fontFamily: READER_UI_FONT_FAMILY,
-    includeFontPadding: false,
-    letterSpacing: 0.25,
-    lineHeight: 18,
-  },
-  accentButtonText: {
-    color: "#b94b24",
-    fontFamily: READER_UI_FONT_FAMILY,
-    fontSize: 13,
-    includeFontPadding: false,
-    letterSpacing: 0.2,
-    lineHeight: 18,
   },
   backButton: {
     paddingLeft: 9,
     paddingRight: 12,
-  },
-  layoutButton: {
-    minWidth: 46,
-  },
-  typeButtonText: {
-    color: "#5c534b",
-    fontFamily: READER_UI_FONT_FAMILY,
-    fontSize: 13,
-    includeFontPadding: false,
-    letterSpacing: 0.1,
-    lineHeight: 18,
   },
 });

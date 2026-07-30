@@ -1,7 +1,6 @@
 import type { ReaderTheme } from "@persimmon/reader-skia";
 import { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Modal,
   Platform,
   Pressable,
@@ -17,7 +16,12 @@ import {
   type BookMenuAction,
   type BookMenuRect,
 } from "../../modules/persimmon-selection-menu";
+import { UiButton } from "../components/ui-button";
+import { UiIcon } from "../components/ui-icon";
+import { uiBackdropColor } from "../components/ui-shadow";
+import { UiEmptyState, UiInlineAlert } from "../components/ui-state-message";
 import { UiText as Text } from "../components/ui-text";
+import { uiRadius, uiSpace } from "../components/ui-tokens";
 import {
   loadSyncBannerVisible,
   saveSyncBannerVisible,
@@ -113,20 +117,18 @@ function SortControl({
 
   return (
     <>
-      <Pressable
+      <UiButton
         accessibilityLabel={`排序，当前${labelForSort(sort)}`}
-        accessibilityRole="button"
         accessibilityState={{ expanded: visible }}
+        compact
+        label={labelForSort(sort)}
+        leadingIcon="sort"
         onPress={() => setVisible(true)}
-        style={({ pressed }) => [
-          styles.sortButton,
-          pressed && { backgroundColor: theme.panelMuted },
-        ]}
-      >
-        <Text style={[styles.sortButtonText, { color: theme.secondaryText }]}>
-          {labelForSort(sort)}⌄
-        </Text>
-      </Pressable>
+        textTone="muted"
+        theme={theme}
+        trailingIcon="chevronDown"
+        variant="ghost"
+      />
       <Modal
         animationType="fade"
         onRequestClose={() => setVisible(false)}
@@ -134,7 +136,12 @@ function SortControl({
         transparent
         visible={visible}
       >
-        <View style={styles.sortBackdrop}>
+        <View
+          style={[
+            styles.sortBackdrop,
+            { backgroundColor: uiBackdropColor(theme, "soft") },
+          ]}
+        >
           <Pressable
             accessibilityLabel="关闭排序"
             accessibilityRole="button"
@@ -182,12 +189,16 @@ function SortControl({
                   >
                     {option.label}
                   </Text>
-                  <Text
-                    accessibilityElementsHidden
-                    style={[styles.sortCheck, { color: theme.accentStrong }]}
-                  >
-                    {selected ? "✓" : ""}
-                  </Text>
+                  <View style={styles.sortCheck}>
+                    {selected ? (
+                      <UiIcon
+                        color={theme.accentStrong}
+                        name="check"
+                        size={17}
+                        weight="semibold"
+                      />
+                    ) : null}
+                  </View>
                 </Pressable>
               );
             })}
@@ -233,12 +244,12 @@ function SyncBanner({
         onPress={onOpenSettings}
         style={styles.syncBannerMain}
       >
-        <Text
-          accessibilityElementsHidden
-          style={[styles.syncBannerIcon, { color: theme.accentStrong }]}
-        >
-          ☁
-        </Text>
+        <UiIcon
+          color={theme.accentStrong}
+          name="cloud"
+          size={20}
+          style={styles.syncBannerIcon}
+        />
         <View style={styles.syncBannerCopy}>
           <Text style={[styles.syncBannerTitle, { color: theme.text }]}>
             {needsAttention ? "设置云同步" : "Google Drive"}
@@ -261,11 +272,7 @@ function SyncBanner({
         onPress={onClose}
         style={styles.syncBannerClose}
       >
-        <Text
-          style={[styles.syncBannerCloseText, { color: theme.secondaryText }]}
-        >
-          ×
-        </Text>
+        <UiIcon color={theme.secondaryText} name="close" size={17} />
       </Pressable>
     </View>
   );
@@ -447,94 +454,47 @@ export function LibraryScreen({
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <Text style={[styles.pageTitle, { color: theme.text }]}>全部</Text>
+          <Text variant="display" style={{ color: theme.text }}>
+            全部
+          </Text>
           <View style={styles.headerActions}>
-            <Pressable
+            <UiButton
               accessibilityLabel="搜索书名或作者"
-              accessibilityRole="button"
+              iconOnly
+              label="搜索"
+              leadingIcon="search"
               onPress={() => setSearchVisible(true)}
-              style={({ pressed }) => [
-                styles.headerButton,
-                { borderColor: theme.border },
-                pressed && { backgroundColor: theme.panelMuted },
-              ]}
-            >
-              <Text
-                style={[styles.headerButtonText, { color: theme.controlText }]}
-              >
-                搜索
-              </Text>
-            </Pressable>
-            <Pressable
+              theme={theme}
+            />
+            <UiButton
               accessibilityLabel="打开设置"
-              accessibilityRole="button"
+              iconOnly
+              label="设置"
+              leadingIcon="settings"
               onPress={() => setSettingsVisible(true)}
-              style={({ pressed }) => [
-                styles.headerButton,
-                { borderColor: theme.border },
-                pressed && { backgroundColor: theme.panelMuted },
-              ]}
-            >
-              <Text
-                style={[styles.headerButtonText, { color: theme.controlText }]}
-              >
-                设置
-              </Text>
-            </Pressable>
-            <Pressable
+              theme={theme}
+            />
+            <UiButton
               accessibilityLabel="导入 EPUB"
-              accessibilityRole="button"
               disabled={importing}
+              iconOnly
+              label="导入 EPUB"
+              leadingIcon="add"
+              loading={importing}
               onPress={onImport}
-              style={({ pressed }) => [
-                styles.importButton,
-                { backgroundColor: theme.accent },
-                pressed && styles.buttonPressed,
-              ]}
-            >
-              {importing ? (
-                <ActivityIndicator color={theme.panelRaised} size="small" />
-              ) : (
-                <Text
-                  accessibilityElementsHidden
-                  style={[
-                    styles.importButtonText,
-                    { color: theme.panelRaised },
-                  ]}
-                >
-                  ＋
-                </Text>
-              )}
-            </Pressable>
+              theme={theme}
+              variant="primary"
+            />
           </View>
         </View>
 
         {error ? (
-          <View
-            accessibilityRole="alert"
-            style={[
-              styles.errorCard,
-              {
-                backgroundColor: theme.panel,
-                borderColor: theme.noteAccent,
-              },
-            ]}
-          >
-            <Text style={[styles.errorText, { color: theme.text }]}>
-              {error}
-            </Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={onDismissError}
-              style={styles.errorDismiss}
-            >
-              <Text
-                style={[styles.errorDismissText, { color: theme.accentStrong }]}
-              >
-                关闭
-              </Text>
-            </Pressable>
-          </View>
+          <UiInlineAlert
+            actionLabel="关闭"
+            message={error}
+            theme={theme}
+            onAction={onDismissError}
+          />
         ) : null}
 
         {syncBannerVisible ? (
@@ -585,14 +545,11 @@ export function LibraryScreen({
         </View>
 
         {visibleEntries.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={[styles.emptyTitle, { color: theme.text }]}>
-              这里还没有书
-            </Text>
-            <Text style={[styles.emptyBody, { color: theme.secondaryText }]}>
-              换一个分类，或导入一本 EPUB。
-            </Text>
-          </View>
+          <UiEmptyState
+            body="换一个分类，或导入一本 EPUB。"
+            theme={theme}
+            title="这里还没有书"
+          />
         ) : null}
       </ScrollView>
 
@@ -634,9 +591,6 @@ export function LibraryScreen({
 }
 
 const styles = StyleSheet.create({
-  buttonPressed: {
-    opacity: 0.78,
-  },
   content: {
     alignSelf: "center",
     paddingBottom: 64,
@@ -650,53 +604,18 @@ const styles = StyleSheet.create({
   controls: {
     alignItems: "center",
     flexDirection: "row",
-    gap: 12,
+    gap: uiSpace.md,
     justifyContent: "space-between",
     marginBottom: 25,
   },
-  emptyBody: {
-    fontSize: 13,
-    marginTop: 5,
-  },
-  emptyState: {
-    alignItems: "center",
-    paddingVertical: 52,
-  },
-  emptyTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-  },
-  errorCard: {
-    alignItems: "center",
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: "row",
-    gap: 14,
-    marginBottom: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  errorDismiss: {
-    justifyContent: "center",
-    minHeight: 36,
-  },
-  errorDismissText: {
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  errorText: {
-    flex: 1,
-    fontSize: 13,
-    lineHeight: 19,
-  },
   filterGroup: {
-    borderRadius: 999,
+    borderRadius: uiRadius.pill,
     flexGrow: 0,
     padding: 3,
   },
   filterOption: {
     alignItems: "center",
-    borderRadius: 999,
+    borderRadius: uiRadius.pill,
     justifyContent: "center",
     minHeight: 38,
     paddingHorizontal: 12,
@@ -718,61 +637,20 @@ const styles = StyleSheet.create({
   headerActions: {
     alignItems: "center",
     flexDirection: "row",
-    gap: 8,
-  },
-  headerButton: {
-    alignItems: "center",
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    justifyContent: "center",
-    minHeight: 40,
-    paddingHorizontal: 13,
-  },
-  headerButtonText: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  importButton: {
-    alignItems: "center",
-    borderRadius: 20,
-    height: 40,
-    justifyContent: "center",
-    width: 40,
-  },
-  importButtonText: {
-    fontSize: 24,
-    fontWeight: "400",
-    lineHeight: 28,
-    marginTop: -2,
-  },
-  pageTitle: {
-    fontSize: 31,
-    fontWeight: "700",
-    letterSpacing: -0.75,
+    gap: uiSpace.sm,
   },
   screen: {
     flex: 1,
   },
   sortBackdrop: {
     alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.22)",
     flex: 1,
     justifyContent: "center",
     padding: 18,
   },
-  sortButton: {
-    borderRadius: 999,
-    justifyContent: "center",
-    minHeight: 40,
-    paddingHorizontal: 7,
-  },
-  sortButtonText: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
   sortCheck: {
-    fontSize: 16,
-    fontWeight: "700",
+    alignItems: "center",
+    justifyContent: "center",
     width: 20,
   },
   sortMenu: {
@@ -810,7 +688,7 @@ const styles = StyleSheet.create({
   },
   syncBanner: {
     alignItems: "center",
-    borderRadius: 15,
+    borderRadius: uiRadius.card,
     borderWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
     marginBottom: 20,
@@ -822,10 +700,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 44,
   },
-  syncBannerCloseText: {
-    fontSize: 23,
-    fontWeight: "300",
-  },
   syncBannerCopy: {
     flex: 1,
   },
@@ -835,7 +709,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   syncBannerIcon: {
-    fontSize: 20,
     marginRight: 12,
   },
   syncBannerMain: {

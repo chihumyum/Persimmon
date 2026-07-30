@@ -10,7 +10,9 @@ import {
   type GestureResponderEvent,
 } from "react-native";
 
+import { UiIcon } from "../components/ui-icon";
 import { UiText as Text } from "../components/ui-text";
+import { uiRadius, uiSpace } from "../components/ui-tokens";
 import {
   readingProgressPercent,
   readingStatusForEntry,
@@ -281,9 +283,7 @@ export function LibraryBookCard({
             pressed && { backgroundColor: theme.panelMuted },
           ]}
         >
-          <Text style={[styles.moreText, { color: theme.secondaryText }]}>
-            •••
-          </Text>
+          <UiIcon color={theme.secondaryText} name="more" size={18} />
         </Pressable>
       </View>
     </View>
@@ -304,14 +304,14 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.985 }],
   },
   coverImage: {
-    borderRadius: 4,
+    borderRadius: uiRadius.cover,
   },
   coverPressable: {
     justifyContent: "flex-end",
   },
   coverShadow: {
     backgroundColor: "transparent",
-    borderRadius: 4,
+    borderRadius: uiRadius.cover,
     shadowOffset: { width: 0, height: 7 },
     shadowOpacity: 0.2,
     shadowRadius: 10,
@@ -324,10 +324,10 @@ const styles = StyleSheet.create({
     opacity: 0.58,
   },
   fallbackCover: {
-    borderRadius: 4,
+    borderRadius: uiRadius.cover,
     justifyContent: "space-between",
     overflow: "hidden",
-    padding: 12,
+    padding: uiSpace.md,
   },
   fallbackMark: {
     alignSelf: "flex-end",
@@ -341,7 +341,7 @@ const styles = StyleSheet.create({
   },
   loadingOverlay: {
     alignItems: "center",
-    borderRadius: 4,
+    borderRadius: uiRadius.cover,
     bottom: 0,
     justifyContent: "center",
     left: 0,
@@ -358,18 +358,11 @@ const styles = StyleSheet.create({
   },
   moreButton: {
     alignItems: "center",
-    borderRadius: 12,
+    borderRadius: uiSpace.md,
     height: 28,
     justifyContent: "center",
     marginRight: -5,
     width: 34,
-  },
-  moreText: {
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 0.6,
-    lineHeight: 14,
-    marginTop: -5,
   },
   progress: {
     flex: 1,
@@ -381,7 +374,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     lineHeight: 19,
-    marginTop: 11,
+    marginTop: uiSpace.sm + uiSpace.xxs + uiSpace.hairline,
     minHeight: 19,
   },
 });
