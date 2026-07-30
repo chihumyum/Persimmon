@@ -1194,7 +1194,7 @@ new file mode 100644
 index 0000000000000000000000000000000000000000..876575767020de09a339ad09847d1e23938b1298
 --- /dev/null
 +++ b/cpp/rnskia/RNSkPagerCompositor.h
-@@ -0,0 +1,2421 @@
+@@ -0,0 +1,2424 @@
 +#pragma once
 +
 +#include <algorithm>
@@ -1873,7 +1873,10 @@ index 0000000000000000000000000000000000000000..876575767020de09a339ad09847d1e23
 +  }
 +
 +private:
-+  static constexpr int kProfilePointCount = 65;
++  // Keep edge-on texture bands below roughly seven source pixels on a
++  // 1680-wide page. The extra vertices are cheap on the native render thread
++  // and avoid sending an entire glyph slice through one near-zero-width quad.
++  static constexpr int kProfilePointCount = 257;
 +  static constexpr size_t kMaximumPreloadedImageCount = 12;
 +  static constexpr size_t kMaximumStockCount = 64;
 +  static constexpr size_t kMaximumRetainedPagePictureCount = 32;
