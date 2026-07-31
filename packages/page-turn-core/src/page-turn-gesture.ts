@@ -56,7 +56,11 @@ export const MAX_PAGE_WEIGHT = 1.8;
 const WEAK_GRIP_COMPRESSION_PER_PAGE = 0.2;
 export const SLOW_COMMIT_EDGE_X =
   MIN_PRESSED_EDGE_X - pressedRollHingeGeometry().tiltDistance;
-export const GESTURE_LIFT_START_X = 0.5;
+export const GESTURE_LIFT_START_X = 0.36;
+/** Final approach over which the lifted roll is blended into the hinge pose. */
+export const GESTURE_HINGE_BLEND_WIDTH_X = 0.11;
+/** Scales the original quadratic roll-tilt response. */
+export const GESTURE_ROLL_TILT_RATE = 0.4;
 const COMMIT_VELOCITY_LIMIT = 3.2;
 const COMMIT_ACCELERATION_LIMIT = 10;
 const COMMIT_VELOCITY_GAIN = 0.18;
@@ -223,14 +227,15 @@ export function heldRollTiltForFingerX(fingerX: number): number {
 }
 
 /**
- * Starts lifting after roughly one quarter of a single-page swipe instead of
- * waiting until the sheet is compressed by almost half a viewport. The
- * quadratic ease-out makes a short flick visibly raise the paper while the
- * stable hinge still supplies the exact terminal rotation.
+ * Starts lifting when the free edge reaches the selected horizontal trigger.
+ * The eased response raises the roll at the selected tilt rate. Over the final
+ * hinge blend zone, a smoothstep correction brings that lift to the exact
+ * stable-hinge rotation with zero correction slope at both ends. This prevents
+ * the pressed and post-hinge profiles from disagreeing at handoff.
  */
 export function gestureLiftRotationForFingerX(fingerX: number): number {
   const safeFingerX = Number.isFinite(fingerX) ? fingerX : 1;
-  if (safeFingerX < MIN_PRESSED_EDGE_X) {
+  if (safeFingerX <= MIN_PRESSED_EDGE_X) {
     return MAX_PRESSED_ROLL_TILT;
   }
   const progress = clamp(
@@ -239,8 +244,17 @@ export function gestureLiftRotationForFingerX(fingerX: number): number {
     0,
     1,
   );
-  const easedProgress = 1 - (1 - progress) ** 2;
-  return MAX_PRESSED_ROLL_TILT * easedProgress;
+  const easedProgress = 1 - (1 - progress) ** (2 * GESTURE_ROLL_TILT_RATE);
+  const liftedRotation = MAX_PRESSED_ROLL_TILT * easedProgress;
+  const hingeBlendProgress = clamp(
+    (MIN_PRESSED_EDGE_X + GESTURE_HINGE_BLEND_WIDTH_X - safeFingerX) /
+      GESTURE_HINGE_BLEND_WIDTH_X,
+    0,
+    1,
+  );
+  const hingeBlend =
+    hingeBlendProgress * hingeBlendProgress * (3 - 2 * hingeBlendProgress);
+  return liftedRotation + (MAX_PRESSED_ROLL_TILT - liftedRotation) * hingeBlend;
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {

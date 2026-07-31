@@ -1,3 +1,8 @@
+// This module captures SkiaViewApi for UI-runtime worklets. A type-only Skia
+// import does not run NativeSetup, so cold Android/iOS starts could cache an
+// undefined API forever before the renderer's first value import executed.
+import "@shopify/react-native-skia";
+
 import type { SkImage, SkPicture } from "@shopify/react-native-skia";
 
 import type {
@@ -14,6 +19,7 @@ import type {
 
 interface NativePagerSkiaViewApi {
   pagerProtocolVersion?: () => number;
+  pagerReady?: (nativeId: number) => boolean;
   pagerPreload?: (nativeId: number, image: SkImage) => void;
   pagerEnqueue?: (
     nativeId: number,
@@ -128,6 +134,7 @@ const nativePagerWorkletApi = (
 // stock entry, input event, and 16 ms event poll.
 const nativePagerRnApi = {
   protocolVersion: nativePagerWorkletApi?.pagerProtocolVersion,
+  ready: nativePagerWorkletApi?.pagerReady,
   preload: nativePagerWorkletApi?.pagerPreload,
   enqueue: nativePagerWorkletApi?.pagerEnqueue,
   enqueuePicture: nativePagerWorkletApi?.pagerEnqueuePicture,
@@ -159,7 +166,8 @@ export function nativePagerCompositorAvailable(): boolean {
     return false;
   }
   nativePagerAvailability =
-    protocolVersion >= 2 &&
+    protocolVersion >= 4 &&
+    typeof nativePagerRnApi.ready === "function" &&
     typeof nativePagerRnApi.enqueue === "function" &&
     typeof nativePagerRnApi.enqueuePicture === "function" &&
     typeof nativePagerRnApi.setAnchor === "function" &&
@@ -175,6 +183,20 @@ export function nativePagerCompositorAvailable(): boolean {
     typeof nativePagerRnApi.takeEvents === "function" &&
     typeof nativePagerRnApi.reset === "function";
   return nativePagerAvailability;
+}
+
+export function nativePagerCanvasReady(
+  canvas: NativePagerCanvasHandle | null,
+): boolean {
+  const ready = nativePagerRnApi.ready;
+  if (!canvas || !ready) {
+    return false;
+  }
+  try {
+    return ready(canvas.getNativeId());
+  } catch {
+    return false;
+  }
 }
 
 export function enqueueNativePagerPictureTurn(

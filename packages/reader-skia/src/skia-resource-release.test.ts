@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   releaseCapturedPageResources,
+  releaseRetiredSkiaResources,
   releaseSkiaResources,
+  releaseTransientSkiaResources,
 } from "./skia-resource-release";
 
 describe("captured page resource ownership", () => {
@@ -32,6 +34,24 @@ describe("captured page resource ownership", () => {
 
     expect(image.dispose).not.toHaveBeenCalled();
     expect(surface.dispose).not.toHaveBeenCalled();
+  });
+
+  it("releases never-rendered measurement resources on every platform", () => {
+    const paragraph = { dispose: vi.fn() };
+
+    releaseTransientSkiaResources(paragraph);
+
+    expect(paragraph.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("releases an entire generation after its Canvas has retired", () => {
+    const image = { dispose: vi.fn() };
+    const surface = { dispose: vi.fn() };
+
+    releaseRetiredSkiaResources(image, surface);
+
+    expect(image.dispose).toHaveBeenCalledOnce();
+    expect(surface.dispose).toHaveBeenCalledOnce();
   });
 
   it("explicitly releases CanvasKit resources on Web", () => {

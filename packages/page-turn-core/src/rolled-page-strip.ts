@@ -1,6 +1,6 @@
 export const DEFAULT_PAGE_PROFILE_POINTS = 65;
 export const TURN_VALIDATION_FRAME_COUNT = 49;
-export const MIN_PRESSED_EDGE_X = 0.035;
+export const MIN_PRESSED_EDGE_X = 0.14;
 
 export interface RolledPagePoint {
   x: number;

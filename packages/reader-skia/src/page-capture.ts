@@ -18,7 +18,10 @@ import {
   drawSkiaPageDecoration,
   type SkiaPageDecoration,
 } from "./skia-page-decoration";
-import { releaseCapturedPageResources } from "./skia-resource-release";
+import {
+  releaseCapturedPageResources,
+  releaseRetiredSkiaResources,
+} from "./skia-resource-release";
 
 export interface CapturedPage {
   readonly image: SkImage;
@@ -27,6 +30,7 @@ export interface CapturedPage {
   readonly pixelHeight: number;
   readonly byteSize: number;
   dispose(): void;
+  retire(): void;
 }
 
 export interface RecordedPageCapture {
@@ -45,6 +49,10 @@ export interface RecordedPageCapture {
  */
 export function disposeCapturedPageAfterPaint(capture: CapturedPage): void {
   afterSkiaPaint(() => capture.dispose());
+}
+
+export function retireCapturedPageAfterPaint(capture: CapturedPage): void {
+  afterSkiaPaint(() => capture.retire());
 }
 
 export function capturePage(
@@ -285,6 +293,21 @@ export function capturedPageFromImage(
   let retainedImage: SkImage | null = image;
   let surface = retainedSurface;
   let disposed = false;
+  const release = (retired: boolean) => {
+    if (disposed) {
+      return;
+    }
+    disposed = true;
+    const imageToRelease = retainedImage;
+    const surfaceToRelease = surface;
+    retainedImage = null;
+    surface = null;
+    if (retired) {
+      releaseRetiredSkiaResources(imageToRelease, surfaceToRelease);
+      return;
+    }
+    releaseCapturedPageResources(Platform.OS, imageToRelease, surfaceToRelease);
+  };
   return {
     get image() {
       if (!retainedImage) {
@@ -296,21 +319,8 @@ export function capturedPageFromImage(
     pixelWidth: dimensions.pixelWidth,
     pixelHeight: dimensions.pixelHeight,
     byteSize: dimensions.byteSize,
-    dispose: () => {
-      if (disposed) {
-        return;
-      }
-      disposed = true;
-      const imageToRelease = retainedImage;
-      const surfaceToRelease = surface;
-      retainedImage = null;
-      surface = null;
-      releaseCapturedPageResources(
-        Platform.OS,
-        imageToRelease,
-        surfaceToRelease,
-      );
-    },
+    dispose: () => release(false),
+    retire: () => release(true),
   };
 }
 

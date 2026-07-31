@@ -78,11 +78,11 @@ describe("continuous-curvature page strip", () => {
       hinge.apexX * Math.cos(hinge.maxTilt) -
       hinge.apexZ * Math.sin(hinge.maxTilt);
 
-    expect(hinge.apexX).toBeCloseTo(0.0175, 5);
-    expect(hinge.apexZ).toBeCloseTo(0.3807, 4);
+    expect(hinge.apexX).toBeCloseTo(MIN_PRESSED_EDGE_X * 0.5, 10);
+    expect(hinge.apexZ).toBeCloseTo(0.3922, 4);
     expect(hinge.tiltDistance).toBeCloseTo(hinge.apexX - tiltedApexX, 10);
-    expect(hinge.tiltDistance).toBeGreaterThan(0.27);
-    expect(hinge.tiltDistance).toBeLessThan(0.28);
+    expect(hinge.tiltDistance).toBeGreaterThan(0.35);
+    expect(hinge.tiltDistance).toBeLessThan(0.36);
   });
 
   it(`stays continuous and above the book through ${TURN_VALIDATION_FRAME_COUNT} frames`, () => {

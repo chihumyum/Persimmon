@@ -26,6 +26,18 @@ describe("SectionPageCountCache", () => {
     expect(countUnretainedSection).not.toHaveBeenCalled();
   });
 
+  it("keeps a resolved count after its retained pagination is evicted", () => {
+    let retainedPageCount: number | undefined = 7;
+    const cache = new SectionPageCountCache({
+      retainedPageCountFor: () => retainedPageCount,
+      countUnretainedSection: () => 11,
+    });
+
+    expect(cache.resolvedCountFor(2)).toBe(7);
+    retainedPageCount = undefined;
+    expect(cache.resolvedCountFor(2)).toBe(7);
+  });
+
   it("normalizes an empty section to one page", () => {
     const cache = new SectionPageCountCache({
       retainedPageCountFor: () => undefined,

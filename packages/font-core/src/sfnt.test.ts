@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { FontParseError, parseSfntFont } from "./sfnt";
 
@@ -18,11 +18,16 @@ function utf16be(value: string): Uint8Array {
   return bytes;
 }
 
-function makeNameTable(): Uint8Array {
+function singleByte(value: string): Uint8Array {
+  return Uint8Array.from(value, (character) => character.charCodeAt(0));
+}
+
+function makeNameTable(platformId: 1 | 3 = 3): Uint8Array {
+  const encode = platformId === 3 ? utf16be : singleByte;
   const values = [
-    { nameId: 1, value: utf16be("Test Serif") },
-    { nameId: 2, value: utf16be("Italic") },
-    { nameId: 6, value: utf16be("TestSerif-Italic") },
+    { nameId: 1, value: encode("Test Serif") },
+    { nameId: 2, value: encode("Italic") },
+    { nameId: 6, value: encode("TestSerif-Italic") },
   ];
   const recordsLength = values.length * 12;
   const stringOffset = 6 + recordsLength;
@@ -34,9 +39,9 @@ function makeNameTable(): Uint8Array {
   let valueOffset = 0;
   values.forEach((entry, index) => {
     const record = 6 + index * 12;
-    writeU16(bytes, record, 3);
-    writeU16(bytes, record + 2, 1);
-    writeU16(bytes, record + 4, 0x0409);
+    writeU16(bytes, record, platformId);
+    writeU16(bytes, record + 2, platformId === 3 ? 1 : 0);
+    writeU16(bytes, record + 4, platformId === 3 ? 0x0409 : 0);
     writeU16(bytes, record + 6, entry.nameId);
     writeU16(bytes, record + 8, entry.value.length);
     writeU16(bytes, record + 10, valueOffset);
@@ -69,6 +74,7 @@ function makeCmapTable(): Uint8Array {
 function makeSfnt(
   signature: "ttf" | "otf" = "ttf",
   corruptNameOffset = false,
+  namePlatformId: 1 | 3 = 3,
 ): Uint8Array {
   const os2 = new Uint8Array(42);
   writeU16(os2, 4, 650);
@@ -77,7 +83,7 @@ function makeSfnt(
   const head = new Uint8Array(46);
   writeU16(head, 44, 0x0002);
   const tables = [
-    { tag: "name", bytes: makeNameTable() },
+    { tag: "name", bytes: makeNameTable(namePlatformId) },
     { tag: "OS/2", bytes: os2 },
     { tag: "head", bytes: head },
     { tag: "cmap", bytes: makeCmapTable() },
@@ -114,6 +120,10 @@ function makeSfnt(
 }
 
 describe("SFNT font metadata parser", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("extracts names, style, coverage, and restrictions without rendering", () => {
     expect(parseSfntFont(makeSfnt("otf"))).toEqual({
       familyName: "Test Serif",
@@ -143,6 +153,21 @@ describe("SFNT font metadata parser", () => {
     ).toThrow("TTC/OTC");
     expect(() => parseSfntFont(makeSfnt("ttf", true))).toThrow(
       "超出字体文件范围",
+    );
+  });
+
+  it("decodes legacy single-byte names when TextDecoder lacks latin1", () => {
+    vi.stubGlobal(
+      "TextDecoder",
+      class UnsupportedTextDecoder {
+        constructor() {
+          throw new RangeError("Unknown encoding: latin1");
+        }
+      },
+    );
+
+    expect(parseSfntFont(makeSfnt("ttf", false, 1)).familyName).toBe(
+      "Test Serif",
     );
   });
 });

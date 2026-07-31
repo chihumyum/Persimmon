@@ -1,5 +1,6 @@
 import type {
   MeasuredLine,
+  MeasuredParagraph,
   ParagraphLayoutBackend,
   ParagraphLayoutInput,
   Rect,
@@ -20,6 +21,15 @@ import {
 
 import { normalizeUtf16Boundary } from "./utf16";
 import { DEFAULT_READER_THEME, type ReaderTheme } from "./reader-theme";
+import { afterSkiaPaint } from "./skia-lifecycle";
+import { SkiaParagraphHandleCache } from "./skia-paragraph-handle-cache";
+
+// A radius-ten spread stock graph covers at most 42 physical pages. Keeping
+// 1,024 paragraphs leaves ample room for short one-line CJK blocks without
+// retaining every paragraph in a multi-thousand-block EPUB spine document.
+const MATERIALIZED_PARAGRAPH_LIMIT = 1024;
+
+const retireMaterializedParagraph = new WeakMap<object, () => void>();
 
 function textAlignOf(align: TypographyPreset["align"]): TextAlign {
   switch (align) {
@@ -106,6 +116,77 @@ function lineGeometry(
   };
 }
 
+function buildParagraph(
+  input: ParagraphLayoutInput,
+  fontProvider: SkTypefaceFontProvider,
+  theme: ReaderTheme,
+): SkParagraph {
+  const builder = Skia.ParagraphBuilder.Make(
+    paragraphStyleOf(input, theme),
+    fontProvider,
+  );
+  try {
+    for (const run of input.runs) {
+      builder.pushStyle(textStyleOf(input, theme, run));
+      builder.addText(run.text);
+      builder.pop();
+    }
+    return builder.build();
+  } finally {
+    builder.dispose?.();
+  }
+}
+
+function layoutParagraph(
+  input: ParagraphLayoutInput,
+  fontProvider: SkTypefaceFontProvider,
+  theme: ReaderTheme,
+): SkParagraph {
+  const paragraph = buildParagraph(input, fontProvider, theme);
+  paragraph.layout(input.width);
+  return paragraph;
+}
+
+function measuredParagraph(
+  input: ParagraphLayoutInput,
+  paragraph: SkParagraph,
+): Omit<MeasuredParagraph<SkParagraph>, "handle"> {
+  return {
+    key: input.key,
+    width: input.width,
+    height: paragraph.getHeight(),
+    lines: paragraph.getLineMetrics().map(lineGeometry),
+    hitTest(x, y) {
+      return normalizeUtf16Boundary(
+        input.text,
+        paragraph.getGlyphPositionAtCoordinate(x, y),
+      );
+    },
+    rectsForRange(startOffset, endOffset): readonly Rect[] {
+      const start = normalizeUtf16Boundary(input.text, startOffset, "backward");
+      const end = normalizeUtf16Boundary(input.text, endOffset, "forward");
+      return paragraph
+        .getRectsForRange(start, end)
+        .map(({ x, y, width, height }) => ({ x, y, width, height }));
+    },
+  };
+}
+
+/**
+ * Retires a lazily materialized paragraph without touching its `handle`
+ * getter. Returns false for conventional eager paragraph measurements.
+ */
+export function retireLazySkiaParagraph(
+  paragraph: MeasuredParagraph<SkParagraph>,
+): boolean {
+  const retire = retireMaterializedParagraph.get(paragraph);
+  if (!retire) {
+    return false;
+  }
+  retire();
+  return true;
+}
+
 /**
  * Production ParagraphLayoutBackend for the shared paginator.
  *
@@ -117,36 +198,37 @@ export function createSkiaParagraphBackend(
   fontProvider: SkTypefaceFontProvider,
   theme: ReaderTheme = DEFAULT_READER_THEME,
 ): ParagraphLayoutBackend<SkParagraph> {
+  const handles = new SkiaParagraphHandleCache<SkParagraph>(
+    MATERIALIZED_PARAGRAPH_LIMIT,
+    (paragraph) => {
+      afterSkiaPaint(() => paragraph.dispose());
+    },
+  );
+  let paragraphInstance = 0;
+
   return {
     layout(input) {
-      const builder = Skia.ParagraphBuilder.Make(
-        paragraphStyleOf(input, theme),
-        fontProvider,
-      );
+      // Two pagination generations can briefly contain the same paragraph
+      // identity. Give each measured owner an independent cache slot so
+      // retiring the old generation cannot dispose the new one's handle.
+      const handleKey = `${++paragraphInstance}:${input.key}`;
+      const measurement = layoutParagraph(input, fontProvider, theme);
+      const geometry = measuredParagraph(input, measurement);
+      measurement.dispose();
 
-      for (const run of input.runs) {
-        builder.pushStyle(textStyleOf(input, theme, run));
-        builder.addText(run.text);
-        builder.pop();
-      }
-
-      const paragraph = builder.build();
-      if (typeof builder.dispose === "function") {
-        builder.dispose();
-      }
-      paragraph.layout(input.width);
-      const lines = paragraph.getLineMetrics().map(lineGeometry);
-
-      return {
-        key: input.key,
-        handle: paragraph,
-        width: input.width,
-        height: paragraph.getHeight(),
-        lines,
+      const materialized = (): SkParagraph =>
+        handles.getOrCreate(handleKey, () =>
+          layoutParagraph(input, fontProvider, theme),
+        );
+      const measured: MeasuredParagraph<SkParagraph> = {
+        ...geometry,
+        get handle() {
+          return materialized();
+        },
         hitTest(x, y) {
           return normalizeUtf16Boundary(
             input.text,
-            paragraph.getGlyphPositionAtCoordinate(x, y),
+            materialized().getGlyphPositionAtCoordinate(x, y),
           );
         },
         rectsForRange(startOffset, endOffset): readonly Rect[] {
@@ -156,7 +238,7 @@ export function createSkiaParagraphBackend(
             "backward",
           );
           const end = normalizeUtf16Boundary(input.text, endOffset, "forward");
-          return paragraph
+          return materialized()
             .getRectsForRange(start, end)
             .map(({ x, y, width, height }) => ({
               x,
@@ -165,6 +247,29 @@ export function createSkiaParagraphBackend(
               height,
             }));
         },
+      };
+      retireMaterializedParagraph.set(measured, () => {
+        handles.release(handleKey);
+      });
+      return measured;
+    },
+  };
+}
+
+/**
+ * Count-only pagination owns no display-list resources, so it can release
+ * every eager paragraph immediately after the paginator consumes its metrics.
+ */
+export function createTransientSkiaParagraphBackend(
+  fontProvider: SkTypefaceFontProvider,
+  theme: ReaderTheme = DEFAULT_READER_THEME,
+): ParagraphLayoutBackend<SkParagraph> {
+  return {
+    layout(input) {
+      const paragraph = layoutParagraph(input, fontProvider, theme);
+      return {
+        ...measuredParagraph(input, paragraph),
+        handle: paragraph,
       };
     },
   };

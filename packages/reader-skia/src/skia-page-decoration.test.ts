@@ -74,6 +74,33 @@ describe("native page-decoration ownership", () => {
     }
   });
 
+  it("explicitly disposes paragraphs after the whole Canvas retires", () => {
+    const decoration = createSkiaPageDecoration({
+      model: {
+        sectionTitle: "章节",
+        pageLabel: "5 / 12",
+        percentageLabel: "42%",
+        pageNumber: 5,
+        pageCount: 12,
+        percentage: 42,
+      },
+      fontProvider: {} as SkTypefaceFontProvider,
+      fontFamily: "Noto Serif SC",
+      width: 400,
+      height: 800,
+      horizontalMargin: 24,
+      topInset: 0,
+      bottomInset: 0,
+    });
+
+    decoration.retire();
+    decoration.retire();
+
+    for (const paragraph of mocks.paragraphs) {
+      expect(paragraph.dispose).toHaveBeenCalledOnce();
+    }
+  });
+
   it("places one spread header on the left page and one footer on the right", () => {
     const decoration = createSkiaPageDecoration({
       model: {

@@ -20,7 +20,10 @@ import {
 } from "./page-progress-decoration";
 import { afterSkiaPaint } from "./skia-lifecycle";
 import { DEFAULT_READER_THEME, type ReaderTheme } from "./reader-theme";
-import { releaseSkiaResources } from "./skia-resource-release";
+import {
+  releaseRetiredSkiaResources,
+  releaseSkiaResources,
+} from "./skia-resource-release";
 
 const DECORATION_FONT_SIZE = 12;
 const DECORATION_HEIGHT_MULTIPLIER = 1.3;
@@ -37,6 +40,7 @@ export interface SkiaPageDecoration {
   readonly footerPage: PageDecorationText;
   readonly footerPercentage: PageDecorationText;
   dispose(): void;
+  retire(): void;
 }
 
 export interface CreateSkiaPageDecorationInput {
@@ -100,6 +104,19 @@ export function createSkiaPageDecoration({
     theme.decoration,
   );
   let disposed = false;
+  const release = (retired: boolean) => {
+    if (disposed) {
+      return;
+    }
+    disposed = true;
+    if (retired) {
+      releaseRetiredSkiaResources(headerTitle, footerPage);
+      releaseRetiredSkiaResources(footerPercentage);
+      return;
+    }
+    releaseSkiaResources(Platform.OS, headerTitle, footerPage);
+    releaseSkiaResources(Platform.OS, footerPercentage, null);
+  };
 
   return {
     headerTitle: {
@@ -121,12 +138,10 @@ export function createSkiaPageDecoration({
       width: contentWidth,
     },
     dispose() {
-      if (disposed) {
-        return;
-      }
-      disposed = true;
-      releaseSkiaResources(Platform.OS, headerTitle, footerPage);
-      releaseSkiaResources(Platform.OS, footerPercentage, null);
+      release(false);
+    },
+    retire() {
+      release(true);
     },
   };
 }
@@ -135,6 +150,12 @@ export function disposeSkiaPageDecorationAfterPaint(
   decoration: SkiaPageDecoration,
 ): void {
   afterSkiaPaint(() => decoration.dispose());
+}
+
+export function retireSkiaPageDecorationAfterPaint(
+  decoration: SkiaPageDecoration,
+): void {
+  afterSkiaPaint(() => decoration.retire());
 }
 
 export function drawSkiaPageDecoration(

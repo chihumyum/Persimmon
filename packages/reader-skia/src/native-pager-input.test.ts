@@ -3,8 +3,26 @@ import { describe, expect, it, vi } from "vitest";
 import {
   bindNativePagerInput,
   nativePagerTapNeedsRNFallback,
+  resolvePageTurnRecognizerDistances,
   resolveNativePagerGestureInputPolicy,
 } from "./native-pager-input";
+
+describe("page-turn recognizer distances", () => {
+  it.each([1, 1 / 2, 1 / 3, 1 / 4])(
+    "does not let the pan steal tap jitter at a %d-point physical pixel",
+    (onePhysicalPixel) => {
+      const distances = resolvePageTurnRecognizerDistances(onePhysicalPixel);
+
+      expect(distances).toEqual({
+        tapMaxDistance: 8,
+        panActivationDistance: 8,
+      });
+      expect(distances.panActivationDistance).toBeGreaterThanOrEqual(
+        distances.tapMaxDistance,
+      );
+    },
+  );
+});
 
 describe("native pager gesture input policy", () => {
   it("keeps a warm gesture enabled while direct tap sheets are draining", () => {

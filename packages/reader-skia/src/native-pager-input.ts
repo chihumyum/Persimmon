@@ -19,6 +19,33 @@ export interface NativePagerGestureInputPolicy {
   readonly nativeGestureInputEnabled: boolean;
 }
 
+export interface PageTurnRecognizerDistances {
+  readonly tapMaxDistance: number;
+  readonly panActivationDistance: number;
+}
+
+const PAGE_TURN_TAP_MAX_DISTANCE_POINTS = 8;
+
+/**
+ * Keeps tap jitter and drag activation in disjoint recognition phases.
+ *
+ * A pan that activates after one physical pixel can win `Gesture.Race` before
+ * a tap is allowed to finish, which makes rapid, slightly moving taps vanish
+ * on iOS. The pan therefore stays in the possible state for the complete tap
+ * tolerance and takes ownership only after the finger has travelled farther.
+ */
+export function resolvePageTurnRecognizerDistances(
+  onePhysicalPixel: number,
+): PageTurnRecognizerDistances {
+  return {
+    tapMaxDistance: PAGE_TURN_TAP_MAX_DISTANCE_POINTS,
+    panActivationDistance: Math.max(
+      PAGE_TURN_TAP_MAX_DISTANCE_POINTS,
+      onePhysicalPixel,
+    ),
+  };
+}
+
 export function resolveNativePagerGestureInputPolicy(
   state: NativePagerGestureInputState,
 ): NativePagerGestureInputPolicy {

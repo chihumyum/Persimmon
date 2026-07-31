@@ -5,11 +5,11 @@ import {
   type PageTurnCaptureAddresses,
 } from "./page-turn-textures";
 
-// Eight transitions give the native compositor an 800 ms runway at 10 pps.
-// Reconciliation refills one edge at a time as native acknowledges turns, so
-// a wider eager radius only retains more full-page SkPictures without
-// increasing the sustainable consumption rate.
-export const NATIVE_PAGER_STOCK_RADIUS = 8;
+// A one-second runway absorbs normal RN/GC jitter at 10 pps while keeping the
+// complete spread graph inside the native display-list ceiling. Reconciliation
+// still adds one outer edge per acknowledged turn, so a larger radius raises
+// the memory floor without changing the sustainable refill rate.
+export const NATIVE_PAGER_STOCK_RADIUS = 10;
 
 export interface NativePagerStockEdge {
   readonly from: PageAddress;
@@ -45,6 +45,20 @@ export function nativePagerTransitionPictures<T>(
 
 export function nativePagerPageKey(address: PageAddress): string {
   return `${address.sectionIndex}:${address.pageIndex}`;
+}
+
+const NATIVE_PAGER_TURN_INSTANCE_SEPARATOR = "#turn:";
+
+/**
+ * Native keeps an immutable stock edge resident and gives every playback a
+ * unique suffix. Reconciliation still belongs to the edge, while animation
+ * lifecycle sets must use the full instance id.
+ */
+export function nativePagerStockEntryIdFromTurnId(turnId: string): string {
+  const separatorIndex = turnId.lastIndexOf(
+    NATIVE_PAGER_TURN_INSTANCE_SEPARATOR,
+  );
+  return separatorIndex < 0 ? turnId : turnId.slice(0, separatorIndex);
 }
 
 /**

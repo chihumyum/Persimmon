@@ -54,6 +54,7 @@ import {
   disposeCapturedPageAfterPaint,
   pageImagesSettledForCapture,
   recordPageCapture,
+  retireCapturedPageAfterPaint,
   type CapturedPage,
   type RecordedPageCapture,
 } from "./page-capture";
@@ -132,17 +133,22 @@ import { DEFAULT_READER_THEME, type ReaderTheme } from "./reader-theme";
 import {
   createReaderLayoutSpec,
   disposePaginationAfterPaint,
+  retirePaginationAfterPaint,
 } from "./reader-pagination";
 import { SectionPageCountCache } from "./section-page-count-cache";
 import {
   estimateSectionPageCount,
   shouldResolveExactPublicationPageCounts,
 } from "./section-page-count-estimate";
-import { createSkiaParagraphBackend } from "./skia-paragraph-backend";
-import { releaseSkiaResources } from "./skia-resource-release";
+import {
+  createSkiaParagraphBackend,
+  createTransientSkiaParagraphBackend,
+} from "./skia-paragraph-backend";
+import { releaseTransientSkiaResources } from "./skia-resource-release";
 import {
   createSkiaPageDecoration,
   disposeSkiaPageDecorationAfterPaint,
+  retireSkiaPageDecorationAfterPaint,
   SkiaPageDecorationLayer,
   type SkiaPageDecoration,
 } from "./skia-page-decoration";
@@ -171,6 +177,7 @@ import {
   configureNativePagerInput,
   configureNativePagerMotion,
   enqueueNativePagerPictureTurn,
+  nativePagerCanvasReady,
   nativePagerCompositorAvailable,
   resetNativePagerCompositor,
   runNativePagerBenchmark,
@@ -186,9 +193,11 @@ import {
 import {
   buildNativePagerStockPlan,
   nativePagerPageKey,
+  nativePagerStockEntryIdFromTurnId,
   nativePagerTransitionPictures,
   trimNativePagerReconciliationEntries,
 } from "./native-pager-stock";
+import { NativePagerRecordingCache } from "./native-pager-recording-cache";
 import {
   PAGE_TURN_START_INTERVAL_MS,
   beginScheduledInteractivePageTurn,
@@ -318,6 +327,12 @@ interface NativePagerStockEntryRecord {
 }
 
 const PAGE_DECORATION_CACHE_LIMIT = 32;
+// JS owns recordings only long enough to reuse pages around the moving stock
+// edge. Native takes its own sk_sp reference during stocking, so keeping the
+// complete graph here merely double-charges Hermes external memory. The raster
+// estimate makes large-screen pages hit the byte ceiling before the count cap.
+const NATIVE_PAGER_RECORDING_CACHE_LIMIT = 16;
+const NATIVE_PAGER_RECORDING_CACHE_BYTE_BUDGET = 192 * 1024 * 1024;
 const PAGE_CAPTURE_MAX_DIRECTIONAL_VIEWS = 12;
 const PAGE_CAPTURE_MIN_DIRECTIONAL_VIEWS = 3;
 
@@ -465,7 +480,7 @@ function LazyReaderEngine({
       ),
     [automaticPageTurnTuning],
   );
-  const nativePagerCompositorEnabled =
+  const nativePagerCompositorSupported =
     (Platform.OS === "android" || Platform.OS === "ios") &&
     pageTurnAnimation === "natural" &&
     nativePagerCompositorAvailable();
@@ -482,6 +497,10 @@ function LazyReaderEngine({
     appearance.decorationFontFamily ?? appearance.fontFamily;
   const backend = useMemo(
     () => createSkiaParagraphBackend(fontProvider, theme),
+    [fontProvider, theme],
+  );
+  const transientBackend = useMemo(
+    () => createTransientSkiaParagraphBackend(fontProvider, theme),
     [fontProvider, theme],
   );
   const typographyAppearance = useMemo<ReaderAppearance>(
@@ -530,11 +549,11 @@ function LazyReaderEngine({
             book,
             sectionIndex,
             spec,
-            backend,
-            (paragraph) => releaseSkiaResources(Platform.OS, paragraph, null),
+            transientBackend,
+            releaseTransientSkiaResources,
           ),
       }),
-    [backend, book, paginationCache, spec],
+    [book, paginationCache, spec, transientBackend],
   );
   const pageDecorationCache = useMemo(
     () => new Map<string, CachedPageDecoration>(),
@@ -586,6 +605,17 @@ function LazyReaderEngine({
   const nativePagerStockedEntryIdsRef = useRef(new Set<string>());
   const nativePagerStockEntriesRef = useRef(
     new Map<string, NativePagerStockEntryRecord>(),
+  );
+  const nativePagerRecordingCache = useMemo(
+    // Keep the complete current stock graph recorded. Sliding the graph by one
+    // page should create only its new outer page instead of dozens of transient
+    // SkPicture HostObjects that outrun Hermes finalization at 10 pps.
+    () =>
+      new NativePagerRecordingCache<RecordedPageCapture>(
+        NATIVE_PAGER_RECORDING_CACHE_LIMIT,
+        NATIVE_PAGER_RECORDING_CACHE_BYTE_BUDGET,
+      ),
+    [readerGeneration],
   );
   const nativePagerDirectTurnIdsRef = useRef(new Set<string>());
   const nativePagerGestureTurnIdsRef = useRef(new Set<string>());
@@ -715,16 +745,27 @@ function LazyReaderEngine({
   );
   const progressDecorationForAddress = useCallback(
     (address: PageAddress): PageProgressDecoration => {
+      const resolvedOrEstimatedPageCounts = sectionPageCounts.map(
+        (estimatedCount, sectionIndex) =>
+          sectionPageCountCache.resolvedCountFor(sectionIndex) ??
+          estimatedCount,
+      );
       return createPageProgressDecoration({
         address,
         bookTitle: book.title,
         sectionTitle: book.title,
-        sectionPageCounts,
+        sectionPageCounts: resolvedOrEstimatedPageCounts,
         currentSectionPageCount: pageCountForSection(address.sectionIndex),
         pagesPerView,
       });
     },
-    [book.title, pageCountForSection, pagesPerView, sectionPageCounts],
+    [
+      book.title,
+      pageCountForSection,
+      pagesPerView,
+      sectionPageCountCache,
+      sectionPageCounts,
+    ],
   );
   const pageDecorationForAddress = useCallback(
     (address: PageAddress): SkiaPageDecoration => {
@@ -1016,17 +1057,23 @@ function LazyReaderEngine({
     () => () => {
       turnCaptureLeasesRef.current.clear();
       captureStartTimesRef.current.clear();
-      pageCaptureCache.clear();
+      pageCaptureCache.clear(retireCapturedPageAfterPaint);
       for (const pagination of paginationCache.values()) {
-        disposePaginationAfterPaint(pagination);
+        retirePaginationAfterPaint(pagination);
       }
       paginationCache.clear();
       for (const cached of pageDecorationCache.values()) {
-        disposeSkiaPageDecorationAfterPaint(cached.decoration);
+        retireSkiaPageDecorationAfterPaint(cached.decoration);
       }
       pageDecorationCache.clear();
+      nativePagerRecordingCache.clear();
     },
-    [pageCaptureCache, pageDecorationCache, paginationCache],
+    [
+      nativePagerRecordingCache,
+      pageCaptureCache,
+      pageDecorationCache,
+      paginationCache,
+    ],
   );
 
   useEffect(() => {
@@ -1224,6 +1271,9 @@ function LazyReaderEngine({
   const readerViewRef = useRef<View>(null);
   const readerCanvasRef = useCanvasRef();
   const [nativePagerCanvasId, setNativePagerCanvasId] = useState<number>();
+  const [nativePagerReady, setNativePagerReady] = useState(false);
+  const nativePagerCompositorEnabled =
+    nativePagerCompositorSupported && nativePagerReady;
   const readerOriginRef = useRef({ x: 0, y: 0 });
   const measureReaderOrigin = useCallback(() => {
     readerViewRef.current?.measureInWindow((x, y) => {
@@ -3266,7 +3316,8 @@ function LazyReaderEngine({
         // advance two pages for one cold-stock tap.
         return;
       }
-      const directEntry = nativePagerStockEntriesRef.current.get(turnId);
+      const stockEntryId = nativePagerStockEntryIdFromTurnId(turnId);
+      const directEntry = nativePagerStockEntriesRef.current.get(stockEntryId);
       if (event === "gesture-started") {
         requestedTurnStartsRef.current.push(eventAtMs);
         deliveredTurnStartsRef.current.push(Date.now());
@@ -3308,8 +3359,6 @@ function LazyReaderEngine({
           requestedTurnStartsRef.current.push(eventAtMs);
           deliveredTurnStartsRef.current.push(Date.now());
         }
-        nativePagerStockedEntryIdsRef.current.delete(turnId);
-        nativePagerStockEntriesRef.current.delete(turnId);
         if (!directEntry || !readerGenerationIsCurrent()) {
           rejectedTurnCountsRef.current.other += 1;
           return;
@@ -3381,11 +3430,50 @@ function LazyReaderEngine({
     },
   );
   useEffect(() => {
-    const canvas = nativePagerCompositorEnabled
+    const canvas = nativePagerCompositorSupported
       ? readerCanvasRef.current
       : null;
     setNativePagerCanvasId(canvas?.getNativeId());
-  }, [nativePagerCompositorEnabled, readerCanvasRef, readerGeneration]);
+  }, [nativePagerCompositorSupported, readerCanvasRef, readerGeneration]);
+  useEffect(() => {
+    if (!nativePagerCompositorSupported || nativePagerCanvasId === undefined) {
+      setNativePagerReady(false);
+      return;
+    }
+    const canvas = readerCanvasRef.current;
+    if (!canvas || canvas.getNativeId() !== nativePagerCanvasId) {
+      setNativePagerReady(false);
+      return;
+    }
+    let cancelled = false;
+    let frame = 0;
+    setNativePagerReady(false);
+    const probe = () => {
+      if (cancelled) {
+        return;
+      }
+      if (
+        nativePagerCanvasReady(canvas) &&
+        readerStateRef.current.turns.length === 0
+      ) {
+        setNativePagerReady(true);
+        return;
+      }
+      frame = requestAnimationFrame(probe);
+    };
+    probe();
+    return () => {
+      cancelled = true;
+      if (frame) {
+        cancelAnimationFrame(frame);
+      }
+    };
+  }, [
+    nativePagerCanvasId,
+    nativePagerCompositorSupported,
+    readerCanvasRef,
+    readerGeneration,
+  ]);
   useEffect(() => {
     if (!nativePagerCompositorEnabled) {
       return;
@@ -3480,29 +3568,30 @@ function LazyReaderEngine({
     let cancelled = false;
     let frame = 0;
     let nextEdgeIndex = 0;
-    const recordings = new Map<string, RecordedPageCapture | null>();
-    const disposeRecordings = () => {
-      for (const recording of recordings.values()) {
-        recording?.dispose();
-      }
-      recordings.clear();
-    };
+    const unavailableRecordingKeys = new Set<string>();
     const recordingFor = (
       metadata: PageCaptureMetadata,
     ): RecordedPageCapture | null => {
       const identity = pageCaptureIdentity(metadata);
-      if (recordings.has(identity.key)) {
-        return recordings.get(identity.key) ?? null;
-      }
-      if (!pageReadyForCapture(metadata.address)) {
-        recordings.set(identity.key, null);
+      const recordingKey = `${identity.key}:${crispTapCaptureQuality.desiredScale}`;
+      if (unavailableRecordingKeys.has(recordingKey)) {
         return null;
       }
-      const recording = createRecordedPageCapture(
-        identity,
-        crispTapCaptureQuality.desiredScale,
+      if (!pageReadyForCapture(metadata.address)) {
+        unavailableRecordingKeys.add(recordingKey);
+        return null;
+      }
+      const recording = nativePagerRecordingCache.getOrCreate(
+        recordingKey,
+        () =>
+          createRecordedPageCapture(
+            identity,
+            crispTapCaptureQuality.desiredScale,
+          ),
       );
-      recordings.set(identity.key, recording);
+      if (!recording) {
+        unavailableRecordingKeys.add(recordingKey);
+      }
       return recording;
     };
     const feedStock = () => {
@@ -3598,8 +3687,6 @@ function LazyReaderEngine({
       }
       if (nextEdgeIndex < pendingEdges.length) {
         frame = requestAnimationFrame(feedStock);
-      } else {
-        disposeRecordings();
       }
     };
     feedStock();
@@ -3608,7 +3695,6 @@ function LazyReaderEngine({
       if (frame) {
         cancelAnimationFrame(frame);
       }
-      disposeRecordings();
     };
   }, [
     automaticPageTurnTuning,
@@ -3618,12 +3704,14 @@ function LazyReaderEngine({
     imageVersion,
     layout,
     nativePagerCompositorEnabled,
+    nativePagerRecordingCache,
     nativePagerStockPlan,
     pageCaptureIdentity,
     pageCaptureVersion,
     pageReadyForCapture,
     readerCanvasRef,
     readerGeneration,
+    readerState.settled,
     theme.paper,
     turnConcurrency.minimumTurnIntervalMs,
   ]);
@@ -3921,7 +4009,11 @@ function LazyReaderEngine({
       ),
     ).then(() => {
       if (!cancelled) {
-        setImageVersion((current) => current + 1);
+        // `pinnedAssetIds` changes as the stock runway slides. Cached loads
+        // finish immediately, so incrementing here invalidated every native
+        // stock edge once per page. Mirror the cache's installation revision
+        // instead: duplicate completions become a React no-op.
+        setImageVersion(imageCache.revision);
       }
     });
     return () => {
@@ -4693,7 +4785,7 @@ export function LiveReader({
   );
 
   return (
-    <LazyReaderEngine
+    <StagedLazyReaderEngine
       book={book}
       fontProvider={fontProvider}
       width={width}
@@ -4719,6 +4811,67 @@ export function LiveReader({
       onTurningChange={onTurningChange}
     />
   );
+}
+
+/**
+ * Pagination, Skia paragraphs, recorded pages, and native Pager stock all
+ * belong to one render generation. Rendering the next generation before the
+ * previous effects have cleaned up briefly retains both complete working
+ * sets. On iOS that peak can exhaust Hermes while it creates the next JSI
+ * HostFunction, so appearance, font, and single/spread changes all crash at
+ * the same stack.
+ *
+ * Keep the committed engine visible until React can unmount it as a separate
+ * commit. Its cleanups then clear JS caches and reset the native compositor.
+ * Wait through the same two-paint grace period used by Skia resources before
+ * mounting the latest requested generation. The parent page color remains
+ * visible during this short handoff instead of building two readers at once.
+ */
+function StagedLazyReaderEngine(desired: LazyReaderEngineProps) {
+  const desiredRef = useRef(desired);
+  desiredRef.current = desired;
+  const [active, setActive] = useState(desired);
+  const [retiring, setRetiring] = useState(false);
+
+  useEffect(() => {
+    if (!retiring && active.readerGeneration !== desired.readerGeneration) {
+      setRetiring(true);
+    }
+  }, [active.readerGeneration, desired.readerGeneration, retiring]);
+
+  useEffect(() => {
+    if (!retiring) {
+      return;
+    }
+    let cancelled = false;
+    afterSkiaPaint(() => {
+      const mountLatest = () => {
+        if (cancelled) {
+          return;
+        }
+        setActive(desiredRef.current);
+        setRetiring(false);
+      };
+      // Generation cleanups use the same two-paint grace period. Mount on the
+      // following frame so all retirement callbacks deterministically finish
+      // before the next paragraph graph starts allocating.
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(mountLatest);
+      } else {
+        setTimeout(mountLatest, 16);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [retiring]);
+
+  if (retiring) {
+    return null;
+  }
+  const rendered =
+    active.readerGeneration === desired.readerGeneration ? desired : active;
+  return <LazyReaderEngine key={rendered.readerGeneration} {...rendered} />;
 }
 
 function eventTimeSeconds(event: GestureResponderEvent): number {

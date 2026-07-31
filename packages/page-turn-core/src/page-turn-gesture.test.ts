@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PAGE_TURN_TUNING,
   FULL_GESTURE_START_MIN_X,
+  GESTURE_HINGE_BLEND_WIDTH_X,
   GESTURE_LIFT_START_X,
+  GESTURE_ROLL_TILT_RATE,
   MAX_PAGE_WEIGHT,
   MIN_PAGE_WEIGHT,
   SLOW_COMMIT_EDGE_X,
@@ -155,7 +157,10 @@ describe("page-turn gesture kinematics", () => {
     );
   });
 
-  it("begins lifting at a quarter-page swipe and commits a short fast flick", () => {
+  it("begins lifting at the selected horizontal trigger and commits a fast flick", () => {
+    expect(MIN_PRESSED_EDGE_X).toBe(0.14);
+    expect(GESTURE_LIFT_START_X).toBe(0.36);
+    expect(GESTURE_ROLL_TILT_RATE).toBe(0.4);
     expect(gestureLiftRotationForFingerX(GESTURE_LIFT_START_X)).toBe(0);
     expect(
       gestureLiftRotationForFingerX(GESTURE_LIFT_START_X - 0.1),
@@ -175,5 +180,24 @@ describe("page-turn gesture kinematics", () => {
         pageWeight: 1,
       }),
     ).toBe(true);
+  });
+
+  it("joins the stable hinge without a rotation bump", () => {
+    const epsilon = 1e-6;
+    const blendStart = MIN_PRESSED_EDGE_X + GESTURE_HINGE_BLEND_WIDTH_X;
+
+    expect(gestureLiftRotationForFingerX(MIN_PRESSED_EDGE_X)).toBe(
+      MAX_PRESSED_ROLL_TILT,
+    );
+    expect(
+      Math.abs(
+        gestureLiftRotationForFingerX(MIN_PRESSED_EDGE_X + epsilon) -
+          gestureLiftRotationForFingerX(MIN_PRESSED_EDGE_X - epsilon),
+      ),
+    ).toBeLessThan(1e-5);
+    expect(gestureLiftRotationForFingerX(blendStart + epsilon)).toBeCloseTo(
+      gestureLiftRotationForFingerX(blendStart - epsilon),
+      5,
+    );
   });
 });

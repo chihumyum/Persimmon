@@ -4,6 +4,7 @@ import {
   buildNativePagerStockPlan,
   NATIVE_PAGER_STOCK_RADIUS,
   nativePagerPageKey,
+  nativePagerStockEntryIdFromTurnId,
   nativePagerTransitionPictures,
   trimNativePagerReconciliationEntries,
 } from "./native-pager-stock";
@@ -19,6 +20,15 @@ function adjacentFor(pageCount: number) {
 }
 
 describe("native pager picture stock", () => {
+  it("maps unique playback ids back to their reusable stock edge", () => {
+    expect(
+      nativePagerStockEntryIdFromTurnId("native-stock:7:0:12:1:0:13#turn:42"),
+    ).toBe("native-stock:7:0:12:1:0:13");
+    expect(nativePagerStockEntryIdFromTurnId("native-stock:unchanged")).toBe(
+      "native-stock:unchanged",
+    );
+  });
+
   it("maps all four physical page roles for a forward spread", () => {
     expect(
       nativePagerTransitionPictures(
@@ -118,14 +128,16 @@ describe("native pager picture stock", () => {
     expect(plan).toHaveLength(8);
   });
 
-  it("keeps eight transitions of runway in each direction by default", () => {
+  it("keeps a one-second runway in each direction by default", () => {
     const plan = buildNativePagerStockPlan(
-      page(10),
-      adjacentFor(21),
+      page(20),
+      adjacentFor(41),
       NATIVE_PAGER_STOCK_RADIUS,
     );
 
-    expect(Math.max(...plan.map((edge) => edge.distance))).toBe(8);
+    expect(Math.max(...plan.map((edge) => edge.distance))).toBe(
+      NATIVE_PAGER_STOCK_RADIUS,
+    );
     expect(plan).toHaveLength(NATIVE_PAGER_STOCK_RADIUS * 4);
   });
 

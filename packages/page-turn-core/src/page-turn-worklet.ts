@@ -38,7 +38,7 @@ const PROFILE_NORMAL_X = 2;
 const PROFILE_NORMAL_Z = 3;
 const PROFILE_SEGMENTS = DEFAULT_PAGE_PROFILE_POINTS - 1;
 const PROFILE_QUADRATURE_NODES = PROFILE_SEGMENTS * 2;
-const MAX_PROFILE_BEND_AMPLITUDE = 2.3382951135873746;
+const MAX_PROFILE_BEND_AMPLITUDE = 2.147033481101353;
 const SETTLING_PAGE_START_PROGRESS = 0.3;
 const GESTURE_VELOCITY_TIME_CONSTANT = 0.045;
 const GESTURE_ACCELERATION_TIME_CONSTANT = 0.06;
@@ -59,7 +59,7 @@ const MIN_REVERT_INITIAL_SPEED = 0.65;
 const MAX_REVERT_INITIAL_SPEED = 6.3;
 const REVERT_EASE_OUT_INITIAL_SLOPE = 3;
 
-// Inverse J0 on the page's supported chord interval [0.035, 1].
+// Inverse J0 on the approximation's original chord interval [0.035, 1].
 // This degree-10 Chebyshev approximation has < 9e-8 radians maximum error
 // against the old 48 x 256 bisection/integration solver. It removes more than
 // twelve thousand cosine evaluations from every drag update.
@@ -69,10 +69,13 @@ const INVERSE_BESSEL_CHEBYSHEV = [
   0.000031566578791633, -0.000007135535298704449, 0.0000016623788064225635,
   -0.0000003841457726910674, 0.00000009309814723863693,
 ] as const;
+const INVERSE_BESSEL_APPROXIMATION_MIN_CHORD = 0.035;
 
 // Stable geometry of the fully compressed reference hinge.
-const PRESSED_HINGE_TILT_DISTANCE = 0.27513626075612096;
-const GESTURE_LIFT_START_X = 0.5;
+const PRESSED_HINGE_TILT_DISTANCE = 0.3565937167398107;
+const GESTURE_LIFT_START_X = 0.36;
+const GESTURE_HINGE_BLEND_WIDTH_X = 0.11;
+const GESTURE_ROLL_TILT_RATE = 0.4;
 const SLOW_COMMIT_EDGE_X = MIN_PRESSED_EDGE_X - PRESSED_HINGE_TILT_DISTANCE;
 
 /**
@@ -346,7 +349,9 @@ function bendAmplitudeForChord(chord: number): number {
   }
   const safeChord = clamp(chord, MIN_PRESSED_EDGE_X, 0.999999);
   const x =
-    (2 * (safeChord - MIN_PRESSED_EDGE_X)) / (1 - MIN_PRESSED_EDGE_X) - 1;
+    (2 * (safeChord - INVERSE_BESSEL_APPROXIMATION_MIN_CHORD)) /
+      (1 - INVERSE_BESSEL_APPROXIMATION_MIN_CHORD) -
+    1;
   let beforePrevious = 0;
   let previous = 0;
   for (
@@ -366,14 +371,26 @@ function bendAmplitudeForChord(chord: number): number {
 
 function gestureLiftRotationForFingerX(fingerX: number): number {
   "worklet";
+  if (fingerX <= MIN_PRESSED_EDGE_X) {
+    return MAX_PRESSED_ROLL_TILT;
+  }
   const progress = clamp(
     (GESTURE_LIFT_START_X - fingerX) /
       (GESTURE_LIFT_START_X - SLOW_COMMIT_EDGE_X),
     0,
     1,
   );
-  const easedProgress = 1 - (1 - progress) ** 2;
-  return MAX_PRESSED_ROLL_TILT * easedProgress;
+  const easedProgress = 1 - (1 - progress) ** (2 * GESTURE_ROLL_TILT_RATE);
+  const liftedRotation = MAX_PRESSED_ROLL_TILT * easedProgress;
+  const hingeBlendProgress = clamp(
+    (MIN_PRESSED_EDGE_X + GESTURE_HINGE_BLEND_WIDTH_X - fingerX) /
+      GESTURE_HINGE_BLEND_WIDTH_X,
+    0,
+    1,
+  );
+  const hingeBlend =
+    hingeBlendProgress * hingeBlendProgress * (3 - 2 * hingeBlendProgress);
+  return liftedRotation + (MAX_PRESSED_ROLL_TILT - liftedRotation) * hingeBlend;
 }
 
 function slowCommitEdgeX(): number {

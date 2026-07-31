@@ -26,6 +26,7 @@ export class DecodedImageCache {
   private readonly unavailable = new Set<string>();
   private usageCounter = 0;
   private decodedBytes = 0;
+  private contentRevision = 0;
 
   constructor(readonly byteBudget: number) {
     if (!Number.isSafeInteger(byteBudget) || byteBudget <= 0) {
@@ -39,6 +40,15 @@ export class DecodedImageCache {
 
   get count(): number {
     return this.entries.size;
+  }
+
+  /**
+   * Advances only when a decoded image is installed. Callers can safely mirror
+   * this value into React state: cache hits and repeated subscribers to the
+   * same in-flight request all observe the same revision.
+   */
+  get revision(): number {
+    return this.contentRevision;
   }
 
   get(assetId: string): SkImage | undefined {
@@ -98,6 +108,7 @@ export class DecodedImageCache {
             pinned: false,
           });
           this.decodedBytes += decodedBytes;
+          this.contentRevision += 1;
           this.evict();
           return image;
         } finally {
@@ -137,6 +148,7 @@ export class DecodedImageCache {
     this.pending.clear();
     this.unavailable.clear();
     this.decodedBytes = 0;
+    this.contentRevision = 0;
   }
 
   private evict(): void {

@@ -433,13 +433,13 @@ export class CapturedPageCache<
     };
   }
 
-  clear(): void {
+  clear(disposeValue: (value: Value) => void = this.disposeValue): void {
     for (const lease of this.leases.values()) {
       lease.released = true;
     }
     this.leases.clear();
     for (const entry of this.entries.values()) {
-      this.disposeEntry(entry);
+      this.disposeEntry(entry, disposeValue);
     }
     this.entries.clear();
     this.residentBytes = 0;
@@ -804,12 +804,15 @@ export class CapturedPageCache<
     }
   }
 
-  private disposeEntry(entry: CacheEntry<Value, Metadata>): void {
+  private disposeEntry(
+    entry: CacheEntry<Value, Metadata>,
+    disposeValue: (value: Value) => void = this.disposeValue,
+  ): void {
     if (entry.disposed) {
       return;
     }
     entry.disposed = true;
-    this.disposeValue(entry.value);
+    disposeValue(entry.value);
   }
 
   private touch(entry: CacheEntry<Value, Metadata>): void {

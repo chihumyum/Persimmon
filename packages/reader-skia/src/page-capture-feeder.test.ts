@@ -47,6 +47,7 @@ function capture(): CapturedPage {
     pixelHeight: 40,
     byteSize: 3_200,
     dispose: vi.fn(),
+    retire: vi.fn(),
   };
 }
 

@@ -84,6 +84,27 @@ describe("natural page turn controller", () => {
     expect(controller.getPoints()).toEqual(releaseProfile);
   });
 
+  it("keeps the page profile continuous while crossing the spine", () => {
+    const controller = new NaturalPageTurnController();
+    const epsilon = 1e-6;
+    expect(controller.beginDrag(1, 0.7, 0)).toBe(true);
+
+    controller.moveDrag(MIN_PRESSED_EDGE_X + epsilon, 0.7, 0.2);
+    const beforeHinge = controller.getPoints().map((point) => ({ ...point }));
+    controller.moveDrag(MIN_PRESSED_EDGE_X - epsilon, 0.7, 0.21);
+    const afterHinge = controller.getPoints();
+    const maximumPointDisplacement = Math.max(
+      ...afterHinge.map((point, index) =>
+        Math.hypot(
+          point.x - beforeHinge[index]!.x,
+          point.z - beforeHinge[index]!.z,
+        ),
+      ),
+    );
+
+    expect(maximumPointDisplacement).toBeLessThan(1e-4);
+  });
+
   it("does not pull the page edge backward on a post-hinge release", () => {
     const controller = new NaturalPageTurnController();
     const startBookX = 0.9;

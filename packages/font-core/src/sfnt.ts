@@ -93,6 +93,25 @@ function decodeUtf16Be(bytes: Uint8Array): string {
   return String.fromCharCode(...codeUnits);
 }
 
+function decodeSingleByte(bytes: Uint8Array): string {
+  // Hermes only guarantees UTF-8 support in TextDecoder. SFNT name tables can
+  // also contain legacy single-byte records, so decode those records directly
+  // instead of asking the runtime for the optional "latin1" codec. Unicode
+  // name records remain preferred below; this path is primarily an ASCII-safe
+  // fallback for older fonts.
+  const chunkSize = 4_096;
+  let value = "";
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    const end = Math.min(offset + chunkSize, bytes.length);
+    const codeUnits: number[] = [];
+    for (let index = offset; index < end; index += 1) {
+      codeUnits.push(bytes[index] ?? 0);
+    }
+    value += String.fromCharCode(...codeUnits);
+  }
+  return value;
+}
+
 function decodeName(
   bytes: Uint8Array,
   platformId: number,
@@ -101,7 +120,7 @@ function decodeName(
   const value =
     platformId === 0 || platformId === 3
       ? decodeUtf16Be(bytes)
-      : new TextDecoder("latin1").decode(bytes);
+      : decodeSingleByte(bytes);
   return value.replaceAll("\u0000", "").trim();
 }
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { NaturalPageTurnController } from "./natural-page-turn-controller";
 import { DEFAULT_PAGE_TURN_TUNING } from "./page-turn-gesture";
+import { MIN_PRESSED_EDGE_X } from "./rolled-page-strip";
 import {
   advancePageTurnWorklet,
   beginPageTurnWorkletDrag,
@@ -71,6 +72,25 @@ describe("UI-runtime page-turn engine", () => {
       expectProfilesToMatch(reference, worklet.profile);
     }
     expect(worklet.outcome).toBe(1);
+  });
+
+  it("matches the reference profile on both sides of the spine handoff", () => {
+    const reference = new NaturalPageTurnController();
+    const worklet = createPageTurnWorkletState();
+    const epsilon = 1e-6;
+    reference.beginDrag(1, 0.7, 0);
+    beginPageTurnWorkletDrag(worklet, 1, 1, 0.7, 0, false);
+
+    for (const [index, x] of [
+      MIN_PRESSED_EDGE_X + epsilon,
+      MIN_PRESSED_EDGE_X,
+      MIN_PRESSED_EDGE_X - epsilon,
+    ].entries()) {
+      const time = 0.2 + index * 0.01;
+      reference.moveDrag(x, 0.7, time);
+      movePageTurnWorkletDrag(worklet, x, 0.7, 0, time);
+      expectProfilesToMatch(reference, worklet.profile);
+    }
   });
 
   it("updates live automatic-turn tuning without replacing frame buffers", () => {

@@ -110,6 +110,12 @@ export function nativePagerCompositorAvailable(): boolean {
   return false;
 }
 
+export function nativePagerCanvasReady(
+  _canvas: NativePagerCanvasHandle | null,
+): boolean {
+  return false;
+}
+
 export function enqueueNativePagerTurn(
   _canvas: NativePagerCanvasHandle | null,
   _command: NativePagerTurnCommand,

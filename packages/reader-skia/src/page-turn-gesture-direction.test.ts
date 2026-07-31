@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   bookXForGestureTravel,
+  pageTurnGestureReleaseSample,
   pageTurnDirectionFromTranslation,
+  pageTurnTerminalDirection,
 } from "./page-turn-gesture-direction";
 
 describe("page turn gesture direction", () => {
@@ -19,6 +21,13 @@ describe("page turn gesture direction", () => {
   it("waits for non-zero travel instead of defaulting to the previous page", () => {
     expect(pageTurnDirectionFromTranslation(0)).toBeUndefined();
     expect(pageTurnDirectionFromTranslation(Number.NaN)).toBeUndefined();
+  });
+
+  it("recovers a coalesced terminal swipe without turning vertical or tiny input", () => {
+    expect(pageTurnTerminalDirection(-280, 8, 1)).toBe(1);
+    expect(pageTurnTerminalDirection(280, -8, 1)).toBe(-1);
+    expect(pageTurnTerminalDirection(0.5, 0, 1)).toBeUndefined();
+    expect(pageTurnTerminalDirection(20, 21, 1)).toBeUndefined();
   });
 
   it("maps finger pixels to paper pixels one-to-one", () => {
@@ -38,5 +47,15 @@ describe("page turn gesture direction", () => {
     expect(
       bookXForGestureTravel(0.9, -physicalPageWidth * 2, 1, physicalPageWidth),
     ).toBe(-1);
+  });
+
+  it("samples symmetric terminal fling geometry in both directions", () => {
+    const forward = pageTurnGestureReleaseSample(0.8, -280, -1_400, 1, 400);
+    const backward = pageTurnGestureReleaseSample(0.8, 280, 1_400, -1, 400);
+
+    expect(backward).toEqual(forward);
+    expect(forward.currentBookX).toBeCloseTo(0.1, 8);
+    expect(forward.turnProgress).toBeCloseTo(280 / (400 * 0.72), 8);
+    expect(forward.throwVelocity).toBeCloseTo(3.5, 8);
   });
 });

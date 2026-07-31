@@ -712,4 +712,24 @@ describe("captured page turn leases", () => {
       leaseCount: 0,
     });
   });
+
+  it("supports a generation-retirement disposer when clearing", () => {
+    const captures: FakeCapture[] = [];
+    const capturesCache = cache(400);
+    const value = capturesCache.prefetch(
+      {
+        identity: page("retire"),
+        tier: "prefetch",
+        desiredScale: 1,
+      },
+      trackingFactory(captures),
+    );
+    const retired: FakeCapture[] = [];
+
+    capturesCache.clear((capture) => retired.push(capture));
+
+    expect(retired).toEqual([value]);
+    expect(value?.disposed).toBe(false);
+    expect(capturesCache.getStats().entryCount).toBe(0);
+  });
 });

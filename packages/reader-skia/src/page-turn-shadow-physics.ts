@@ -1,7 +1,7 @@
 const MINIMUM_SHADOW_WIDTH = 0.045;
 const MAXIMUM_SHADOW_WIDTH = 0.28;
 const MAXIMUM_SHADOW_STRENGTH = 0.34;
-const MAXIMUM_CURVATURE = 2.3382951135873746;
+const MAXIMUM_CURVATURE = 2.147033481101353;
 
 // Keep worklet dependencies above the worklet that captures them. The native
 // Worklets compiler serializes module-local helpers in source order.

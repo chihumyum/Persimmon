@@ -29,7 +29,9 @@ import {
 import { afterSkiaPaint } from "./skia-lifecycle";
 import {
   bookXForGestureTravel,
+  pageTurnGestureReleaseSample,
   pageTurnDirectionFromTranslation,
+  pageTurnTerminalDirection,
 } from "./page-turn-gesture-direction";
 import {
   gestureTuningForCore,
@@ -42,7 +44,10 @@ import {
   endNativePagerGestureOnUI,
   updateNativePagerGestureOnUI,
 } from "./native-pager-compositor";
-import { nativePagerTapNeedsRNFallback } from "./native-pager-input";
+import {
+  nativePagerTapNeedsRNFallback,
+  resolvePageTurnRecognizerDistances,
+} from "./native-pager-input";
 import { useStableRNDispatcher } from "./use-stable-rn-dispatcher";
 
 export interface NativePageTurnCommand {
@@ -228,6 +233,8 @@ export function useNativePageTurnDriver({
   const dispatchTapTurn = useStableRNDispatcher(onTapTurn);
   const dispatchOutcome = useStableRNDispatcher(onOutcome);
   const onePhysicalPixel = 1 / Math.max(1, PixelRatio.get());
+  const { tapMaxDistance, panActivationDistance } =
+    resolvePageTurnRecognizerDistances(onePhysicalPixel);
   const coreTuning = useMemo(() => gestureTuningForCore(tuning), [tuning]);
   const state = useSharedValue(createPageTurnWorkletState(coreTuning));
   const frame = usePageTurnNativeSharedFrame(width, height, spread);
@@ -417,10 +424,9 @@ export function useNativePageTurnDriver({
       !canStartInteractive || (command !== undefined && !command.interactive);
     const pan = Gesture.Pan()
       .enabled(gesturesEnabled)
-      // Gesture Handler measures in logical points. Converting one device
-      // pixel keeps the initial paper response below a visible spatial step
-      // on both Retina iOS screens and dense Android displays.
-      .activeOffsetX([-onePhysicalPixel, onePhysicalPixel])
+      // Keep rapid-tap jitter inside the tap recognizer. Once the finger moves
+      // beyond that small tolerance, the native drag path still takes over.
+      .activeOffsetX([-panActivationDistance, panActivationDistance])
       .failOffsetY([-12, 12])
       .onBegin(() => {
         "worklet";
@@ -656,20 +662,85 @@ export function useNativePageTurnDriver({
           return target;
         });
       })
-      .onEnd(() => {
+      .onEnd((event) => {
         "worklet";
         const releasedAtSeconds = workletTimeSeconds();
-        const probe = gestureProbe.value;
+        let probe = gestureProbe.value;
+        if (probe.mode === 0) {
+          const terminalDirection = pageTurnTerminalDirection(
+            event.translationX,
+            event.translationY,
+            onePhysicalPixel,
+          );
+          const canTurn =
+            terminalDirection === 1 ? canTurnForward : canTurnBackward;
+          if (terminalDirection === undefined || !canTurn) {
+            return;
+          }
+          const startLocalX = event.x - event.translationX;
+          const startBookX = materialXForTouch(
+            startLocalX,
+            terminalDirection,
+            spread,
+            physicalPageWidth,
+          );
+          const terminalSample = pageTurnGestureReleaseSample(
+            startBookX,
+            event.translationX,
+            event.velocityX,
+            terminalDirection,
+            physicalPageWidth,
+          );
+          const fingerX = Math.min(
+            1,
+            Math.max(-1, 1 + terminalSample.currentBookX - startBookX),
+          );
+          const nativeGestureStarted =
+            nativePagerGestureInputEnabled && nativePagerNativeId !== undefined
+              ? beginNativePagerGestureOnUI(nativePagerNativeId, {
+                  direction: terminalDirection,
+                  startBookX,
+                  fingerX,
+                  turnProgress: terminalSample.turnProgress,
+                })
+              : false;
+          gestureProbe.modify((current) => {
+            current.mode = nativeGestureStarted === true ? 3 : 2;
+            current.direction = terminalDirection;
+            current.startBookX = startBookX;
+            current.currentBookX = terminalSample.currentBookX;
+            current.throwVelocity = terminalSample.throwVelocity;
+            current.throwAcceleration = 0;
+            current.lastThrowVelocity = terminalSample.throwVelocity;
+            current.lastTime = releasedAtSeconds;
+            current.turnProgress = terminalSample.turnProgress;
+            return current;
+          });
+          probe = gestureProbe.value;
+        }
+        const releaseSample = pageTurnGestureReleaseSample(
+          probe.startBookX,
+          event.translationX,
+          event.velocityX,
+          probe.direction,
+          physicalPageWidth,
+        );
         if (probe.mode === 3) {
           const fingerX = Math.min(
             1,
-            Math.max(-1, 1 + probe.currentBookX - probe.startBookX),
+            Math.max(-1, 1 + releaseSample.currentBookX - probe.startBookX),
           );
+          if (nativePagerNativeId !== undefined) {
+            updateNativePagerGestureOnUI(nativePagerNativeId, {
+              fingerX,
+              turnProgress: releaseSample.turnProgress,
+            });
+          }
           const nativeEnded =
             nativePagerNativeId !== undefined
               ? endNativePagerGestureOnUI(nativePagerNativeId, {
                   fingerX,
-                  throwVelocity: probe.throwVelocity,
+                  throwVelocity: releaseSample.throwVelocity,
                   throwAcceleration: probe.throwAcceleration,
                   pageWeight: coreTuning.pageWeight,
                   commitThreshold: coreTuning.gestureCommitThreshold,
@@ -684,10 +755,10 @@ export function useNativePageTurnDriver({
               direction: probe.direction,
               interactive: false,
               startBookX: probe.startBookX,
-              currentBookX: probe.currentBookX,
-              throwVelocity: probe.throwVelocity,
+              currentBookX: releaseSample.currentBookX,
+              throwVelocity: releaseSample.throwVelocity,
               throwAcceleration: probe.throwAcceleration,
-              turnProgress: probe.turnProgress,
+              turnProgress: releaseSample.turnProgress,
               settlingIncomingPage: !spread && probe.direction === -1,
             });
           }
@@ -702,10 +773,10 @@ export function useNativePageTurnDriver({
             direction: probe.direction,
             interactive: false,
             startBookX: probe.startBookX,
-            currentBookX: probe.currentBookX,
-            throwVelocity: probe.throwVelocity,
+            currentBookX: releaseSample.currentBookX,
+            throwVelocity: releaseSample.throwVelocity,
             throwAcceleration: probe.throwAcceleration,
-            turnProgress: probe.turnProgress,
+            turnProgress: releaseSample.turnProgress,
             settlingIncomingPage: !spread && probe.direction === -1,
           });
           gestureProbe.modify((current) => {
@@ -722,6 +793,13 @@ export function useNativePageTurnDriver({
         if (state.value.phase !== PAGE_TURN_WORKLET_DRAG) {
           return;
         }
+        gestureTarget.modify((target) => {
+          target.bookX = releaseSample.currentBookX;
+          target.bookY = clampUnit(event.y / height);
+          target.turnProgress = releaseSample.turnProgress;
+          target.pendingRevision += 1;
+          return target;
+        });
         state.modify((current) => {
           const target = gestureTarget.value;
           if (target.pendingRevision !== target.appliedRevision) {
@@ -746,9 +824,9 @@ export function useNativePageTurnDriver({
               interactive: true,
               startBookX: interactiveProbe.startBookX,
               currentBookX: current.lastBookX,
-              throwVelocity: interactiveProbe.throwVelocity,
+              throwVelocity: releaseSample.throwVelocity,
               throwAcceleration: interactiveProbe.throwAcceleration,
-              turnProgress: interactiveProbe.turnProgress,
+              turnProgress: releaseSample.turnProgress,
               settlingIncomingPage:
                 !spread && interactiveProbe.direction === -1,
               releasedGesture: {
@@ -795,7 +873,7 @@ export function useNativePageTurnDriver({
       // sheets, while a cold gesture remains a deferred RN request until the
       // native reconciliation events have caught up.
       .enabled(gesturesEnabled || nativePagerTapInputEnabled)
-      .maxDistance(8)
+      .maxDistance(tapMaxDistance)
       .onEnd((event, success) => {
         "worklet";
         if (!success) {
@@ -857,9 +935,11 @@ export function useNativePageTurnDriver({
     nativePagerTapInputEnabled,
     nativePagerGestureInputEnabled,
     nativePagerNativeId,
+    panActivationDistance,
     physicalPageWidth,
     spread,
     state,
+    tapMaxDistance,
     coreTuning,
     width,
   ]);

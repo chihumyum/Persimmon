@@ -19,15 +19,18 @@ export class SectionPageCountCache {
     this.#options = options;
   }
 
-  countFor(sectionIndex: number): number {
+  resolvedCountFor(sectionIndex: number): number | undefined {
     const retainedPageCount = this.#options.retainedPageCountFor(sectionIndex);
     if (retainedPageCount !== undefined) {
       const count = normalizedPageCount(retainedPageCount);
       this.#counts.set(sectionIndex, count);
       return count;
     }
+    return this.#counts.get(sectionIndex);
+  }
 
-    const cached = this.#counts.get(sectionIndex);
+  countFor(sectionIndex: number): number {
+    const cached = this.resolvedCountFor(sectionIndex);
     if (cached !== undefined) {
       return cached;
     }
