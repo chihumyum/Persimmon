@@ -11,6 +11,7 @@
     "native:android:device": "expo run:android --device",
     "native:ios": "expo run:ios",
     "native:ios:device": "expo run:ios --device",
+    "native:ios:release:device": "NODE_ENV=production expo run:ios --device --configuration Release --no-bundler",
     "web": "expo start --web",
     "build:web": "expo export --platform web",
     "bundle:android": "expo export --platform android --output-dir .expo/bundle-check/android",

@@ -5,5 +5,7 @@ coverage/
 epubs-for-test/
 apps/persimmon/android/
 apps/persimmon/ios/
+apps/persimmon/modules/*/android/build/
+apps/persimmon/modules/*/ios/build/
 apps/persimmon/public/canvaskit.wasm
 pnpm-lock.yaml
