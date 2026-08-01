@@ -1,6 +1,7 @@
 import {
   DEFAULT_PAGE_TURN_TUNING,
-  postHingeTurnProgressForFingerX,
+  GESTURE_HINGE_CHORD_X,
+  GESTURE_HINGE_ROTATION,
   type ReleasedPageTurnGesture,
   type PageTurnTuning,
 } from "./page-turn-gesture";
@@ -74,8 +75,8 @@ const INVERSE_BESSEL_APPROXIMATION_MIN_CHORD = 0.035;
 // Stable geometry of the fully compressed reference hinge.
 const PRESSED_HINGE_TILT_DISTANCE = 0.3565937167398107;
 const GESTURE_LIFT_START_X = 0.36;
-const GESTURE_HINGE_BLEND_WIDTH_X = 0.11;
 const GESTURE_ROLL_TILT_RATE = 0.4;
+const GESTURE_HINGE_BEND_AMPLITUDE = 2.1266855842119465;
 const SLOW_COMMIT_EDGE_X = MIN_PRESSED_EDGE_X - PRESSED_HINGE_TILT_DISTANCE;
 
 /**
@@ -372,25 +373,31 @@ function bendAmplitudeForChord(chord: number): number {
 function gestureLiftRotationForFingerX(fingerX: number): number {
   "worklet";
   if (fingerX <= MIN_PRESSED_EDGE_X) {
-    return MAX_PRESSED_ROLL_TILT;
+    return GESTURE_HINGE_ROTATION;
   }
   const progress = clamp(
     (GESTURE_LIFT_START_X - fingerX) /
-      (GESTURE_LIFT_START_X - SLOW_COMMIT_EDGE_X),
+      (GESTURE_LIFT_START_X - MIN_PRESSED_EDGE_X),
     0,
     1,
   );
-  const easedProgress = 1 - (1 - progress) ** (2 * GESTURE_ROLL_TILT_RATE);
-  const liftedRotation = MAX_PRESSED_ROLL_TILT * easedProgress;
-  const hingeBlendProgress = clamp(
-    (MIN_PRESSED_EDGE_X + GESTURE_HINGE_BLEND_WIDTH_X - fingerX) /
-      GESTURE_HINGE_BLEND_WIDTH_X,
-    0,
+  return MAX_PRESSED_ROLL_TILT * GESTURE_ROLL_TILT_RATE * progress;
+}
+
+function gesturePressedChordForFingerX(
+  fingerX: number,
+  rotation: number,
+): number {
+  "worklet";
+  if (fingerX <= MIN_PRESSED_EDGE_X) {
+    return GESTURE_HINGE_CHORD_X;
+  }
+  const targetEdgeX = clamp(fingerX, MIN_PRESSED_EDGE_X, 1);
+  return clamp(
+    targetEdgeX / Math.max(0.000001, Math.cos(rotation)),
+    MIN_PRESSED_EDGE_X,
     1,
   );
-  const hingeBlend =
-    hingeBlendProgress * hingeBlendProgress * (3 - 2 * hingeBlendProgress);
-  return liftedRotation + (MAX_PRESSED_ROLL_TILT - liftedRotation) * hingeBlend;
 }
 
 function slowCommitEdgeX(): number {
@@ -595,6 +602,62 @@ function rebuildTurnProfile(
   );
 }
 
+/**
+ * Kept local so the UI runtime never has to serialize a module-private helper
+ * reached through an imported worklet function.
+ */
+function postHingeTurnProgressForFingerXWorklet(
+  fingerX: number,
+  startBookX: number,
+  curvatureRelaxation: number,
+): number {
+  "worklet";
+  const safeFingerX = Number.isFinite(fingerX)
+    ? Math.min(1, Math.max(-1, fingerX))
+    : MIN_PRESSED_EDGE_X;
+  const safeStartBookX = Number.isFinite(startBookX)
+    ? Math.min(1, Math.max(0, startBookX))
+    : 1;
+  const linearProgress = Math.min(
+    1,
+    Math.max(
+      0,
+      (MIN_PRESSED_EDGE_X - safeFingerX) /
+        (MIN_PRESSED_EDGE_X + safeStartBookX),
+    ),
+  );
+  if (linearProgress <= 0 || linearProgress >= 1) {
+    return linearProgress;
+  }
+  const desiredRotation =
+    GESTURE_HINGE_ROTATION +
+    (Math.PI - GESTURE_HINGE_ROTATION) * linearProgress;
+  const rootTangent = GESTURE_HINGE_ROTATION + GESTURE_HINGE_BEND_AMPLITUDE;
+  const swingAngle = Math.max(0, Math.PI - rootTangent);
+  const swingProgress = swingAngle / Math.PI;
+  const landingStart = swingProgress / (swingProgress + 1);
+  const landingRotation = Math.PI - GESTURE_HINGE_BEND_AMPLITUDE;
+  if (desiredRotation <= landingRotation && swingAngle > 1e-9) {
+    return (
+      landingStart * ((desiredRotation - GESTURE_HINGE_ROTATION) / swingAngle)
+    );
+  }
+  const relaxation = Math.min(
+    14,
+    Math.max(
+      3.5,
+      Number.isFinite(curvatureRelaxation) ? curvatureRelaxation : 7,
+    ),
+  );
+  const curlRetention = Math.min(
+    1,
+    Math.max(0, (Math.PI - desiredRotation) / GESTURE_HINGE_BEND_AMPLITUDE),
+  );
+  const remainingAirborne = Math.pow(curlRetention, 1 / (1 + relaxation / 14));
+  const landedLength = 1 - remainingAirborne;
+  return landingStart + landedLength * (1 - landingStart);
+}
+
 function applyDraggedProfile(
   state: PageTurnWorkletState,
   bookX: number,
@@ -616,18 +679,22 @@ function applyDraggedProfile(
   }
 
   state.gestureFingerX = clamp(1 + bookX - state.startBookX, -1, 1);
-  state.pressedEdgeX = Math.max(MIN_PRESSED_EDGE_X, state.gestureFingerX);
   state.heldRollTilt = gestureLiftRotationForFingerX(state.gestureFingerX);
-  state.dragTurnProgress = postHingeTurnProgressForFingerX(
+  state.pressedEdgeX = gesturePressedChordForFingerX(
+    state.gestureFingerX,
+    state.heldRollTilt,
+  );
+  state.dragTurnProgress = postHingeTurnProgressForFingerXWorklet(
     state.gestureFingerX,
     state.startBookX,
+    state.tuningCurvatureRelaxation,
   );
   if (state.dragTurnProgress > 0) {
     rebuildTurnProfile(
       state,
       state.dragTurnProgress,
-      MIN_PRESSED_EDGE_X,
-      MAX_PRESSED_ROLL_TILT,
+      GESTURE_HINGE_CHORD_X,
+      GESTURE_HINGE_ROTATION,
       deltaTime,
     );
     return;

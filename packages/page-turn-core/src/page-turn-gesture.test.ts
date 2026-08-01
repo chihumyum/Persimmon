@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PAGE_TURN_TUNING,
   FULL_GESTURE_START_MIN_X,
+  GESTURE_HINGE_CHORD_X,
   GESTURE_HINGE_BLEND_WIDTH_X,
+  GESTURE_HINGE_ROTATION,
   GESTURE_LIFT_START_X,
   GESTURE_ROLL_TILT_RATE,
   MAX_PAGE_WEIGHT,
@@ -14,6 +16,7 @@ import {
   clampPageTurnTuning,
   gestureTurnSpeedScale,
   gestureLiftRotationForFingerX,
+  gesturePressedChordForFingerX,
   heldRollTiltForFingerX,
   pageGestureModeForStart,
   postHingeTurnProgressForFingerX,
@@ -126,8 +129,22 @@ describe("page-turn gesture kinematics", () => {
   it("uses every remaining pixel after the roll closes", () => {
     expect(postHingeTurnProgressForFingerX(MIN_PRESSED_EDGE_X, 0.8)).toBe(0);
     expect(postHingeTurnProgressForFingerX(-0.8, 0.8)).toBe(1);
-    expect(postHingeTurnProgressForFingerX(-0.5, 1)).toBeGreaterThan(0.5);
+    expect(postHingeTurnProgressForFingerX(-0.5, 1)).toBeGreaterThan(0);
+    expect(postHingeTurnProgressForFingerX(-0.5, 1)).toBeLessThan(1);
     expect(postHingeTurnProgressForFingerX(0.5, 1)).toBe(0);
+  });
+
+  it("keeps the cylinder rotation linear beside and beyond the spine", () => {
+    const atSpine = postHingeTurnProgressForFingerX(0, 1, 5);
+    const halfwayPast = postHingeTurnProgressForFingerX(-0.05, 1, 5);
+    const gentleZoneEnd = postHingeTurnProgressForFingerX(-0.1, 1, 5);
+
+    // This entire interval is still in the turn's linear swing branch. Equal
+    // finger distances must therefore produce equal cylinder-angle changes.
+    expect(halfwayPast - atSpine).toBeCloseTo(gentleZoneEnd - halfwayPast, 10);
+    expect(atSpine).toBeCloseTo(0.0897, 4);
+    expect(gentleZoneEnd).toBeCloseTo(0.15377, 4);
+    expect(gentleZoneEnd).toBeLessThan(0.16);
   });
 
   it("caps an inboard press at a shallow, non-committing bow", () => {
@@ -166,12 +183,12 @@ describe("page-turn gesture kinematics", () => {
       gestureLiftRotationForFingerX(GESTURE_LIFT_START_X - 0.1),
     ).toBeGreaterThan(0);
     expect(gestureLiftRotationForFingerX(SLOW_COMMIT_EDGE_X)).toBeCloseTo(
-      MAX_PRESSED_ROLL_TILT,
+      GESTURE_HINGE_ROTATION,
       8,
     );
     expect(
       gestureLiftRotationForFingerX(MIN_PRESSED_EDGE_X - 0.001),
-    ).toBeCloseTo(MAX_PRESSED_ROLL_TILT, 8);
+    ).toBeCloseTo(GESTURE_HINGE_ROTATION, 8);
     expect(
       shouldCommitTurn({
         fingerX: 0.78,
@@ -182,12 +199,12 @@ describe("page-turn gesture kinematics", () => {
     ).toBe(true);
   });
 
-  it("joins the stable hinge without a rotation bump", () => {
+  it("maps the final approach linearly and joins the hinge without a bump", () => {
     const epsilon = 1e-6;
-    const blendStart = MIN_PRESSED_EDGE_X + GESTURE_HINGE_BLEND_WIDTH_X;
+    const halfway = (GESTURE_LIFT_START_X + MIN_PRESSED_EDGE_X) * 0.5;
 
     expect(gestureLiftRotationForFingerX(MIN_PRESSED_EDGE_X)).toBe(
-      MAX_PRESSED_ROLL_TILT,
+      GESTURE_HINGE_ROTATION,
     );
     expect(
       Math.abs(
@@ -195,9 +212,22 @@ describe("page-turn gesture kinematics", () => {
           gestureLiftRotationForFingerX(MIN_PRESSED_EDGE_X - epsilon),
       ),
     ).toBeLessThan(1e-5);
-    expect(gestureLiftRotationForFingerX(blendStart + epsilon)).toBeCloseTo(
-      gestureLiftRotationForFingerX(blendStart - epsilon),
-      5,
+    expect(gestureLiftRotationForFingerX(halfway)).toBeCloseTo(
+      GESTURE_HINGE_ROTATION * 0.5,
+      10,
     );
+    expect(GESTURE_HINGE_BLEND_WIDTH_X).toBe(0.11);
+    expect(
+      gesturePressedChordForFingerX(MIN_PRESSED_EDGE_X, GESTURE_HINGE_ROTATION),
+    ).toBeCloseTo(GESTURE_HINGE_CHORD_X, 10);
+    expect(
+      GESTURE_HINGE_CHORD_X * Math.cos(GESTURE_HINGE_ROTATION),
+    ).toBeCloseTo(MIN_PRESSED_EDGE_X, 10);
+    expect(
+      gesturePressedChordForFingerX(
+        halfway,
+        gestureLiftRotationForFingerX(halfway),
+      ) * Math.cos(gestureLiftRotationForFingerX(halfway)),
+    ).toBeCloseTo(halfway, 10);
   });
 });

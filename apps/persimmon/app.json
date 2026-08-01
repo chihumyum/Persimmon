@@ -11,13 +11,19 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "dev.chihum.persimmon",
+      "icon": "./assets/icons/persimmon.icon",
       "supportsTablet": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "dev.chihum.persimmon"
+      "package": "dev.chihum.persimmon",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icons/android/app-icon-foreground.png",
+        "backgroundImage": "./assets/icons/android/app-icon-background.png",
+        "monochromeImage": "./assets/icons/android/app-icon-monochrome.png"
+      }
     },
     "extra": {
       "router": {},

@@ -8,9 +8,12 @@ import {
 } from "./rolled-page-strip";
 import {
   DEFAULT_PAGE_TURN_TUNING,
+  GESTURE_HINGE_CHORD_X,
+  GESTURE_HINGE_ROTATION,
   anchoredGestureFingerX,
   clampPageTurnTuning,
   gestureLiftRotationForFingerX,
+  gesturePressedChordForFingerX,
   gestureTurnSpeedScale,
   pageGestureModeForStart,
   postHingeTurnProgressForFingerX,
@@ -561,18 +564,22 @@ export class NaturalPageTurnController {
     }
 
     drag.gestureFingerX = anchoredGestureFingerX(drag.startBookX, bookX);
-    drag.pressedEdgeX = Math.max(MIN_PRESSED_EDGE_X, drag.gestureFingerX);
     drag.heldRollTilt = gestureLiftRotationForFingerX(drag.gestureFingerX);
+    drag.pressedEdgeX = gesturePressedChordForFingerX(
+      drag.gestureFingerX,
+      drag.heldRollTilt,
+    );
     drag.turnProgress = postHingeTurnProgressForFingerX(
       drag.gestureFingerX,
       drag.startBookX,
+      this.tuning.curvatureRelaxation,
     );
     if (drag.turnProgress > 0) {
       this.sheet.setTurnProgress(
         drag.turnProgress,
-        MIN_PRESSED_EDGE_X,
+        GESTURE_HINGE_CHORD_X,
         deltaTime,
-        MAX_PRESSED_ROLL_TILT,
+        GESTURE_HINGE_ROTATION,
         this.tuning.curvatureRelaxation,
       );
       return;

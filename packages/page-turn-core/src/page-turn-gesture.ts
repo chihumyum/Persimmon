@@ -1,4 +1,5 @@
 import {
+  DEFAULT_CURVATURE_RELAXATION,
   MAX_PRESSED_ROLL_TILT,
   MIN_PRESSED_EDGE_X,
   pressedRollHingeGeometry,
@@ -57,10 +58,16 @@ const WEAK_GRIP_COMPRESSION_PER_PAGE = 0.2;
 export const SLOW_COMMIT_EDGE_X =
   MIN_PRESSED_EDGE_X - pressedRollHingeGeometry().tiltDistance;
 export const GESTURE_LIFT_START_X = 0.36;
-/** Final approach over which the lifted roll is blended into the hinge pose. */
+/** Kept as the side-view tuning value; it no longer eases gesture distance. */
 export const GESTURE_HINGE_BLEND_WIDTH_X = 0.11;
-/** Scales the original quadratic roll-tilt response. */
+/** Fraction of the full stable-hinge tilt reached at the visual spine. */
 export const GESTURE_ROLL_TILT_RATE = 0.4;
+export const GESTURE_HINGE_ROTATION =
+  MAX_PRESSED_ROLL_TILT * GESTURE_ROLL_TILT_RATE;
+/** The visible free edge remains exactly 0.14W at this rotated chord. */
+export const GESTURE_HINGE_CHORD_X =
+  MIN_PRESSED_EDGE_X / Math.cos(GESTURE_HINGE_ROTATION);
+const GESTURE_HINGE_BEND_AMPLITUDE = 2.1266855842119465;
 const COMMIT_VELOCITY_LIMIT = 3.2;
 const COMMIT_ACCELERATION_LIMIT = 10;
 const COMMIT_VELOCITY_GAIN = 0.18;
@@ -170,6 +177,7 @@ export function anchoredGestureFingerX(
 export function postHingeTurnProgressForFingerX(
   fingerX: number,
   startBookX = 1,
+  curvatureRelaxation = DEFAULT_CURVATURE_RELAXATION,
 ): number {
   "worklet";
   const safeFingerX = Number.isFinite(fingerX)
@@ -178,7 +186,7 @@ export function postHingeTurnProgressForFingerX(
   const safeStartBookX = Number.isFinite(startBookX)
     ? Math.min(1, Math.max(0, startBookX))
     : 1;
-  return Math.min(
+  const linearProgress = Math.min(
     1,
     Math.max(
       0,
@@ -186,6 +194,44 @@ export function postHingeTurnProgressForFingerX(
         (MIN_PRESSED_EDGE_X + safeStartBookX),
     ),
   );
+  if (linearProgress <= 0 || linearProgress >= 1) {
+    return linearProgress;
+  }
+
+  // The physical turn has a swing phase followed by a curl-release phase, so
+  // its raw progress does not rotate the cylinder at a constant rate. Invert
+  // those two analytic branches: the profile rotation itself, rather than an
+  // abstract progress value, now follows horizontal hand travel exactly.
+  const desiredRotation =
+    GESTURE_HINGE_ROTATION +
+    (Math.PI - GESTURE_HINGE_ROTATION) * linearProgress;
+  const rootTangent = GESTURE_HINGE_ROTATION + GESTURE_HINGE_BEND_AMPLITUDE;
+  const swingAngle = Math.max(0, Math.PI - rootTangent);
+  const swingProgress = swingAngle / Math.PI;
+  const landingStart = swingProgress / (swingProgress + 1);
+  const landingRotation = Math.PI - GESTURE_HINGE_BEND_AMPLITUDE;
+  if (desiredRotation <= landingRotation && swingAngle > 1e-9) {
+    return (
+      landingStart * ((desiredRotation - GESTURE_HINGE_ROTATION) / swingAngle)
+    );
+  }
+
+  const relaxation = Math.min(
+    14,
+    Math.max(
+      3.5,
+      Number.isFinite(curvatureRelaxation)
+        ? curvatureRelaxation
+        : DEFAULT_CURVATURE_RELAXATION,
+    ),
+  );
+  const curlRetention = Math.min(
+    1,
+    Math.max(0, (Math.PI - desiredRotation) / GESTURE_HINGE_BEND_AMPLITUDE),
+  );
+  const remainingAirborne = Math.pow(curlRetention, 1 / (1 + relaxation / 14));
+  const landedLength = 1 - remainingAirborne;
+  return landingStart + landedLength * (1 - landingStart);
 }
 
 export function slowCommitBookXForStart(
@@ -228,33 +274,42 @@ export function heldRollTiltForFingerX(fingerX: number): number {
 
 /**
  * Starts lifting when the free edge reaches the selected horizontal trigger.
- * The eased response raises the roll at the selected tilt rate. Over the final
- * hinge blend zone, a smoothstep correction brings that lift to the exact
- * stable-hinge rotation with zero correction slope at both ends. This prevents
- * the pressed and post-hinge profiles from disagreeing at handoff.
+ * Rotation is affine to the finger's x position while the finger is down. The
+ * hinge pose is therefore reached without a hidden ease or acceleration band.
  */
 export function gestureLiftRotationForFingerX(fingerX: number): number {
   const safeFingerX = Number.isFinite(fingerX) ? fingerX : 1;
   if (safeFingerX <= MIN_PRESSED_EDGE_X) {
-    return MAX_PRESSED_ROLL_TILT;
+    return GESTURE_HINGE_ROTATION;
   }
   const progress = clamp(
     (GESTURE_LIFT_START_X - safeFingerX) /
-      (GESTURE_LIFT_START_X - SLOW_COMMIT_EDGE_X),
+      (GESTURE_LIFT_START_X - MIN_PRESSED_EDGE_X),
     0,
     1,
   );
-  const easedProgress = 1 - (1 - progress) ** (2 * GESTURE_ROLL_TILT_RATE);
-  const liftedRotation = MAX_PRESSED_ROLL_TILT * easedProgress;
-  const hingeBlendProgress = clamp(
-    (MIN_PRESSED_EDGE_X + GESTURE_HINGE_BLEND_WIDTH_X - safeFingerX) /
-      GESTURE_HINGE_BLEND_WIDTH_X,
-    0,
+  return GESTURE_HINGE_ROTATION * progress;
+}
+
+/**
+ * Compensates for the x projection lost when the roll tilts. This keeps the
+ * visible free edge directly under the hand before it reaches the spine.
+ */
+export function gesturePressedChordForFingerX(
+  fingerX: number,
+  rotation = gestureLiftRotationForFingerX(fingerX),
+): number {
+  "worklet";
+  const safeFingerX = Number.isFinite(fingerX) ? fingerX : 1;
+  if (safeFingerX <= MIN_PRESSED_EDGE_X) {
+    return GESTURE_HINGE_CHORD_X;
+  }
+  const targetEdgeX = clamp(safeFingerX, MIN_PRESSED_EDGE_X, 1);
+  return clamp(
+    targetEdgeX / Math.max(0.000001, Math.cos(rotation)),
+    MIN_PRESSED_EDGE_X,
     1,
   );
-  const hingeBlend =
-    hingeBlendProgress * hingeBlendProgress * (3 - 2 * hingeBlendProgress);
-  return liftedRotation + (MAX_PRESSED_ROLL_TILT - liftedRotation) * hingeBlend;
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {

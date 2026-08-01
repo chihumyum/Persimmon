@@ -1328,7 +1328,7 @@ new file mode 100644
 index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce94c6d789
 --- /dev/null
 +++ b/cpp/rnskia/RNSkPagerCompositor.h
-@@ -0,0 +1,2699 @@
+@@ -0,0 +1,2733 @@
 +#pragma once
 +
 +#include <algorithm>
@@ -2129,8 +2129,13 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +  static constexpr float kSlowCommitEdgeX =
 +      kMinimumPressedEdgeX - kPressedHingeTiltDistance;
 +  static constexpr float kGestureLiftStartX = 0.36f;
-+  static constexpr float kGestureHingeBlendWidthX = 0.11f;
 +  static constexpr float kGestureRollTiltRate = 0.4f;
++  static constexpr float kGestureHingeRotation =
++      kMaximumPressedRollTilt * kGestureRollTiltRate;
++  static constexpr float kGestureHingeChordX =
++      0.15148003824552042f;
++  static constexpr float kGestureHingeBendAmplitude =
++      2.1266855842119465f;
 +  static constexpr float kFullGestureStartMinimumX = 0.25f;
 +  static constexpr float kWeakGripMaximumCompression = 0.04f;
 +  static constexpr float kWeakGripCompressionPerPage = 0.2f;
@@ -2439,31 +2444,59 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +
 +  static float gestureLiftRotationForFingerX(float fingerX) {
 +    if (fingerX <= kMinimumPressedEdgeX) {
-+      return kMaximumPressedRollTilt;
++      return kGestureHingeRotation;
 +    }
 +    const float progress = std::clamp(
 +        (kGestureLiftStartX - fingerX) /
-+            (kGestureLiftStartX - kSlowCommitEdgeX),
++            (kGestureLiftStartX - kMinimumPressedEdgeX),
 +        0.0f, 1.0f);
-+    const float eased =
-+        1.0f - std::pow(1.0f - progress, 2.0f * kGestureRollTiltRate);
-+    const float liftedRotation = kMaximumPressedRollTilt * eased;
-+    const float hingeBlendProgress = std::clamp(
-+        (kMinimumPressedEdgeX + kGestureHingeBlendWidthX - fingerX) /
-+            kGestureHingeBlendWidthX,
-+        0.0f, 1.0f);
-+    const float hingeBlend = hingeBlendProgress * hingeBlendProgress *
-+                             (3.0f - 2.0f * hingeBlendProgress);
-+    return liftedRotation +
-+           (kMaximumPressedRollTilt - liftedRotation) * hingeBlend;
++    return kGestureHingeRotation * progress;
 +  }
 +
-+  static float postHingeTurnProgress(float fingerX, float startBookX) {
++  static float gesturePressedChordForFingerX(float fingerX,
++                                              float rotation) {
++    if (fingerX <= kMinimumPressedEdgeX) {
++      return kGestureHingeChordX;
++    }
++    const float targetEdge =
++        std::clamp(fingerX, kMinimumPressedEdgeX, 1.0f);
 +    return std::clamp(
++        targetEdge / std::max(0.000001f, std::cos(rotation)),
++        kMinimumPressedEdgeX, 1.0f);
++  }
++
++  static float postHingeTurnProgress(float fingerX, float startBookX,
++                                     float curvatureRelaxation) {
++    const float linearProgress = std::clamp(
 +        (kMinimumPressedEdgeX - std::clamp(fingerX, -1.0f, 1.0f)) /
 +            (kMinimumPressedEdgeX +
 +             std::clamp(startBookX, 0.0f, 1.0f)),
 +        0.0f, 1.0f);
++    if (linearProgress <= 0 || linearProgress >= 1) {
++      return linearProgress;
++    }
++    const float desiredRotation =
++        kGestureHingeRotation +
++        (kPi - kGestureHingeRotation) * linearProgress;
++    const float rootTangent =
++        kGestureHingeRotation + kGestureHingeBendAmplitude;
++    const float swingAngle = std::max(0.0f, kPi - rootTangent);
++    const float swingProgress = swingAngle / kPi;
++    const float landingStart = swingProgress / (swingProgress + 1.0f);
++    const float landingRotation = kPi - kGestureHingeBendAmplitude;
++    if (desiredRotation <= landingRotation && swingAngle > 0.000000001f) {
++      return landingStart *
++             ((desiredRotation - kGestureHingeRotation) / swingAngle);
++    }
++    const float relaxation =
++        std::clamp(curvatureRelaxation, 3.5f, 14.0f);
++    const float curlRetention = std::clamp(
++        (kPi - desiredRotation) / kGestureHingeBendAmplitude,
++        0.0f, 1.0f);
++    const float remainingAirborne = std::pow(
++        curlRetention, 1.0f / (1.0f + relaxation / 14.0f));
++    const float landedLength = 1.0f - remainingAirborne;
++    return landingStart + landedLength * (1.0f - landingStart);
 +  }
 +
 +  static void updateGestureStateLocked(Turn &turn, float fingerX,
@@ -2483,12 +2516,13 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +      turn.dragTurnProgress = 0;
 +      return;
 +    }
-+    turn.pressedEdgeX =
-+        std::max(kMinimumPressedEdgeX, turn.gestureFingerX);
 +    turn.heldRollTilt =
 +        gestureLiftRotationForFingerX(turn.gestureFingerX);
++    turn.pressedEdgeX = gesturePressedChordForFingerX(
++        turn.gestureFingerX, turn.heldRollTilt);
 +    turn.dragTurnProgress =
-+        postHingeTurnProgress(turn.gestureFingerX, turn.startBookX);
++        postHingeTurnProgress(turn.gestureFingerX, turn.startBookX,
++                              turn.tuning.curvatureRelaxation);
 +  }
 +
 +  static float automaticProgressForTurn(const Turn &turn,
@@ -2563,8 +2597,8 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +      }
 +      if (turn.dragTurnProgress > 0) {
 +        return {
-+            turnShape(turn.dragTurnProgress, kMinimumPressedEdgeX,
-+                      kMaximumPressedRollTilt,
++            turnShape(turn.dragTurnProgress, kGestureHingeChordX,
++                      kGestureHingeRotation,
 +                      turn.tuning.curvatureRelaxation),
 +            turn.dragTurnProgress,
 +            false,

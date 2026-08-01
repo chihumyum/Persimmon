@@ -105,6 +105,30 @@ describe("natural page turn controller", () => {
     expect(maximumPointDisplacement).toBeLessThan(1e-4);
   });
 
+  it("keeps the visible free edge attached through the hinge and monotonic after it", () => {
+    const controller = new NaturalPageTurnController({
+      ...DEFAULT_PAGE_TURN_TUNING,
+      curvatureRelaxation: 5,
+    });
+    expect(controller.beginDrag(1, 0.7, 0)).toBe(true);
+
+    for (const [index, fingerX] of [0.3, 0.2, 0.14].entries()) {
+      controller.moveDrag(fingerX, 0.7, 0.1 + index * 0.02);
+      expect(controller.getMetrics().edgeX).toBeCloseTo(fingerX, 2);
+    }
+
+    let previousEdgeX = controller.getMetrics().edgeX;
+    for (const [index, fingerX] of [
+      0.08, 0, -0.1, -0.25, -0.5, -0.75, -1,
+    ].entries()) {
+      controller.moveDrag(fingerX, 0.7, 0.2 + index * 0.02);
+      const edgeX = controller.getMetrics().edgeX;
+      expect(edgeX).toBeLessThan(previousEdgeX);
+      previousEdgeX = edgeX;
+    }
+    expect(previousEdgeX).toBeCloseTo(-1, 5);
+  });
+
   it("does not pull the page edge backward on a post-hinge release", () => {
     const controller = new NaturalPageTurnController();
     const startBookX = 0.9;
