@@ -50,6 +50,7 @@ interface NativePagerSkiaViewApi {
     paperColor: number,
   ) => void;
   pagerSetAnchor?: (nativeId: number, pageKey: string) => void;
+  pagerAcknowledgePresentation?: (nativeId: number, turnId: string) => void;
   pagerStockPicture?: (
     nativeId: number,
     entryId: string,
@@ -139,6 +140,7 @@ const nativePagerRnApi = {
   enqueue: nativePagerWorkletApi?.pagerEnqueue,
   enqueuePicture: nativePagerWorkletApi?.pagerEnqueuePicture,
   setAnchor: nativePagerWorkletApi?.pagerSetAnchor,
+  acknowledgePresentation: nativePagerWorkletApi?.pagerAcknowledgePresentation,
   stockPicture: nativePagerWorkletApi?.pagerStockPicture,
   setInputEnabled: nativePagerWorkletApi?.pagerSetInputEnabled,
   configureMotion: nativePagerWorkletApi?.pagerConfigureMotion,
@@ -166,11 +168,12 @@ export function nativePagerCompositorAvailable(): boolean {
     return false;
   }
   nativePagerAvailability =
-    protocolVersion >= 4 &&
+    protocolVersion >= 5 &&
     typeof nativePagerRnApi.ready === "function" &&
     typeof nativePagerRnApi.enqueue === "function" &&
     typeof nativePagerRnApi.enqueuePicture === "function" &&
     typeof nativePagerRnApi.setAnchor === "function" &&
+    typeof nativePagerRnApi.acknowledgePresentation === "function" &&
     typeof nativePagerRnApi.stockPicture === "function" &&
     typeof nativePagerRnApi.setInputEnabled === "function" &&
     typeof nativePagerRnApi.configureMotion === "function" &&
@@ -283,6 +286,22 @@ export function setNativePagerAnchor(
   }
   try {
     setAnchor(canvas.getNativeId(), pageKey);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function acknowledgeNativePagerPresentation(
+  canvas: NativePagerCanvasHandle | null,
+  turnId: string,
+): boolean {
+  const acknowledgePresentation = nativePagerRnApi.acknowledgePresentation;
+  if (!canvas || !acknowledgePresentation || !turnId) {
+    return false;
+  }
+  try {
+    acknowledgePresentation(canvas.getNativeId(), turnId);
     return true;
   } catch {
     return false;

@@ -634,7 +634,7 @@ index cc5007733e92caaf643c1b18c8be2cef52b477dd..8e76ee5131eb9d3a79a6869c25ce7ce0
   Returns the scaled width of the view
   */
 diff --git a/cpp/api/JsiSkParagraph.h b/cpp/api/JsiSkParagraph.h
-index 319410930843c33a850755508d788cac71ee4be2..7ab9d1f0f4977c6857680c50ec31f2b96961cd64 100644
+index 319410930843c33a850755508d788cac71ee4be2..9b76f4d8e0483d01a0722e002754a15e0946426d 100644
 --- a/cpp/api/JsiSkParagraph.h
 +++ b/cpp/api/JsiSkParagraph.h
 @@ -171,7 +171,14 @@ public:
@@ -654,7 +654,7 @@ index 319410930843c33a850755508d788cac71ee4be2..7ab9d1f0f4977c6857680c50ec31f2b9
    std::string getObjectType() const override { return "JsiSkParagraph"; }
 
 diff --git a/cpp/api/JsiSkParagraphBuilder.h b/cpp/api/JsiSkParagraphBuilder.h
-index 27ca9672ad47f33e897545a7f9c7ea6883b88a5d..fc16e605491083d67962d86f2ed75d40d3407ff7 100644
+index d7e0956b1ec15435a718f28c96ea8f55376d2f36..dccded4753b787d1d03252fdcbf63ae26d264d68 100644
 --- a/cpp/api/JsiSkParagraphBuilder.h
 +++ b/cpp/api/JsiSkParagraphBuilder.h
 @@ -116,7 +116,11 @@ public:
@@ -808,7 +808,7 @@ index aad94429344434bd0b4c3a78e3bcff15fb0d27ce..f796c0afcac504055f1f8946c9a9a8ed
    size_t getMemoryPressure() const override { return 2048; }
 
 diff --git a/cpp/rnskia/RNSkJsiViewApi.h b/cpp/rnskia/RNSkJsiViewApi.h
-index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..da56c8be31f99425950fe5d177a3e2b5982accb5 100644
+index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..cf1500165c7ca72cefd3540ac3c5e6a0bc2e8a47 100644
 --- a/cpp/rnskia/RNSkJsiViewApi.h
 +++ b/cpp/rnskia/RNSkJsiViewApi.h
 @@ -10,6 +10,7 @@
@@ -819,7 +819,7 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..da56c8be31f99425950fe5d177a3e2b5
  #include "RNSkPictureView.h"
  #include "RNSkPlatformContext.h"
  #include "RNSkView.h"
-@@ -268,11 +269,502 @@ public:
+@@ -268,11 +269,525 @@ public:
      return sizeObj;
    }
 
@@ -971,6 +971,27 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..da56c8be31f99425950fe5d177a3e2b5
 +      return jsi::Value::undefined();
 +    }
 +    pictureView->setPagerAnchor(
++        arguments[1].asString(runtime).utf8(runtime));
++    return jsi::Value::undefined();
++  }
++
++  JSI_HOST_FUNCTION(pagerAcknowledgePresentation) {
++    if (count != 2 || !arguments[0].isNumber() ||
++        !arguments[1].isString()) {
++      _platformContext->raiseError(
++          "pagerAcknowledgePresentation: Expected a numeric native id and "
++          "turn id.");
++      return jsi::Value::undefined();
++    }
++    const int nativeId = arguments[0].asNumber();
++    auto view = ViewRegistry::getInstance().withViewInfo(
++        nativeId,
++        [](std::shared_ptr<RNSkViewInfo> info) { return info->view; });
++    auto pictureView = std::dynamic_pointer_cast<RNSkPictureView>(view);
++    if (pictureView == nullptr) {
++      return jsi::Value::undefined();
++    }
++    pictureView->acknowledgePagerPresentation(
 +        arguments[1].asString(runtime).utf8(runtime));
 +    return jsi::Value::undefined();
 +  }
@@ -1270,7 +1291,7 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..da56c8be31f99425950fe5d177a3e2b5
 +          "pagerProtocolVersion: Expected no arguments.");
 +      return jsi::Value::undefined();
 +    }
-+    return jsi::Value(4);
++    return jsi::Value(5);
 +  }
 +
 +  JSI_HOST_FUNCTION(pagerReady) {
@@ -1301,6 +1322,8 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..da56c8be31f99425950fe5d177a3e2b5
 +                       JSI_EXPORT_FUNC(RNSkJsiViewApi,
 +                                       pagerEnqueuePicture),
 +                       JSI_EXPORT_FUNC(RNSkJsiViewApi, pagerSetAnchor),
++                       JSI_EXPORT_FUNC(RNSkJsiViewApi,
++                                       pagerAcknowledgePresentation),
 +                       JSI_EXPORT_FUNC(RNSkJsiViewApi, pagerStockPicture),
 +                       JSI_EXPORT_FUNC(RNSkJsiViewApi,
 +                                       pagerSetInputEnabled),
@@ -1325,10 +1348,10 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..da56c8be31f99425950fe5d177a3e2b5
     * Constructor
 diff --git a/cpp/rnskia/RNSkPagerCompositor.h b/cpp/rnskia/RNSkPagerCompositor.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce94c6d789
+index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc75ecfceaf
 --- /dev/null
 +++ b/cpp/rnskia/RNSkPagerCompositor.h
-@@ -0,0 +1,2733 @@
+@@ -0,0 +1,2758 @@
 +#pragma once
 +
 +#include <algorithm>
@@ -1432,11 +1455,6 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +    const double nowEpochMs = epochNowMs();
 +    {
 +      std::lock_guard<std::mutex> lock(_mutex);
-+      const bool burst = !_turns.empty();
-+      if (burst) {
-+        compressActiveTurnsLocked(nowSteadyMs);
-+      }
-+
 +      Turn turn;
 +      turn.id = std::move(id);
 +      turn.frontImageId = frontImage->uniqueID();
@@ -1459,7 +1477,7 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +      _nextLaunchSteadyMs = turn.notBeforeSteadyMs + cadenceMs;
 +      turn.durationMs =
 +          std::clamp(durationMs, kMinimumDurationMs,
-+                     burst ? kBurstDurationMs : kMaximumDurationMs);
++                     kMaximumDurationMs);
 +      turn.paperColor = paperColor;
 +      _turns.push_back(std::move(turn));
 +      preloadImageLocked(_turns.back().frontImage);
@@ -1484,11 +1502,6 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +    const double nowEpochMs = epochNowMs();
 +    {
 +      std::lock_guard<std::mutex> lock(_mutex);
-+      const bool burst = !_turns.empty();
-+      if (burst) {
-+        compressActiveTurnsLocked(nowSteadyMs);
-+      }
-+
 +      Turn turn;
 +      turn.id = std::move(id);
 +      turn.frontPicture = std::move(frontPicture);
@@ -1515,7 +1528,7 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +      _nextLaunchSteadyMs = turn.notBeforeSteadyMs + cadenceMs;
 +      turn.durationMs =
 +          std::clamp(durationMs, kMinimumDurationMs,
-+                     burst ? kBurstDurationMs : kMaximumDurationMs);
++                     kMaximumDurationMs);
 +      turn.paperColor = paperColor;
 +      _turns.push_back(std::move(turn));
 +    }
@@ -1526,18 +1539,43 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +    {
 +      std::lock_guard<std::mutex> lock(_mutex);
 +      _turns.clear();
++      _presentationHandoff.reset();
++      _acknowledgedPresentationTurnIds.clear();
 +      _events.clear();
 +      _stock.clear();
 +      _pageTextures.clear();
 +      _preloadedImages.clear();
 +      _pendingDirectInputs.clear();
 +      _currentPageKey = std::move(pageKey);
++      _latestCompletedPageRevision = 0;
 +      _stockTurnCounter = 0;
 +      _preferredDirection = 1;
 +      _nextLaunchSteadyMs = 0;
-+      _lastDirectInputSteadyMs = 0;
-+      _directInputIntervalEstimateMs = 0;
 +      _benchmarkRemaining = 0;
++    }
++    _requestRedraw();
++  }
++
++  void acknowledgePresentation(std::string turnId) {
++    if (turnId.empty()) {
++      return;
++    }
++    {
++      std::lock_guard<std::mutex> lock(_mutex);
++      if (std::find(_acknowledgedPresentationTurnIds.begin(),
++                    _acknowledgedPresentationTurnIds.end(),
++                    turnId) == _acknowledgedPresentationTurnIds.end()) {
++        if (_acknowledgedPresentationTurnIds.size() >=
++            kMaximumPresentationAcknowledgmentCount) {
++          _acknowledgedPresentationTurnIds.erase(
++              _acknowledgedPresentationTurnIds.begin());
++        }
++        _acknowledgedPresentationTurnIds.push_back(turnId);
++      }
++      if (_presentationHandoff != nullptr &&
++          _presentationHandoff->turnId == turnId) {
++        _presentationHandoff->acknowledged = true;
++      }
 +    }
 +    _requestRedraw();
 +  }
@@ -1650,18 +1688,20 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +      }
 +      const double nowSteadyMs = steadyNowMs();
 +      const double nowEpochMs = epochNowMs();
-+      if (!finishSettlingGestureForDirectInputLocked(nowEpochMs)) {
-+        return false;
-+      }
 +      const int normalizedDirection = direction < 0 ? -1 : 1;
-+      if (_pendingDirectInputs.empty() &&
-+          stockAvailableLocked(normalizedDirection)) {
++      // A tap that lands while another finger is actively dragging is an
++      // accidental secondary contact, not a deferred page-turn intent. Claim
++      // it here so the UI thread does not fall back to RN, but never enqueue
++      // it for playback after the gesture releases.
++      if (activeGestureLocked() != _turns.end()) {
++        accepted = true;
++      } else if (_pendingDirectInputs.empty() &&
++                 stockAvailableLocked(normalizedDirection)) {
 +        accepted = consumeStockLocked(
 +            normalizedDirection, nowSteadyMs, nowEpochMs, true);
 +      } else if (_pendingDirectInputs.size() <
 +                 kMaximumPendingDirectInputCount) {
-+        _pendingDirectInputs.push_back(
-+            {normalizedDirection, nowSteadyMs});
++        _pendingDirectInputs.push_back({normalizedDirection});
 +        accepted = true;
 +      } else {
 +        emitStockMissLocked(normalizedDirection, nowEpochMs);
@@ -1681,16 +1721,9 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +      if (!_inputEnabled || _currentPageKey.empty()) {
 +        return false;
 +      }
-+      if (!_pendingDirectInputs.empty()) {
-+        return false;
-+      }
-+      const bool canPreemptActiveTurns =
-+          std::all_of(_turns.begin(), _turns.end(), [](const Turn &turn) {
-+            return turn.completed ||
-+                   (turn.interactive && turn.settling) ||
-+                   (!turn.interactive && turn.directInput);
-+          });
-+      if (!_turns.empty() && !canPreemptActiveTurns) {
++      // Automatic sheets and released gestures keep animating independently.
++      // Only another finger-controlled drag blocks a new interactive sheet.
++      if (activeGestureLocked() != _turns.end()) {
 +        return false;
 +      }
 +      const int normalizedDirection = direction < 0 ? -1 : 1;
@@ -1752,25 +1785,13 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +
 +      const double nowSteadyMs = steadyNowMs();
 +      const double nowEpochMs = epochNowMs();
-+      for (auto &activeTurn : _turns) {
-+        if (activeTurn.completed) {
-+          continue;
-+        }
-+        _events.push_back(
-+            {activeTurn.id,
-+             activeTurn.commitOnComplete ? "completed" : "cancelled",
-+             nowEpochMs, activeTurn.direction});
-+        activeTurn.completed = true;
-+      }
 +      _turns.erase(
 +          std::remove_if(_turns.begin(), _turns.end(),
 +                         [](const Turn &turn) { return turn.completed; }),
 +          _turns.end());
-+      // A gesture owns the visible paper immediately. Forget the old tap
-+      // cadence so the first post-gesture tap cannot inherit stale launch debt.
++      // A newly pressed sheet starts immediately without changing the
++      // timeline of any released or automatic sheet already in flight.
 +      _nextLaunchSteadyMs = nowSteadyMs;
-+      _lastDirectInputSteadyMs = 0;
-+      _directInputIntervalEstimateMs = 0;
 +
 +      Turn turn;
 +      turn.id = nextStockTurnIdLocked(stock->id);
@@ -1918,17 +1939,18 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +    {
 +      std::lock_guard<std::mutex> lock(_mutex);
 +      turns.swap(_turns);
++      _presentationHandoff.reset();
++      _acknowledgedPresentationTurnIds.clear();
 +      _events.clear();
 +      _stock.clear();
 +      _pageTextures.clear();
 +      _preloadedImages.clear();
 +      _pendingDirectInputs.clear();
 +      _currentPageKey.clear();
++      _latestCompletedPageRevision = 0;
 +      _stockTurnCounter = 0;
 +      _preferredDirection = 1;
 +      _nextLaunchSteadyMs = 0;
-+      _lastDirectInputSteadyMs = 0;
-+      _directInputIntervalEstimateMs = 0;
 +      _benchmarkRemaining = 0;
 +    }
 +  }
@@ -1944,6 +1966,9 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +
 +  bool hasActiveTurns() const {
 +    std::lock_guard<std::mutex> lock(_mutex);
++    // A presentation handoff is a static final frame. Its acknowledgement
++    // explicitly requests the one redraw needed to release it, so treating it
++    // as an active turn would spin the render thread forever if JS is delayed.
 +    return !_turns.empty() || _benchmarkRemaining > 0 ||
 +           !_pendingDirectInputs.empty() ||
 +           hasPendingPageTextureWorkLocked();
@@ -1979,6 +2004,8 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +    const double nowSteadyMs = steadyNowMs();
 +    const double nowEpochMs = epochNowMs();
 +    std::vector<RenderTurn> renderTurns;
++    PresentationHandoff presentationHandoff;
++    bool hasPresentationHandoff = false;
 +
 +    {
 +      std::lock_guard<std::mutex> lock(_mutex);
@@ -2017,6 +2044,12 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +          _events.push_back(
 +              {turn.id, turn.commitOnComplete ? "completed" : "cancelled",
 +               nowEpochMs, turn.direction});
++          if (turn.commitOnComplete) {
++            _latestCompletedPageRevision =
++                std::max(_latestCompletedPageRevision,
++                         turn.logicalPageRevision);
++            retainTargetPresentationLocked(turn);
++          }
 +          turn.completed = true;
 +          continue;
 +        }
@@ -2026,6 +2059,7 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +            turn.backgroundLeftImage,
 +            turn.backgroundRightImage,
 +            turn.ownsBackground,
++            turn.logicalPageRevision,
 +            turn.direction,
 +            turn.spread,
 +            turn.paperColor,
@@ -2041,10 +2075,33 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +        renderTurns.push_back(std::move(renderTurn));
 +      }
 +
++      // A later, faster turn can finish in the same draw pass after an older
++      // slow turn has already emitted its render snapshot. Once that newer
++      // logical page is complete, the cached older snapshot must never cover
++      // it, even though the older motion continues off-screen for lifecycle
++      // and resource cleanup.
++      renderTurns.erase(
++          std::remove_if(
++              renderTurns.begin(), renderTurns.end(),
++              [this](const RenderTurn &turn) {
++                return turn.logicalPageRevision > 0 &&
++                       turn.logicalPageRevision <
++                           _latestCompletedPageRevision;
++              }),
++          renderTurns.end());
++
 +      _turns.erase(
 +          std::remove_if(_turns.begin(), _turns.end(),
 +                         [](const Turn &turn) { return turn.completed; }),
 +          _turns.end());
++      if (activeGestureLocked() == _turns.end() &&
++          !_pendingDirectInputs.empty()) {
++        drainPendingDirectInputsLocked(nowSteadyMs, nowEpochMs);
++      }
++      if (_presentationHandoff != nullptr) {
++        presentationHandoff = *_presentationHandoff;
++        hasPresentationHandoff = true;
++      }
 +    }
 +
 +    if (!renderTurns.empty()) {
@@ -2086,6 +2143,27 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +      }
 +    }
 +
++    // The declarative Canvas below the compositor can still contain the
++    // source spread when a direct native turn finishes. Keep the complete
++    // target spread above it until React has committed that target and this
++    // render thread has drawn once after the matching acknowledgement.
++    const bool drewPresentationHandoff =
++        renderTurns.empty() && hasPresentationHandoff;
++    if (drewPresentationHandoff) {
++      drawPresentationHandoff(canvas, viewportWidth, viewportHeight,
++                              presentationHandoff);
++    }
++    if (drewPresentationHandoff && presentationHandoff.acknowledged) {
++      std::lock_guard<std::mutex> lock(_mutex);
++      if (_presentationHandoff != nullptr &&
++          _presentationHandoff->turnId == presentationHandoff.turnId &&
++          _presentationHandoff->acknowledged) {
++        erasePresentationAcknowledgmentLocked(
++            _presentationHandoff->turnId);
++        _presentationHandoff.reset();
++      }
++    }
++
 +  }
 +
 +private:
@@ -2096,6 +2174,8 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +  static constexpr size_t kMaximumPreloadedImageCount = 12;
 +  static constexpr size_t kMaximumStockCount = 64;
 +  static constexpr size_t kMaximumPendingDirectInputCount = 64;
++  static constexpr size_t kMaximumPresentationAcknowledgmentCount = 64;
++  static constexpr uint8_t kMaximumPageTextureUploadFailureCount = 3;
 +  // A radius-ten graph needs at most 42 physical page identities in spread
 +  // mode. Leave a small handoff margin without retaining old graphs after the
 +  // anchor advances; GPU textures remain governed by the byte cap below.
@@ -2108,14 +2188,7 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +  static constexpr size_t kMaximumPreparedPageBytes =
 +      72 * 1024 * 1024;
 +  static constexpr double kMinimumDurationMs = 72.0;
-+  // Direct taps use the original immediate-launch timeline. Gesture turns
-+  // never enter this compression path and can preempt the entire tap lane.
-+  static constexpr double kBurstDurationMs = 260.0;
-+  static constexpr double kDirectInputMinimumRemainingMs = 1.0;
-+  static constexpr double kDirectInputBurstResetMs = 320.0;
-+  static constexpr double kDirectInputDurationPerInterval = 2.6;
-+  static constexpr double kDirectInputLaunchLatencyBudgetMs = 24.0;
-+  static constexpr double kDirectInputIntervalRecovery = 0.25;
++  static constexpr double kDefaultDurationMs = 260.0;
 +  static constexpr double kMaximumDurationMs = 900.0;
 +  static constexpr float kPi = 3.14159265358979323846f;
 +  static constexpr float kMinimumPressedEdgeX = 0.14f;
@@ -2179,6 +2252,7 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +    std::string id;
 +    std::string fromPageKey;
 +    std::string toPageKey;
++    uint64_t logicalPageRevision = 0;
 +    uint32_t frontImageId = 0;
 +    uint32_t backImageId = 0;
 +    sk_sp<SkImage> frontImage;
@@ -2207,9 +2281,8 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +    MotionTuning tuning = {0.72f, 1.5f, 2.2f, 6.75f};
 +    SkColor paperColor = SK_ColorWHITE;
 +    double notBeforeSteadyMs = 0;
-+    double requestedAtSteadyMs = 0;
 +    double startedAtSteadyMs = 0;
-+    double durationMs = kBurstDurationMs;
++    double durationMs = kDefaultDurationMs;
 +    float baseProgress = 0;
 +    float gestureProgress = 0;
 +    float startBookX = 1;
@@ -2234,6 +2307,7 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +    sk_sp<SkImage> backgroundLeftImage;
 +    sk_sp<SkImage> backgroundRightImage;
 +    bool ownsBackground;
++    uint64_t logicalPageRevision;
 +    int direction;
 +    bool spread;
 +    SkColor paperColor;
@@ -2243,6 +2317,19 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +    float shadowCenter;
 +    float shadowWidth;
 +    float shadowStrength;
++  };
++
++  struct PresentationHandoff {
++    std::string turnId;
++    std::string pageKey;
++    sk_sp<SkImage> frontImage;
++    sk_sp<SkImage> backImage;
++    sk_sp<SkImage> backgroundLeftImage;
++    sk_sp<SkImage> backgroundRightImage;
++    int direction = 1;
++    bool spread = false;
++    bool acknowledged = false;
++    SkColor paperColor = SK_ColorWHITE;
 +  };
 +  struct PreloadedImage {
 +    uint32_t sourceId;
@@ -2289,7 +2376,6 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +
 +  struct PendingDirectInput {
 +    int direction;
-+    double requestedAtSteadyMs;
 +  };
 +
 +  struct PageTexture {
@@ -2300,6 +2386,7 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +    int pixelHeight;
 +    uint64_t lastUsed;
 +    bool uploadPending = false;
++    uint8_t uploadFailureCount = 0;
 +  };
 +
 +  struct PendingPageTexture {
@@ -2658,32 +2745,23 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +  std::vector<Turn>::iterator activeGestureLocked() {
 +    return std::find_if(
 +        _turns.begin(), _turns.end(), [](const Turn &turn) {
-+          return turn.interactive && !turn.completed;
++          return turn.interactive && !turn.settling && !turn.completed;
 +        });
 +  }
 +
-+  bool finishSettlingGestureForDirectInputLocked(double nowEpochMs) {
-+    auto gesture = activeGestureLocked();
-+    if (gesture == _turns.end()) {
-+      return true;
++  void advanceCurrentPageLocked(const std::string &pageKey) {
++    _currentPageKey = pageKey;
++    _currentPageRevision += 1;
++    if (_presentationHandoff != nullptr) {
++      erasePresentationAcknowledgmentLocked(
++          _presentationHandoff->turnId);
++      _presentationHandoff.reset();
 +    }
-+    if (!gesture->settling) {
-+      return false;
-+    }
-+    _events.push_back(
-+        {gesture->id,
-+         gesture->commitOnComplete ? "completed" : "cancelled",
-+         nowEpochMs, gesture->direction});
-+    gesture->completed = true;
-+    _turns.erase(
-+        std::remove_if(_turns.begin(), _turns.end(),
-+                       [](const Turn &turn) { return turn.completed; }),
-+        _turns.end());
-+    return true;
 +  }
 +
 +  void consumeGestureLocked(Turn &turn, double nowEpochMs) {
-+    _currentPageKey = turn.toPageKey;
++    advanceCurrentPageLocked(turn.toPageKey);
++    turn.logicalPageRevision = _currentPageRevision;
 +    _preferredDirection = turn.direction;
 +    _events.push_back(
 +        {turn.id, "consumed", nowEpochMs, turn.direction});
@@ -2964,6 +3042,7 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +        existing->picture = picture;
 +        existing->pixelWidth = pixelWidth;
 +        existing->pixelHeight = pixelHeight;
++        existing->uploadFailureCount = 0;
 +      }
 +      return;
 +    }
@@ -3001,7 +3080,7 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +    if (_pageTextures.size() < kMaximumRetainedPagePictureCount) {
 +      _pageTextures.push_back(
 +          {pageKey, picture, nullptr, pixelWidth, pixelHeight,
-+           ++_pageTextureUsageCounter, false});
++           ++_pageTextureUsageCounter, false, 0});
 +    }
 +  }
 +
@@ -3131,7 +3210,10 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +          [&pageKey](const PageTexture &entry) {
 +            return entry.pageKey == pageKey;
 +          });
-+      if (page != _pageTextures.end() && page->image == nullptr) {
++      if (page != _pageTextures.end() && page->image == nullptr &&
++          page->picture != nullptr && !page->uploadPending &&
++          page->uploadFailureCount <
++              kMaximumPageTextureUploadFailureCount) {
 +        return true;
 +      }
 +    }
@@ -3216,57 +3298,9 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +           std::to_string(++_stockTurnCounter);
 +  }
 +
-+  double directInputDurationLocked(double nowSteadyMs,
-+                                   double stockDurationMs) {
-+    if (_lastDirectInputSteadyMs <= 0 ||
-+        nowSteadyMs - _lastDirectInputSteadyMs >
-+            kDirectInputBurstResetMs) {
-+      _lastDirectInputSteadyMs = nowSteadyMs;
-+      _directInputIntervalEstimateMs = 0;
-+      return stockDurationMs;
-+    }
-+
-+    const double inputIntervalMs =
-+        std::max(1.0, nowSteadyMs - _lastDirectInputSteadyMs);
-+    double previousLaunchLatencyMs = 0;
-+    const auto previous = std::find_if(
-+        _turns.rbegin(), _turns.rend(),
-+        [](const Turn &turn) {
-+          return turn.directInput && !turn.completed;
-+        });
-+    if (previous != _turns.rend()) {
-+      previousLaunchLatencyMs =
-+          previous->started
-+              ? std::max(0.0, previous->startedAtSteadyMs -
-+                                  previous->requestedAtSteadyMs)
-+              : std::max(0.0, nowSteadyMs -
-+                                  previous->requestedAtSteadyMs);
-+    }
-+    const double launchDebtMs = std::max(
-+        0.0, previousLaunchLatencyMs -
-+                 kDirectInputLaunchLatencyBudgetMs);
-+    const double intervalSampleMs =
-+        std::max(1.0, inputIntervalMs - launchDebtMs);
-+    if (_directInputIntervalEstimateMs <= 0 ||
-+        intervalSampleMs < _directInputIntervalEstimateMs) {
-+      _directInputIntervalEstimateMs = intervalSampleMs;
-+    } else {
-+      _directInputIntervalEstimateMs +=
-+          (intervalSampleMs - _directInputIntervalEstimateMs) *
-+          kDirectInputIntervalRecovery;
-+    }
-+    _lastDirectInputSteadyMs = nowSteadyMs;
-+    return std::clamp(
-+        _directInputIntervalEstimateMs *
-+            kDirectInputDurationPerInterval,
-+        kMinimumDurationMs,
-+        std::min(stockDurationMs, kBurstDurationMs));
-+  }
-+
 +  bool consumeStockLocked(int direction, double nowSteadyMs,
 +                          double nowEpochMs,
 +                          bool directInput = false,
-+                          double requestedAtSteadyMs = 0,
 +                          bool emitStockMiss = true) {
 +    const int normalizedDirection = direction < 0 ? -1 : 1;
 +    const auto stock = std::find_if(
@@ -3294,20 +3328,7 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +    }
 +    stock->lastUsed = ++_stockUsageCounter;
 +
-+    const bool burst = !_turns.empty();
-+    const double directRequestedAtSteadyMs =
-+        directInput && requestedAtSteadyMs > 0
-+            ? requestedAtSteadyMs
-+            : nowSteadyMs;
-+    const double directDurationMs =
-+        directInput
-+            ? directInputDurationLocked(
-+                  directRequestedAtSteadyMs, stock->durationMs)
-+            : stock->durationMs;
 +    if (directInput) {
-+      if (directDurationMs < stock->durationMs) {
-+        compressDirectInputTurnsLocked(nowSteadyMs, directDurationMs);
-+      }
 +      // The tap lane deliberately has no launch queue. Preserve the original
 +      // overlap model by releasing every pending direct sheet immediately.
 +      for (auto &pending : _turns) {
@@ -3316,8 +3337,6 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +          pending.notBeforeSteadyMs = nowSteadyMs;
 +        }
 +      }
-+    } else if (burst) {
-+      compressActiveTurnsLocked(nowSteadyMs);
 +    }
 +    Turn turn;
 +    turn.id = nextStockTurnIdLocked(stock->id);
@@ -3354,7 +3373,6 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +    turn.spread = stock->spread;
 +    turn.tuning = _automaticTuning;
 +    turn.directInput = directInput;
-+    turn.requestedAtSteadyMs = directRequestedAtSteadyMs;
 +    if (directInput) {
 +      turn.notBeforeSteadyMs = nowSteadyMs;
 +    } else {
@@ -3367,15 +3385,11 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +      _nextLaunchSteadyMs =
 +          turn.notBeforeSteadyMs + stock->launchIntervalMs;
 +    }
-+    turn.durationMs = directInput
-+                          ? directDurationMs
-+                          : (burst
-+                                 ? std::min(stock->durationMs,
-+                                            kBurstDurationMs)
-+                                 : stock->durationMs);
++    turn.durationMs = stock->durationMs;
 +    turn.paperColor = stock->paperColor;
 +    _preferredDirection = normalizedDirection;
-+    _currentPageKey = stock->toPageKey;
++    advanceCurrentPageLocked(stock->toPageKey);
++    turn.logicalPageRevision = _currentPageRevision;
 +    _events.push_back(
 +        {turn.id, "consumed", nowEpochMs, normalizedDirection});
 +    _turns.push_back(std::move(turn));
@@ -3389,7 +3403,7 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +      if (!stockAvailableLocked(pending.direction) ||
 +          !consumeStockLocked(
 +              pending.direction, nowSteadyMs, nowEpochMs, true,
-+              pending.requestedAtSteadyMs, false)) {
++              false)) {
 +        return;
 +      }
 +      _pendingDirectInputs.pop_front();
@@ -3404,15 +3418,13 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +    while (_benchmarkRemaining > 0 &&
 +           nowSteadyMs >= _benchmarkNextSteadyMs && emitted < 4) {
 +      const int normalizedDirection = _benchmarkDirection < 0 ? -1 : 1;
-+      const double requestedAtSteadyMs = _benchmarkNextSteadyMs;
 +      if (_pendingDirectInputs.empty() &&
 +          stockAvailableLocked(normalizedDirection)) {
 +        consumeStockLocked(normalizedDirection, nowSteadyMs, nowEpochMs,
-+                           true, requestedAtSteadyMs);
++                           true);
 +      } else if (_pendingDirectInputs.size() <
 +                 kMaximumPendingDirectInputCount) {
-+        _pendingDirectInputs.push_back(
-+            {normalizedDirection, requestedAtSteadyMs});
++        _pendingDirectInputs.push_back({normalizedDirection});
 +      } else {
 +        emitStockMissLocked(normalizedDirection, nowEpochMs);
 +      }
@@ -3506,7 +3518,9 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +              return entry.pageKey == pageKey;
 +            });
 +        if (page == _pageTextures.end() || page->image != nullptr ||
-+            page->picture == nullptr || page->uploadPending) {
++            page->picture == nullptr || page->uploadPending ||
++            page->uploadFailureCount >=
++                kMaximumPageTextureUploadFailureCount) {
 +          continue;
 +        }
 +        page->uploadPending = true;
@@ -3608,6 +3622,10 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +    if (image != nullptr) {
 +      page->image = std::move(image);
 +      page->lastUsed = ++_pageTextureUsageCounter;
++      page->uploadFailureCount = 0;
++    } else if (page->uploadFailureCount <
++               kMaximumPageTextureUploadFailureCount) {
++      page->uploadFailureCount += 1;
 +    }
 +#endif
 +  }
@@ -3761,47 +3779,47 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +#endif
 +  }
 +
-+  void compressDirectInputTurnsLocked(double nowSteadyMs,
-+                                      double targetDurationMs) {
-+    const double boundedDurationMs =
-+        std::clamp(targetDurationMs, kMinimumDurationMs,
-+                   kBurstDurationMs);
-+    for (auto &turn : _turns) {
-+      if (!turn.directInput || turn.interactive) {
-+        continue;
-+      }
-+      turn.durationMs =
-+          std::min(turn.durationMs, boundedDurationMs);
-+      if (!turn.started || turn.completed) {
-+        continue;
-+      }
-+      const float currentProgress =
-+          automaticProgressForTurn(turn, nowSteadyMs);
-+      turn.baseProgress = currentProgress;
-+      turn.startedAtSteadyMs = nowSteadyMs;
-+      turn.durationMs =
-+          std::max(kDirectInputMinimumRemainingMs,
-+                   boundedDurationMs * (1.0 - currentProgress));
-+    }
++  bool presentationAcknowledgedLocked(const std::string &turnId) const {
++    return std::find(_acknowledgedPresentationTurnIds.begin(),
++                     _acknowledgedPresentationTurnIds.end(),
++                     turnId) != _acknowledgedPresentationTurnIds.end();
 +  }
 +
-+  void compressActiveTurnsLocked(double nowSteadyMs) {
-+    for (auto &turn : _turns) {
-+      if (turn.interactive) {
-+        continue;
-+      }
-+      turn.durationMs = std::min(turn.durationMs, kBurstDurationMs);
-+      if (!turn.started || turn.completed) {
-+        continue;
-+      }
-+      const float currentProgress =
-+          automaticProgressForTurn(turn, nowSteadyMs);
-+      turn.baseProgress = currentProgress;
-+      turn.startedAtSteadyMs = nowSteadyMs;
-+      turn.durationMs =
-+          std::max(kMinimumDurationMs,
-+                   kBurstDurationMs * (1.0 - currentProgress));
++  void erasePresentationAcknowledgmentLocked(const std::string &turnId) {
++    _acknowledgedPresentationTurnIds.erase(
++        std::remove(_acknowledgedPresentationTurnIds.begin(),
++                    _acknowledgedPresentationTurnIds.end(), turnId),
++        _acknowledgedPresentationTurnIds.end());
++  }
++
++  void retainTargetPresentationLocked(const Turn &turn) {
++    // Only stock-backed turns have an addressable target. RN-scheduled turns
++    // continue to use their existing scheduler handoff.
++    // A completed gesture can finish after a later tap, or its final frame can
++    // already be retained when that tap begins. Never replay that older page
++    // once a newer logical input has advanced the anchor.
++    if (turn.id.empty() || turn.toPageKey.empty() ||
++        turn.logicalPageRevision == 0 ||
++        turn.logicalPageRevision != _currentPageRevision ||
++        turn.toPageKey != _currentPageKey) {
++      return;
 +    }
++    if (_presentationHandoff != nullptr) {
++      erasePresentationAcknowledgmentLocked(
++          _presentationHandoff->turnId);
++    }
++    auto handoff = std::make_unique<PresentationHandoff>();
++    handoff->turnId = turn.id;
++    handoff->pageKey = turn.toPageKey;
++    handoff->frontImage = turn.frontImage;
++    handoff->backImage = turn.backImage;
++    handoff->backgroundLeftImage = turn.backgroundLeftImage;
++    handoff->backgroundRightImage = turn.backgroundRightImage;
++    handoff->direction = turn.direction;
++    handoff->spread = turn.spread;
++    handoff->acknowledged = presentationAcknowledgedLocked(turn.id);
++    handoff->paperColor = turn.paperColor;
++    _presentationHandoff = std::move(handoff);
 +  }
 +
 +  static void drawBackgroundPage(SkCanvas *canvas, float destinationX,
@@ -3818,6 +3836,34 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +        image, source, destination,
 +        SkSamplingOptions(SkCubicResampler{0.0f, 0.5f}), nullptr,
 +        SkCanvas::kFast_SrcRectConstraint);
++  }
++
++  static void drawPresentationHandoff(
++      SkCanvas *canvas, float viewportWidth, float viewportHeight,
++      const PresentationHandoff &handoff) {
++    SkPaint paperPaint;
++    paperPaint.setColor(handoff.paperColor);
++    canvas->drawRect(SkRect::MakeWH(viewportWidth, viewportHeight),
++                     paperPaint);
++
++    if (!handoff.spread) {
++      const auto &target = handoff.direction > 0
++                               ? handoff.backgroundLeftImage
++                               : handoff.frontImage;
++      drawBackgroundPage(canvas, 0, viewportWidth, viewportHeight, target);
++      return;
++    }
++
++    const float paperWidth = viewportWidth * 0.5f;
++    const auto &targetLeft = handoff.direction > 0
++                                 ? handoff.backImage
++                                 : handoff.backgroundLeftImage;
++    const auto &targetRight = handoff.direction > 0
++                                  ? handoff.backgroundRightImage
++                                  : handoff.frontImage;
++    drawBackgroundPage(canvas, 0, paperWidth, viewportHeight, targetLeft);
++    drawBackgroundPage(canvas, paperWidth, paperWidth, viewportHeight,
++                       targetRight);
 +  }
 +
 +  static void drawSpreadBackground(
@@ -4037,20 +4083,22 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +  std::function<void()> _requestRedraw;
 +  mutable std::mutex _mutex;
 +  std::vector<Turn> _turns;
++  std::unique_ptr<PresentationHandoff> _presentationHandoff;
++  std::vector<std::string> _acknowledgedPresentationTurnIds;
 +  std::vector<Event> _events;
 +  std::vector<StockEntry> _stock;
 +  std::vector<PageTexture> _pageTextures;
 +  std::vector<PreloadedImage> _preloadedImages;
 +  std::deque<PendingDirectInput> _pendingDirectInputs;
 +  std::string _currentPageKey;
++  uint64_t _currentPageRevision = 0;
++  uint64_t _latestCompletedPageRevision = 0;
 +  uint64_t _stockUsageCounter = 0;
 +  uint64_t _stockMissCounter = 0;
 +  uint64_t _stockTurnCounter = 0;
 +  uint64_t _pageTextureUsageCounter = 0;
 +  uint64_t _preloadUsageCounter = 0;
 +  double _nextLaunchSteadyMs = 0;
-+  double _lastDirectInputSteadyMs = 0;
-+  double _directInputIntervalEstimateMs = 0;
 +  int _benchmarkRemaining = 0;
 +  int _benchmarkDirection = 1;
 +  int _preferredDirection = 1;
@@ -4063,7 +4111,7 @@ index 0000000000000000000000000000000000000000..e23135371b70173947153754b7f870ce
 +
 +} // namespace RNSkia
 diff --git a/cpp/rnskia/RNSkPictureView.h b/cpp/rnskia/RNSkPictureView.h
-index 0059ea1c7ed47adb189095bc9f1110525668d11a..20ee7d164de8b54aa19f27e5557993ff420a73c2 100644
+index 0059ea1c7ed47adb189095bc9f1110525668d11a..0fc0331e0a550d068d0d1d758c6f98dcaec84729 100644
 --- a/cpp/rnskia/RNSkPictureView.h
 +++ b/cpp/rnskia/RNSkPictureView.h
 @@ -11,6 +11,7 @@
@@ -4084,7 +4132,7 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..20ee7d164de8b54aa19f27e5557993ff
 
    virtual ~RNSkPictureRenderer() = default;
 
-@@ -52,31 +54,160 @@ public:
+@@ -52,31 +54,164 @@ public:
    }
 
    void setPicture(sk_sp<SkPicture> picture) {
@@ -4152,6 +4200,10 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..20ee7d164de8b54aa19f27e5557993ff
 +
 +  void setPagerAnchor(std::string pageKey) {
 +    _pagerCompositor.setAnchor(std::move(pageKey));
++  }
++
++  void acknowledgePagerPresentation(std::string turnId) {
++    _pagerCompositor.acknowledgePresentation(std::move(turnId));
 +  }
 +
 +  void setPagerInputEnabled(bool enabled) {
@@ -4249,7 +4301,7 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..20ee7d164de8b54aa19f27e5557993ff
  };
 
  class RNSkPictureView : public RNSkView {
-@@ -108,5 +239,131 @@ public:
+@@ -108,5 +243,136 @@ public:
        }
      }
    }
@@ -4307,6 +4359,11 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..20ee7d164de8b54aa19f27e5557993ff
 +  void setPagerAnchor(std::string pageKey) {
 +    std::static_pointer_cast<RNSkPictureRenderer>(getRenderer())
 +        ->setPagerAnchor(std::move(pageKey));
++  }
++
++  void acknowledgePagerPresentation(std::string turnId) {
++    std::static_pointer_cast<RNSkPictureRenderer>(getRenderer())
++        ->acknowledgePagerPresentation(std::move(turnId));
 +  }
 +
 +  void setPagerInputEnabled(bool enabled) {

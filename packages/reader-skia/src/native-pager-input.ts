@@ -7,10 +7,7 @@ export interface NativePagerGestureInputState {
   readonly selectionActive: boolean;
   readonly benchmarkActive: boolean;
   readonly nativePagerInputReady: boolean;
-  /**
-   * Deliberately not a disabling condition. The compositor preempts unfinished
-   * direct-tap sheets when a warm gesture begins.
-   */
+  /** Whether an earlier direct-tap sheet is still visibly moving. */
   readonly directTapActive: boolean;
 }
 
@@ -52,6 +49,8 @@ export function resolveNativePagerGestureInputPolicy(
   const recognizerEnabled = !state.selectionActive && !state.benchmarkActive;
   return {
     recognizerEnabled,
+    // Direct taps and gestures own separate sheets. A new gesture stays live
+    // while earlier tap sheets drain; the compositor must preserve both.
     nativeGestureInputEnabled: recognizerEnabled && state.nativePagerInputReady,
   };
 }

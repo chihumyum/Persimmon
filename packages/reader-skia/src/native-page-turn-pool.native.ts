@@ -11,7 +11,11 @@ import {
   type PageTurnTuning,
 } from "@persimmon/page-turn-core";
 import { useCallback, useEffect, useMemo } from "react";
-import { useFrameCallback, useSharedValue } from "react-native-reanimated";
+import {
+  useFrameCallback,
+  useSharedValue,
+  type FrameInfo,
+} from "react-native-reanimated";
 import { scheduleOnRN, scheduleOnUI } from "react-native-worklets";
 
 import {
@@ -39,6 +43,12 @@ interface NativeProgrammaticPageTurnLane {
   readonly frame: ReturnType<typeof usePageTurnNativeSharedFrame>;
   readonly authorizeStart: (turnId: string, startAtMs: number) => void;
 }
+
+// A prepared fallback command can disappear from the React texture prefix for
+// a render while its UI-runtime animation is already running. Keep that lane
+// alive longer than the compositor's maximum 900 ms turn so the terminal
+// outcome is still delivered, then put the display-link subscriber to sleep.
+const NATIVE_PAGE_TURN_LANE_IDLE_GRACE_MS = 1_200;
 
 function useNativeProgrammaticPageTurnLane(
   width: number,
@@ -89,53 +99,81 @@ function useNativeProgrammaticPageTurnLane(
     playbackSpeed.value = requestedPlaybackSpeed;
   }, [playbackSpeed, requestedPlaybackSpeed]);
 
-  useFrameCallback(({ timeSincePreviousFrame }) => {
-    "worklet";
-    if (
-      timeSincePreviousFrame === null ||
-      commandId === undefined ||
-      scheduledCommandId.value !== commandId
-    ) {
-      return;
-    }
-    if (!scheduledStarted.value) {
-      const now = Date.now();
-      if (!scheduledReadyToStart.value || now < scheduledStartAtMs.value) {
+  const advanceLaneFrame = useCallback(
+    ({ timeSincePreviousFrame }: FrameInfo) => {
+      "worklet";
+      const activeCommandId = scheduledCommandId.value;
+      if (timeSincePreviousFrame === null || activeCommandId === undefined) {
         return;
       }
-      scheduledStarted.value = true;
-      scheduleOnRN(onStarted, commandId, now, playbackSpeed.value);
-      // The initial paper profile has already crossed the presentation
-      // barrier. Start physical time on the following display frame so a long
-      // frame that opened the gate cannot consume part of the animation.
+      if (!scheduledStarted.value) {
+        const now = Date.now();
+        if (!scheduledReadyToStart.value || now < scheduledStartAtMs.value) {
+          return;
+        }
+        scheduledStarted.value = true;
+        scheduleOnRN(onStarted, activeCommandId, now, playbackSpeed.value);
+        // The initial paper profile has already crossed the presentation
+        // barrier. Start physical time on the following display frame so a
+        // long frame that opened the gate cannot consume the animation.
+        return;
+      }
+      state.modify((current) => {
+        if (
+          current.phase !== PAGE_TURN_WORKLET_IDLE &&
+          current.phase !== PAGE_TURN_WORKLET_DRAG &&
+          advancePageTurnWorklet(
+            current,
+            (timeSincePreviousFrame / 1000) * playbackSpeed.value,
+          )
+        ) {
+          updatePageTurnNativeSharedFrame(current, frame);
+        }
+        if (
+          current.outcome !== PAGE_TURN_WORKLET_NO_OUTCOME &&
+          !current.outcomeNotified
+        ) {
+          current.outcomeNotified = true;
+          scheduleOnRN(onOutcome, activeCommandId, current.outcome, Date.now());
+        }
+        return current;
+      }, true);
+    },
+    [
+      frame,
+      onOutcome,
+      onStarted,
+      playbackSpeed,
+      scheduledCommandId,
+      scheduledReadyToStart,
+      scheduledStartAtMs,
+      scheduledStarted,
+      state,
+    ],
+  );
+  const laneFrameCallback = useFrameCallback(advanceLaneFrame, false);
+
+  useEffect(() => {
+    // The pool is persistent, but an idle lane must not be a persistent
+    // display-link subscriber. With eleven reserved lanes, leaving these
+    // callbacks active after their commands completed kept Worklets' global
+    // requestAnimationFrame loop alive forever and saturated Android's UI
+    // thread after a rapid-tap burst.
+    if (commandId !== undefined) {
+      laneFrameCallback.setActive(true);
       return;
     }
-    if (
-      state.value.phase === PAGE_TURN_WORKLET_IDLE ||
-      state.value.phase === PAGE_TURN_WORKLET_DRAG
-    ) {
-      return;
-    }
-    state.modify((current) => {
-      if (
-        advancePageTurnWorklet(
-          current,
-          (timeSincePreviousFrame / 1000) * playbackSpeed.value,
-        )
-      ) {
-        updatePageTurnNativeSharedFrame(current, frame);
-      }
-      if (
-        commandId !== undefined &&
-        current.outcome !== PAGE_TURN_WORKLET_NO_OUTCOME &&
-        !current.outcomeNotified
-      ) {
-        current.outcomeNotified = true;
-        scheduleOnRN(onOutcome, commandId, current.outcome, Date.now());
-      }
-      return current;
-    }, true);
-  }, true);
+    const timeout = setTimeout(() => {
+      laneFrameCallback.setActive(false);
+    }, NATIVE_PAGE_TURN_LANE_IDLE_GRACE_MS);
+    return () => clearTimeout(timeout);
+  }, [commandId, laneFrameCallback]);
+  useEffect(
+    () => () => {
+      laneFrameCallback.setActive(false);
+    },
+    [laneFrameCallback],
+  );
 
   useEffect(() => {
     if (
@@ -261,35 +299,38 @@ function useNativeProgrammaticPageTurnLane(
     if (commandId !== undefined) {
       return;
     }
-    scheduleOnUI(() => {
-      "worklet";
-      scheduledCommandId.value = undefined;
-      scheduledReadyToStart.value = false;
-      scheduledStarted.value = false;
-      state.modify((current) => {
-        current.phase = PAGE_TURN_WORKLET_IDLE;
-        current.outcome = PAGE_TURN_WORKLET_NO_OUTCOME;
-        current.outcomeNotified = false;
-        return current;
-      }, true);
-    });
     let cancelled = false;
-    afterSkiaPaint(() => {
-      if (cancelled) {
-        return;
-      }
+    const timeout = setTimeout(() => {
       scheduleOnUI(() => {
         "worklet";
+        scheduledCommandId.value = undefined;
+        scheduledReadyToStart.value = false;
+        scheduledStarted.value = false;
         state.modify((current) => {
-          if (current.phase === PAGE_TURN_WORKLET_IDLE) {
-            hidePageTurnNativeSharedFrame(frame);
-          }
+          current.phase = PAGE_TURN_WORKLET_IDLE;
+          current.outcome = PAGE_TURN_WORKLET_NO_OUTCOME;
+          current.outcomeNotified = false;
           return current;
         }, true);
       });
-    });
+      afterSkiaPaint(() => {
+        if (cancelled) {
+          return;
+        }
+        scheduleOnUI(() => {
+          "worklet";
+          state.modify((current) => {
+            if (current.phase === PAGE_TURN_WORKLET_IDLE) {
+              hidePageTurnNativeSharedFrame(frame);
+            }
+            return current;
+          }, true);
+        });
+      });
+    }, NATIVE_PAGE_TURN_LANE_IDLE_GRACE_MS);
     return () => {
       cancelled = true;
+      clearTimeout(timeout);
     };
   }, [
     commandId,

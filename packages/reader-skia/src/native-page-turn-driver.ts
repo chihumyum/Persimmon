@@ -16,9 +16,15 @@ import {
 } from "@persimmon/page-turn-core";
 import { Gesture } from "react-native-gesture-handler";
 import { PixelRatio, Platform } from "react-native";
-import { useFrameCallback, useSharedValue } from "react-native-reanimated";
+import {
+  startMapper,
+  stopMapper,
+  useFrameCallback,
+  useSharedValue,
+  type FrameInfo,
+} from "react-native-reanimated";
 import { scheduleOnRN, scheduleOnUI } from "react-native-worklets";
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 
 import {
   hidePageTurnNativeSharedFrame,
@@ -250,6 +256,23 @@ export function useNativePageTurnDriver({
   });
 
   useEffect(() => {
+    if (Platform.OS === "web") {
+      return;
+    }
+    // Reanimated's native gesture handler polls for `global.__mapperRun` when
+    // no mapper registry exists yet. Every gesture event starts another poll,
+    // so rapid tapping can accumulate thousands of permanent UI-runtime frame
+    // callbacks. A persistent no-op mapper initializes the registry before the
+    // first page-turn gesture while keeping the native gesture hot path intact.
+    const mapperId = startMapper(() => {
+      "worklet";
+    });
+    return () => {
+      stopMapper(mapperId);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!__DEV__ || Platform.OS === "web" || benchmark === undefined) {
       return;
     }
@@ -276,30 +299,32 @@ export function useNativePageTurnDriver({
     );
   }, [benchmark, benchmarkState]);
 
-  useFrameCallback(
-    () => {
-      "worklet";
-      const now = Date.now();
-      benchmarkState.modify((current) => {
-        // A frame hitch may cross more than one 100 ms boundary. Preserve every
-        // synthetic tap and its original UI-clock timestamp, but bound catch-up
-        // work per frame so diagnostics cannot create an unbounded RN burst.
-        let emitted = 0;
-        while (
-          current.remaining > 0 &&
-          now >= current.nextAtMs &&
-          emitted < 4
-        ) {
-          scheduleOnRN(dispatchTapTurn, current.direction, current.nextAtMs);
-          current.remaining -= 1;
-          current.nextAtMs += current.intervalMs;
-          emitted += 1;
-        }
-        return current;
-      }, true);
-    },
-    __DEV__ && Platform.OS !== "web",
-  );
+  const advanceBenchmarkFrame = useCallback(() => {
+    "worklet";
+    const now = Date.now();
+    benchmarkState.modify((current) => {
+      // A frame hitch may cross more than one 100 ms boundary. Preserve every
+      // synthetic tap and its original UI-clock timestamp, but bound catch-up
+      // work per frame so diagnostics cannot create an unbounded RN burst.
+      let emitted = 0;
+      while (current.remaining > 0 && now >= current.nextAtMs && emitted < 4) {
+        scheduleOnRN(dispatchTapTurn, current.direction, current.nextAtMs);
+        current.remaining -= 1;
+        current.nextAtMs += current.intervalMs;
+        emitted += 1;
+      }
+      return current;
+    }, true);
+  }, [benchmarkState, dispatchTapTurn]);
+  const benchmarkFrameCallback = useFrameCallback(advanceBenchmarkFrame, false);
+
+  useEffect(() => {
+    const active = __DEV__ && Platform.OS !== "web" && benchmark !== undefined;
+    benchmarkFrameCallback.setActive(active);
+    return () => {
+      benchmarkFrameCallback.setActive(false);
+    };
+  }, [benchmark, benchmarkFrameCallback]);
 
   useEffect(() => {
     scheduleOnUI((nextTuning: PageTurnTuning) => {
@@ -311,58 +336,82 @@ export function useNativePageTurnDriver({
     }, coreTuning);
   }, [coreTuning, state]);
 
-  useFrameCallback(({ timeSincePreviousFrame }) => {
-    "worklet";
-    if (timeSincePreviousFrame === null) {
-      return;
-    }
-    state.modify((current) => {
-      if (current.phase === PAGE_TURN_WORKLET_IDLE) {
-        return current;
+  const advanceDriverFrame = useCallback(
+    ({ timeSincePreviousFrame }: FrameInfo) => {
+      "worklet";
+      if (timeSincePreviousFrame === null) {
+        return;
       }
-      if (current.phase === PAGE_TURN_WORKLET_DRAG) {
-        let hasPendingTarget = false;
-        let nextBookX = current.lastBookX;
-        let nextBookY = current.lastBookY;
-        let nextTurnProgress = current.settlingProgress;
-        gestureTarget.modify((target) => {
-          if (target.pendingRevision === target.appliedRevision) {
-            return target;
-          }
-          hasPendingTarget = true;
-          nextBookX = target.bookX;
-          nextBookY = target.bookY;
-          nextTurnProgress = target.turnProgress;
-          target.appliedRevision = target.pendingRevision;
-          return target;
-        });
-        if (!hasPendingTarget) {
+      state.modify((current) => {
+        if (current.phase === PAGE_TURN_WORKLET_IDLE) {
           return current;
         }
-        movePageTurnWorkletDrag(
-          current,
-          nextBookX,
-          nextBookY,
-          nextTurnProgress,
-          workletTimeSeconds(),
-        );
+        if (current.phase === PAGE_TURN_WORKLET_DRAG) {
+          let hasPendingTarget = false;
+          let nextBookX = current.lastBookX;
+          let nextBookY = current.lastBookY;
+          let nextTurnProgress = current.settlingProgress;
+          gestureTarget.modify((target) => {
+            if (target.pendingRevision === target.appliedRevision) {
+              return target;
+            }
+            hasPendingTarget = true;
+            nextBookX = target.bookX;
+            nextBookY = target.bookY;
+            nextTurnProgress = target.turnProgress;
+            target.appliedRevision = target.pendingRevision;
+            return target;
+          });
+          if (!hasPendingTarget) {
+            return current;
+          }
+          movePageTurnWorkletDrag(
+            current,
+            nextBookX,
+            nextBookY,
+            nextTurnProgress,
+            workletTimeSeconds(),
+          );
+          updatePageTurnNativeSharedFrame(current, frame);
+          return current;
+        }
+        if (!advancePageTurnWorklet(current, timeSincePreviousFrame / 1000)) {
+          return current;
+        }
         updatePageTurnNativeSharedFrame(current, frame);
+        if (
+          current.outcome !== PAGE_TURN_WORKLET_NO_OUTCOME &&
+          !current.outcomeNotified
+        ) {
+          current.outcomeNotified = true;
+          scheduleOnRN(dispatchOutcome, current.outcome);
+        }
         return current;
-      }
-      if (!advancePageTurnWorklet(current, timeSincePreviousFrame / 1000)) {
-        return current;
-      }
-      updatePageTurnNativeSharedFrame(current, frame);
-      if (
-        current.outcome !== PAGE_TURN_WORKLET_NO_OUTCOME &&
-        !current.outcomeNotified
-      ) {
-        current.outcomeNotified = true;
-        scheduleOnRN(dispatchOutcome, current.outcome);
-      }
-      return current;
-    }, true);
-  }, Platform.OS !== "web");
+      }, true);
+    },
+    [dispatchOutcome, frame, gestureTarget, state],
+  );
+  const driverFrameCallback = useFrameCallback(advanceDriverFrame, false);
+
+  useEffect(() => {
+    // Warm gestures and taps run entirely in the C++ pager. Keep the Worklet
+    // fallback clock asleep until a cold gesture can actually need it or an
+    // existing fallback command is still settling. Otherwise this single
+    // callback keeps Worklets' global display-link loop alive forever.
+    const active =
+      Platform.OS !== "web" &&
+      (command !== undefined ||
+        (canStartInteractive && !nativePagerGestureInputEnabled));
+    driverFrameCallback.setActive(active);
+    return () => {
+      driverFrameCallback.setActive(false);
+    };
+  }, [
+    canStartInteractive,
+    command,
+    driverFrameCallback,
+    nativePagerGestureInputEnabled,
+  ]);
 
   const programmaticTurnId =
     command?.ready && !command.interactive ? command.id : undefined;
@@ -869,9 +918,8 @@ export function useNativePageTurnDriver({
 
     const tap = Gesture.Tap()
       // Native pager taps remain live while earlier curls are still on screen.
-      // Pan recognition also stays live: a warm C++ gesture preempts those
-      // sheets, while a cold gesture remains a deferred RN request until the
-      // native reconciliation events have caught up.
+      // Pan recognition also stays live. Each accepted input owns a separate
+      // sheet; neither path may preempt an animation that is still visible.
       .enabled(gesturesEnabled || nativePagerTapInputEnabled)
       .maxDistance(tapMaxDistance)
       .onEnd((event, success) => {

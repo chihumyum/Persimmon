@@ -174,6 +174,7 @@ import {
   type NativeProgrammaticPageTurnCommand,
 } from "./native-page-turn-pool";
 import {
+  acknowledgeNativePagerPresentation,
   configureNativePagerInput,
   configureNativePagerMotion,
   enqueueNativePagerPictureTurn,
@@ -186,6 +187,7 @@ import {
   takeNativePagerEvents,
   type NativePagerEvent,
 } from "./native-pager-compositor";
+import { NativePagerPresentationGate } from "./native-pager-presentation";
 import {
   bindNativePagerInput,
   resolveNativePagerGestureInputPolicy,
@@ -333,6 +335,10 @@ const PAGE_DECORATION_CACHE_LIMIT = 32;
 // estimate makes large-screen pages hit the byte ceiling before the count cap.
 const NATIVE_PAGER_RECORDING_CACHE_LIMIT = 16;
 const NATIVE_PAGER_RECORDING_CACHE_BYTE_BUDGET = 192 * 1024 * 1024;
+// A cache miss falls back to recording and uploading as many as four full-page
+// textures. Keep that expensive path serial; prepared native stock turns still
+// bypass the React scheduler and retain their normal burst throughput.
+const NATIVE_PAGER_FALLBACK_MAXIMUM_CONCURRENT_TAP_TURNS = 1;
 const PAGE_CAPTURE_MAX_DIRECTIONAL_VIEWS = 12;
 const PAGE_CAPTURE_MIN_DIRECTIONAL_VIEWS = 3;
 
@@ -619,6 +625,9 @@ function LazyReaderEngine({
   );
   const nativePagerDirectTurnIdsRef = useRef(new Set<string>());
   const nativePagerGestureTurnIdsRef = useRef(new Set<string>());
+  const nativePagerPresentationGateRef = useRef(
+    new NativePagerPresentationGate(),
+  );
   const nativePagerAcknowledgedPageKeyRef = useRef<string | undefined>(
     undefined,
   );
@@ -1153,6 +1162,7 @@ function LazyReaderEngine({
     nativePagerStockEntriesRef.current.clear();
     nativePagerDirectTurnIdsRef.current.clear();
     nativePagerGestureTurnIdsRef.current.clear();
+    nativePagerPresentationGateRef.current.reset();
     nativePagerAcknowledgedPageKeyRef.current = undefined;
     nativePagerReconciliationEpochsRef.current.clear();
     setNativePagerDirectActiveCount(0);
@@ -1274,6 +1284,17 @@ function LazyReaderEngine({
   const [nativePagerReady, setNativePagerReady] = useState(false);
   const nativePagerCompositorEnabled =
     nativePagerCompositorSupported && nativePagerReady;
+  const scheduledTurnScheduler = useMemo<PageTurnScheduler>(
+    () =>
+      nativePagerCompositorEnabled
+        ? {
+            ...turnScheduler,
+            maximumConcurrentTapTurns:
+              NATIVE_PAGER_FALLBACK_MAXIMUM_CONCURRENT_TAP_TURNS,
+          }
+        : turnScheduler,
+    [nativePagerCompositorEnabled, turnScheduler],
+  );
   const readerOriginRef = useRef({ x: 0, y: 0 });
   const measureReaderOrigin = useCallback(() => {
     readerViewRef.current?.measureInWindow((x, y) => {
@@ -1484,7 +1505,7 @@ function LazyReaderEngine({
         const next = requestScheduledPageTurn(
           current,
           requestedDirection,
-          turnScheduler,
+          scheduledTurnScheduler,
           requestedAtMs,
         );
         if (next.turns.length <= current.turns.length) {
@@ -1493,8 +1514,12 @@ function LazyReaderEngine({
             (turn) => turn.motion === "tap",
           ).length;
           if (
-            current.turns.length >= turnConcurrency.maximumConcurrentTurns ||
-            activeTapTurns >= turnConcurrency.maximumConcurrentTapTurns
+            current.turns.length >=
+              (scheduledTurnScheduler.maximumConcurrentTurns ??
+                PAGE_TURN_LANE_HARD_LIMIT) ||
+            activeTapTurns >=
+              (scheduledTurnScheduler.maximumConcurrentTapTurns ??
+                PAGE_TURN_LANE_HARD_LIMIT)
           ) {
             rejectedTurnCountsRef.current.capacity += 1;
           } else if (
@@ -1534,9 +1559,7 @@ function LazyReaderEngine({
       nativePagerCompositorEnabled,
       pageTurnAnimation,
       readerGenerationIsCurrent,
-      turnConcurrency.maximumConcurrentTapTurns,
-      turnConcurrency.maximumConcurrentTurns,
-      turnScheduler,
+      scheduledTurnScheduler,
     ],
   );
   useEffect(() => {
@@ -3127,15 +3150,16 @@ function LazyReaderEngine({
         : undefined,
     [driverMeshReady, driverTurn, layout],
   );
-  const nativePagerTapInputEnabled =
+  const nativePagerPhysicalInputEnabled =
     nativePagerCompositorEnabled &&
     !selectingText &&
-    nativeBenchmarkCommand === undefined &&
-    activeTurns.length === 0;
+    nativeBenchmarkCommand === undefined;
+  const nativePagerTapInputEnabled =
+    nativePagerPhysicalInputEnabled && activeTurns.length === 0;
   const nativePagerGestureInputPolicy = resolveNativePagerGestureInputPolicy({
     selectionActive: selectingText,
     benchmarkActive: nativeBenchmarkCommand !== undefined,
-    nativePagerInputReady: nativePagerTapInputEnabled,
+    nativePagerInputReady: nativePagerPhysicalInputEnabled,
     directTapActive:
       nativePagerDirectActiveCount !== nativePagerGestureActiveCount,
   });
@@ -3368,6 +3392,10 @@ function LazyReaderEngine({
         }
         captureFeedDirectionRef.current = directEntry.direction;
         const acknowledgedEpoch = `${readerGeneration}:${nativePagerPageKey(directEntry.to)}`;
+        nativePagerPresentationGateRef.current.schedule(
+          turnId,
+          acknowledgedEpoch,
+        );
         nativePagerAcknowledgedPageKeyRef.current = acknowledgedEpoch;
         nativePagerReconciliationEpochsRef.current.add(acknowledgedEpoch);
         nativePagerDirectTurnIdsRef.current.add(turnId);
@@ -3488,6 +3516,7 @@ function LazyReaderEngine({
       nativePagerStockEntriesRef.current.clear();
       nativePagerDirectTurnIdsRef.current.clear();
       nativePagerGestureTurnIdsRef.current.clear();
+      nativePagerPresentationGateRef.current.reset();
       nativePagerAcknowledgedPageKeyRef.current = undefined;
       nativePagerReconciliationEpochsRef.current.clear();
     };
@@ -3523,6 +3552,48 @@ function LazyReaderEngine({
     nativePagerCompositorEnabled,
     readerCanvasRef,
     readerGeneration,
+    readerState.settled,
+  ]);
+  useEffect(() => {
+    if (!nativePagerCompositorEnabled) {
+      return;
+    }
+    const canvas = readerCanvasRef.current;
+    if (!canvas) {
+      return;
+    }
+    const settledEpoch = `${readerGeneration}:${nativePagerPageKey(readerState.settled)}`;
+    const turnId =
+      nativePagerPresentationGateRef.current.turnIdForSettled(settledEpoch);
+    if (!turnId) {
+      return;
+    }
+
+    let cancelled = false;
+    afterSkiaPaint(() => {
+      if (cancelled || !readerGenerationIsCurrent()) {
+        return;
+      }
+      const currentSettledEpoch = `${readerGeneration}:${nativePagerPageKey(readerStateRef.current.settled)}`;
+      if (
+        nativePagerPresentationGateRef.current.turnIdForSettled(
+          currentSettledEpoch,
+        ) !== turnId
+      ) {
+        return;
+      }
+      if (acknowledgeNativePagerPresentation(canvas, turnId)) {
+        nativePagerPresentationGateRef.current.acknowledge(turnId);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    nativePagerCompositorEnabled,
+    readerCanvasRef,
+    readerGeneration,
+    readerGenerationIsCurrent,
     readerState.settled,
   ]);
   useEffect(() => {
@@ -3736,13 +3807,13 @@ function LazyReaderEngine({
     }
     return bindNativePagerInput(
       canvas,
-      nativePagerTapInputEnabled,
+      nativePagerPhysicalInputEnabled,
       configureNativePagerInput,
     );
   }, [
     nativePagerCompositorEnabled,
     nativePagerCanvasId,
-    nativePagerTapInputEnabled,
+    nativePagerPhysicalInputEnabled,
     readerCanvasRef,
     readerGeneration,
   ]);
@@ -4039,7 +4110,7 @@ function LazyReaderEngine({
     );
     const publicationProgress =
       publicationDecoration.pageNumber / publicationDecoration.pageCount;
-    onProgress?.({
+    const progress: ReaderProgress = {
       locator: {
         bookId: book.id,
         revisionId: book.revisionId,
@@ -4050,7 +4121,14 @@ function LazyReaderEngine({
       pageIndex: readerState.settled.pageIndex,
       pageCount: localPageCount,
       publicationProgress,
-    });
+    };
+    // Publishing directly from this passive effect makes the app update its
+    // reader screen and library state from inside React's passive-effect
+    // flush. Sustained native page turns can repeat that nested update often
+    // enough to trip React's maximum-update-depth guard. Cross the frame
+    // boundary first; cleanup also coalesces pages that settle in one frame.
+    const frame = requestAnimationFrame(() => onProgress?.(progress));
+    return () => cancelAnimationFrame(frame);
   }, [
     book.id,
     book.revisionId,

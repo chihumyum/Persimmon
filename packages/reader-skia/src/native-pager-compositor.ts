@@ -144,6 +144,13 @@ export function setNativePagerAnchor(
   return false;
 }
 
+export function acknowledgeNativePagerPresentation(
+  _canvas: NativePagerCanvasHandle | null,
+  _turnId: string,
+): boolean {
+  return false;
+}
+
 export function stockNativePagerPicture(
   _canvas: NativePagerCanvasHandle | null,
   _command: NativePagerStockPictureCommand,
