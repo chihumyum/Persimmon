@@ -1,7 +1,10 @@
 import { BOOK_IR_VERSION, type BookIR } from "@persimmon/book-core";
 import { describe, expect, it } from "vitest";
 
-import { navigationLabelsForPosition } from "./navigation-path";
+import {
+  navigationLabelsForPosition,
+  navigationPathForPosition,
+} from "./navigation-path";
 
 const book: BookIR = {
   schemaVersion: BOOK_IR_VERSION,
@@ -72,6 +75,13 @@ describe("reader toolbar navigation path", () => {
         offset: 0,
       }),
     ).toEqual(["第一部", "第一章"]);
+    expect(
+      navigationPathForPosition(book, {
+        sectionId: "first",
+        blockId: "chapter",
+        offset: 0,
+      }).map((item) => item.id),
+    ).toEqual(["part", "chapter"]);
   });
 
   it("moves to the next root and returns no path before the first target", () => {

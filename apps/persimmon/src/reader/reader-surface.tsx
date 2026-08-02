@@ -10,8 +10,10 @@ import {
   type ReaderProgress,
   type ReaderSelectionMenuRequest,
   type ReaderTheme,
+  type ReaderUiMessages,
 } from "@persimmon/reader-skia";
 import { useCallback, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 import {
@@ -105,6 +107,36 @@ function FontBackedReaderSurface({
   fontProvider,
   fontProviderKey,
 }: FontBackedReaderSurfaceProps) {
+  const { t, i18n } = useTranslation();
+  const uiMessages = useMemo<ReaderUiMessages>(
+    () => ({
+      previousPage: t("reader.accessibility.previousPage"),
+      nextPage: t("reader.accessibility.nextPage"),
+      toggleTools: t("reader.accessibility.toggleTools"),
+      selectionStart: t("reader.accessibility.selectionStart"),
+      selectionEnd: t("reader.accessibility.selectionEnd"),
+      header: (title) => t("reader.accessibility.header", { title }),
+      publicationPercentage: (percentage) =>
+        t("reader.accessibility.publicationPercentage", { percentage }),
+      publicationPage: (page) =>
+        t("reader.accessibility.publicationPage", { page }),
+      noteKindEndnote: t("reader.accessibility.noteKindEndnote"),
+      noteKindFootnote: t("reader.accessibility.noteKindFootnote"),
+      noteKindAnnotation: t("reader.accessibility.noteKindAnnotation"),
+      openNote: (noteKind, label) =>
+        t("reader.accessibility.openNote", { noteKind, label }),
+      returnToText: (label) =>
+        t("reader.accessibility.returnToText", { label }),
+      jumpTo: (label) => t("reader.accessibility.jumpTo", { label }),
+      noteHint: t("reader.accessibility.noteHint"),
+      returnToReference: (noteKind, label) =>
+        t("reader.accessibility.returnToReference", { noteKind, label }),
+      returnToTextButton: t("reader.accessibility.returnToTextButton"),
+      dismissReturnButton: (noteKind) =>
+        t("reader.accessibility.dismissReturnButton", { noteKind }),
+    }),
+    [i18n.resolvedLanguage, t],
+  );
   const liveAppearance = useMemo<ReaderAppearance>(
     () => ({
       theme: appearance.theme,
@@ -135,7 +167,7 @@ function FontBackedReaderSurface({
       <View style={[styles.loading, { backgroundColor: theme.paper }]}>
         <ActivityIndicator color={theme.accent} />
         <Text style={[styles.loadingText, { color: theme.secondaryText }]}>
-          {fontError ?? "正在准备中文排版…"}
+          {fontError ?? t("reader.loading.preparingTypography")}
         </Text>
       </View>
     );
@@ -155,6 +187,7 @@ function FontBackedReaderSurface({
       topInset={topInset}
       bottomInset={bottomInset}
       toolbarVisible={toolbarVisible}
+      uiMessages={uiMessages}
       automaticPageTurnTuning={DEFAULT_AUTOMATIC_PAGE_TURN_TUNING}
       gesturePageTurnTuning={gesturePageTurnTuning}
       initialPosition={initialPosition}

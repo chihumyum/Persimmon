@@ -1,30 +1,22 @@
 import type { ReaderTheme } from "@persimmon/reader-skia";
 import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTranslation } from "react-i18next";
 
 import { UiButton } from "../components/ui-button";
 import { UiModalSurface } from "../components/ui-modal-surface";
 import { uiBackdropColor } from "../components/ui-shadow";
 import { UiText as Text } from "../components/ui-text";
 import { uiRadius, uiSpace } from "../components/ui-tokens";
+import { formatByteCount, formatDate, formatPercentage } from "../i18n";
 import { readingProgressPercent } from "../library/library-view";
 import type { LibraryBookSummary } from "../library/repository";
-
-function byteCountLabel(byteLength: number): string {
-  if (byteLength < 1024) {
-    return `${byteLength} B`;
-  }
-  if (byteLength < 1024 * 1024) {
-    return `${(byteLength / 1024).toFixed(1)} KB`;
-  }
-  return `${(byteLength / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 function dateLabel(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? value
-    : date.toLocaleDateString([], {
+    : formatDate(date, {
         year: "numeric",
         month: "short",
         day: "numeric",
@@ -72,6 +64,7 @@ export function BookDetailsModal({
   onOpen,
   onSync,
 }: BookDetailsModalProps) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   if (!entry) {
     return null;
@@ -96,7 +89,7 @@ export function BookDetailsModal({
         ]}
       >
         <Pressable
-          accessibilityLabel="关闭书籍详情"
+          accessibilityLabel={t("library.details.closeAccessibility")}
           accessibilityRole="button"
           onPress={onClose}
           style={StyleSheet.absoluteFill}
@@ -104,11 +97,11 @@ export function BookDetailsModal({
         <UiModalSurface theme={theme}>
           <View style={styles.header}>
             <Text variant="panelTitle" style={{ color: theme.text }}>
-              书籍详情
+              {t("library.details.title")}
             </Text>
             <UiButton
               compact
-              label="完成"
+              label={t("common.done")}
               onPress={onClose}
               textTone="accent"
               theme={theme}
@@ -121,7 +114,7 @@ export function BookDetailsModal({
               {entry.title}
             </Text>
             <Text style={[styles.author, { color: theme.secondaryText }]}>
-              {entry.author ?? "未知作者"}
+              {entry.author ?? t("common.unknownAuthor")}
             </Text>
 
             <View
@@ -134,33 +127,44 @@ export function BookDetailsModal({
               ]}
             >
               <DetailRow
-                label="阅读进度"
+                label={t("library.details.progress")}
                 theme={theme}
                 value={
                   entry.locator
-                    ? `${readingProgressPercent(entry)}%`
-                    : "尚未开始"
+                    ? formatPercentage(readingProgressPercent(entry))
+                    : t("library.details.notStarted")
                 }
               />
               <DetailRow
-                label="本机状态"
+                label={t("library.details.localStatus")}
                 theme={theme}
                 value={
-                  entry.status === "ready" ? "已下载" : "需要从云端重新下载"
+                  entry.status === "ready"
+                    ? t("library.details.downloaded")
+                    : t("library.details.needsDownload")
                 }
               />
-              <DetailRow label="文件" theme={theme} value={entry.sourceName} />
               <DetailRow
-                label="大小"
+                label={t("library.details.file")}
+                theme={theme}
+                value={
+                  entry.sourceName === "旧版导入" ||
+                  entry.sourceName === "Legacy import"
+                    ? t("library.details.legacyImport")
+                    : entry.sourceName
+                }
+              />
+              <DetailRow
+                label={t("library.details.size")}
                 theme={theme}
                 value={
                   entry.builtIn
-                    ? "内置内容"
-                    : byteCountLabel(entry.originalByteLength)
+                    ? t("library.details.builtIn")
+                    : formatByteCount(entry.originalByteLength)
                 }
               />
               <DetailRow
-                label="加入书架"
+                label={t("library.details.added")}
                 theme={theme}
                 value={dateLabel(entry.addedAt)}
               />
@@ -169,7 +173,7 @@ export function BookDetailsModal({
             <View style={styles.actions}>
               {entry.status === "ready" ? (
                 <UiButton
-                  label="继续阅读"
+                  label={t("library.details.continueReading")}
                   onPress={() => {
                     onClose();
                     onOpen(entry.id);
@@ -180,7 +184,11 @@ export function BookDetailsModal({
               ) : null}
               {!entry.builtIn ? (
                 <UiButton
-                  label={entry.status === "ready" ? "立即同步" : "从云端下载"}
+                  label={
+                    entry.status === "ready"
+                      ? t("library.actions.syncNow")
+                      : t("library.actions.downloadFromCloud")
+                  }
                   onPress={() => {
                     onClose();
                     onSync(entry);
@@ -190,7 +198,7 @@ export function BookDetailsModal({
               ) : null}
               {!entry.builtIn ? (
                 <UiButton
-                  label="从书架和云端删除"
+                  label={t("library.details.deleteEverywhere")}
                   onPress={() => {
                     onClose();
                     onDelete(entry);

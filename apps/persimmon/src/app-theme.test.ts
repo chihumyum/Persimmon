@@ -21,4 +21,16 @@ describe("app theme", () => {
     expect(resolveAppColorScheme("light", "dark")).toBe("light");
     expect(resolveAppColorScheme("dark", "light")).toBe("dark");
   });
+
+  it("applies the selected paper theme to the whole app", () => {
+    const warm = resolveAppTheme(DEFAULT_READER_APPEARANCE, "light");
+    const cool = resolveAppTheme(
+      { ...DEFAULT_READER_APPEARANCE, theme: "cool" },
+      "light",
+    );
+
+    expect(cool.name).toBe("cool");
+    expect(cool.paper).not.toBe(warm.paper);
+    expect(cool.accent).toBe(warm.accent);
+  });
 });

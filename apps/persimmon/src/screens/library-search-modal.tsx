@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTranslation } from "react-i18next";
 
 import { UiIcon } from "../components/ui-icon";
 import { uiBackdropColor } from "../components/ui-shadow";
@@ -36,6 +37,7 @@ export function LibrarySearchModal({
   onOpen,
   onQueryChange,
 }: LibrarySearchModalProps) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
 
   return (
@@ -85,12 +87,12 @@ export function LibrarySearchModal({
                 style={styles.searchIcon}
               />
               <TextInput
-                accessibilityLabel="搜索书名或作者"
+                accessibilityLabel={t("library.search.placeholder")}
                 autoCapitalize="none"
                 autoCorrect={false}
                 autoFocus
                 onChangeText={onQueryChange}
-                placeholder="搜索书名或作者"
+                placeholder={t("library.search.placeholder")}
                 placeholderTextColor={theme.secondaryText}
                 selectionColor={theme.accent}
                 style={[styles.input, { color: theme.text }]}
@@ -98,7 +100,7 @@ export function LibrarySearchModal({
               />
               {query ? (
                 <Pressable
-                  accessibilityLabel="清空搜索"
+                  accessibilityLabel={t("library.search.clearAccessibility")}
                   accessibilityRole="button"
                   hitSlop={8}
                   onPress={() => onQueryChange("")}
@@ -114,7 +116,7 @@ export function LibrarySearchModal({
               style={styles.cancelButton}
             >
               <Text style={[styles.cancelText, { color: theme.accentStrong }]}>
-                取消
+                {t("common.cancel")}
               </Text>
             </Pressable>
           </View>
@@ -126,16 +128,18 @@ export function LibrarySearchModal({
           >
             {query && entries.length === 0 ? (
               <UiEmptyState
-                body="只搜索书名和作者。"
+                body={t("library.search.emptyBody")}
                 style={styles.empty}
                 theme={theme}
-                title="没有匹配的书"
+                title={t("library.search.emptyTitle")}
               />
             ) : null}
             {query
               ? entries.map((entry) => (
                   <Pressable
-                    accessibilityLabel={`打开 ${entry.title}`}
+                    accessibilityLabel={t("library.search.openAccessibility", {
+                      title: entry.title,
+                    })}
                     accessibilityRole="button"
                     key={entry.id}
                     onPress={() => onOpen(entry.id)}
@@ -159,7 +163,7 @@ export function LibrarySearchModal({
                           { color: theme.secondaryText },
                         ]}
                       >
-                        {entry.author ?? "未知作者"}
+                        {entry.author ?? t("common.unknownAuthor")}
                       </Text>
                     </View>
                     <UiIcon

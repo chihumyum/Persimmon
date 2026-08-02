@@ -26,7 +26,7 @@ Persimmon 使用 Google Drive 隐藏的 `appDataFolder`
 
 不需要 Client Secret，也不要把 Client
 Secret 放进 App 或发给其他人。Persimmon 使用公开的 OAuth Client
-ID；iOS 和 Android Client ID 已配置，Web Client ID 可以等部署域名确定后再添加。
+ID；iOS 和 Android Client ID 已配置。
 
 1. 在 [Google Cloud Console](https://console.cloud.google.com/) 创建或选择项目。
 2. 在 API Library 中启用
@@ -36,16 +36,11 @@ ID；iOS 和 Android Client ID 已配置，Web Client ID 可以等部署域名�
    - 添加 scope `https://www.googleapis.com/auth/drive.appdata`；
    - Testing 状态下，非基础身份 scope 的 refresh
      token 通常会在 7 天后失效；正式长期使用前应发布到 Production，并按控制台要求完成验证。
-4. 需要启用 Web 同步时，在 Clients 中创建 Web application：
-   - Authorized JavaScript origins 添加实际 Web 地址；
-   - 本地 Expo Web 默认可添加 `http://localhost:8081`；
-   - 生产地址按实际域名添加，例如 `https://reader.example.com`；
-   - 记录生成的 Web Client ID。
-5. iOS application 已创建并接入：
+4. iOS application 已创建并接入：
    - Bundle ID：`dev.chihum.persimmon`；
    - Client ID：
      `51752452441-gueqiurk1lrkeamljiqntn28ed6n5gg7.apps.googleusercontent.com`。
-6. Android application 已创建并接入：
+5. Android application 已创建并接入：
    - Package name：`dev.chihum.persimmon`；
    - 填写开发或发布签名证书的 SHA-1；
    - 本地生成过 Android 工程后可在 `apps/persimmon/android` 运行
@@ -58,14 +53,13 @@ Google 官方入口：
 
 - [appDataFolder 说明](https://developers.google.com/workspace/drive/api/guides/appdata)
 - [Android AuthorizationClient 授权](https://developer.android.com/identity/authorization)
-- [Google Identity Services Web token model](https://developers.google.com/identity/oauth2/web/guides/use-token-model)
 - [OAuth 2.0 for iOS and installed apps](https://developers.google.com/identity/protocols/oauth2/native-app)
 
 ## 填入 Client ID
 
 Native Client ID 已作为 `app.config.js` 中的公开默认值提交，不依赖本地
 `.env.local`，因此本地和 EAS 构建都会生效。需要覆盖 Client
-ID 或以后启用 Web 时，可以复制占位文件：
+ID 时，可以复制占位文件：
 
 ```bash
 cp apps/persimmon/.env.example apps/persimmon/.env.local
@@ -74,18 +68,11 @@ cp apps/persimmon/.env.example apps/persimmon/.env.local
 按需覆盖对应 Client ID：
 
 ```dotenv
-EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=123456-web.apps.googleusercontent.com
 EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=51752452441-gueqiurk1lrkeamljiqntn28ed6n5gg7.apps.googleusercontent.com
 EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID=51752452441-8q55ns0e3k8h47q9h5uqa3487rui5639.apps.googleusercontent.com
 ```
 
 Client ID 是公开标识，`EXPO_PUBLIC_` 前缀是有意的。`.env.local` 已被 Git 忽略。
-
-Web 重新启动 Metro 即可：
-
-```bash
-pnpm dev:web
-```
 
 iOS Client ID 会改变原生 URL scheme，因此填写凭证后需要重建 development build：
 
@@ -110,8 +97,12 @@ pnpm native:android:device
 
 因此新设备连接同一账号后无需逐本点“下载”，也不依赖手动“立即同步”才能出现书籍。应用冷启动恢复已有授权、回到前台，以及前台每 60秒都会再次拉取；导入、删除和进度变化会在 1.5秒合并窗口后主动推送。设置中的“立即同步”和书卡菜单中的“从云端下载”是恢复 / 重试入口，不是正常同步的必要步骤。
 
+书架不会为初始 `loading` 状态显示 Google
+Drive 提示，而是在授权恢复完成后才判断连接状态。未连接提示位于书架顶部，可由用户永久关闭；设置中仍保留连接入口。已连接设备开始同步时显示固定在视口底部的状态浮层，同步成功后切换成“同步完成”，停留 2 秒再自动退出；常态
+`idle` 不占用书架空间。
+
 同一设备上的同步状态操作串行执行，多个 `syncNow`
-只共享一个进行中的任务。Reader 的高频进度回调也先折叠成最新快照，再按“本地进度 → 本机设备状态”的顺序持久化。应用退到后台或退出 Reader 时会强制 flush；失败快照保留并短延时重试，不让较慢的旧写入覆盖新位置。
+只共享一个进行中的任务。Reader 的高频进度回调先折叠成最新快照并预写本地，再在同一串行队列内重放本地位置、登记本机设备状态；同步中产生的新位置因此排在当前远端合并之后，不会被它覆盖。应用退到后台或退出 Reader 时会强制 flush；失败快照保留并短延时重试。
 
 冲突仍以稳定 locator 的 HLC 为准，百分比只跟随同一条进度 mutation 用于显示，不作为定位依据。远端进度只在
 `revisionId` 与本机书籍一致时应用。
@@ -127,10 +118,7 @@ pnpm native:android:device
 7. 中断一次上传 / 下载后重试，确认没有半本书，且书卡可通过“从云端下载”修复
    `needs-reimport` 状态。
 
-Native Google SDK 会安全维护授权状态并刷新 access token。Web 使用 Google
-Identity Services 短期 access
-token，只保存在当前浏览器会话中；浏览器会话过期后，界面会要求重新连接，不会把长期 refresh
-token 放进前端存储。
+Native Google SDK 会安全维护授权状态并刷新 access token。
 
 Android 将“账号身份”和“Drive 数据权限”分开：Google Sign-In 只选择并恢复账号，
 `AuthorizationClient` 为同一账号申请 `drive.appdata` 并签发 access

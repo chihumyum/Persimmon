@@ -26,11 +26,13 @@ export {
   type ReaderProgressDisplay,
 } from "./reader-appearance";
 export {
+  DEFAULT_READER_UI_MESSAGES,
   LiveReader,
   type LiveReaderProps,
   type ReaderLayoutMode,
   type ReaderPageTurnAnimation,
   type ReaderProgress,
   type ReaderSelectionMenuRequest,
+  type ReaderUiMessages,
 } from "./live-reader";
 export { normalizeUtf16Boundary, type Utf16BoundaryAffinity } from "./utf16";

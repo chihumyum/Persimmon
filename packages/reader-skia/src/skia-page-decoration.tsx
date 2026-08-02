@@ -54,6 +54,7 @@ export interface CreateSkiaPageDecorationInput {
   readonly topInset: number;
   readonly bottomInset: number;
   readonly theme?: ReaderTheme;
+  readonly locale?: string;
 }
 
 export function createSkiaPageDecoration({
@@ -67,41 +68,51 @@ export function createSkiaPageDecoration({
   topInset,
   bottomInset,
   theme = DEFAULT_READER_THEME,
+  locale = "und",
 }: CreateSkiaPageDecorationInput): SkiaPageDecoration {
   const normalizedPagesPerView = Math.max(1, Math.floor(pagesPerView));
   const pageWidth = width / normalizedPagesPerView;
   const maximumHorizontalMargin = Math.max(8, (pageWidth - 96) / 2);
   const margin = Math.min(horizontalMargin, maximumHorizontalMargin);
-  const contentWidth = Math.max(1, pageWidth - margin * 2);
+  const pageContentWidth = Math.max(1, pageWidth - margin * 2);
+  // A spread is one reading view for navigation and progress. Keep its
+  // decoration on the view axis instead of assigning the header to the left
+  // physical page and the footer to the right physical page.
+  const decorationWidth =
+    normalizedPagesPerView > 1
+      ? Math.max(1, width - margin * 2)
+      : pageContentWidth;
   const headerY = topInset + 12;
-  const footerX = width - pageWidth + margin;
 
   const headerTitle = createDecorationParagraph(
     model.sectionTitle,
-    contentWidth,
-    TextAlign.Start,
+    decorationWidth,
+    TextAlign.Center,
     0.2,
     fontProvider,
     fontFamily,
     theme.decoration,
+    locale,
   );
   const footerPage = createDecorationParagraph(
     model.pageLabel,
-    contentWidth,
+    decorationWidth,
     TextAlign.Center,
     0.5,
     fontProvider,
     fontFamily,
     theme.decoration,
+    locale,
   );
   const footerPercentage = createDecorationParagraph(
     model.percentageLabel,
-    contentWidth,
+    decorationWidth,
     TextAlign.Center,
     0.5,
     fontProvider,
     fontFamily,
     theme.decoration,
+    locale,
   );
   let disposed = false;
   const release = (retired: boolean) => {
@@ -123,19 +134,19 @@ export function createSkiaPageDecoration({
       paragraph: headerTitle,
       x: margin,
       y: headerY,
-      width: contentWidth,
+      width: decorationWidth,
     },
     footerPage: {
       paragraph: footerPage,
-      x: footerX,
+      x: margin,
       y: height - bottomInset - 12 - footerPage.getHeight(),
-      width: contentWidth,
+      width: decorationWidth,
     },
     footerPercentage: {
       paragraph: footerPercentage,
-      x: footerX,
+      x: margin,
       y: height - bottomInset - 12 - footerPercentage.getHeight(),
-      width: contentWidth,
+      width: decorationWidth,
     },
     dispose() {
       release(false);
@@ -236,6 +247,7 @@ function createDecorationParagraph(
   fontProvider: SkTypefaceFontProvider,
   fontFamily: string,
   color: string,
+  locale: string,
 ): SkParagraph {
   const textStyle: SkTextStyle = {
     color: Skia.Color(color),
@@ -246,7 +258,7 @@ function createDecorationParagraph(
     },
     heightMultiplier: DECORATION_HEIGHT_MULTIPLIER,
     letterSpacing,
-    locale: "zh-CN",
+    locale,
   };
   const paragraphStyle: SkParagraphStyle = {
     ellipsis: "…",

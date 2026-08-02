@@ -97,6 +97,14 @@ describe("reader settings", () => {
     });
   });
 
+  it("preserves the supported cool reader theme", () => {
+    expect(
+      normalizeSettings({
+        appearance: { theme: "cool" },
+      }).appearance.theme,
+    ).toBe("cool");
+  });
+
   it("keeps new font settings and migrates old top-level font settings", () => {
     expect(
       normalizeSettings({

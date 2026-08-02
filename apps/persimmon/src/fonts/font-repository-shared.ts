@@ -10,6 +10,7 @@ import {
 } from "@persimmon/font-core";
 
 import { sha256Hex } from "../library/shared";
+import { translate } from "../i18n";
 import { BUILTIN_FONT_FAMILIES } from "./builtin-fonts";
 import { FontRepositoryError, type InstallFontInput } from "./types";
 
@@ -119,7 +120,7 @@ export async function prepareFontInstall(input: InstallFontInput): Promise<{
   ) {
     throw new FontRepositoryError(
       "integrity-mismatch",
-      "字体下载大小与目录记录不一致。",
+      translate("errors.fonts.integrity"),
     );
   }
   let metadata;
@@ -127,9 +128,13 @@ export async function prepareFontInstall(input: InstallFontInput): Promise<{
     metadata = parseSfntFont(input.bytes);
   } catch (error) {
     if (error instanceof FontParseError) {
-      throw new FontRepositoryError("invalid-font", error.message, {
-        cause: error,
-      });
+      throw new FontRepositoryError(
+        "invalid-font",
+        translate("errors.fonts.invalid"),
+        {
+          cause: error,
+        },
+      );
     }
     throw error;
   }
@@ -137,13 +142,16 @@ export async function prepareFontInstall(input: InstallFontInput): Promise<{
   if (input.expectedSha256 && digest !== input.expectedSha256.toLowerCase()) {
     throw new FontRepositoryError(
       "integrity-mismatch",
-      "字体文件校验失败，下载内容可能已被替换。",
+      translate("errors.fonts.integrity"),
     );
   }
   const familyId =
     input.familyId ?? `${input.source}:${safeId(metadata.familyName)}`;
   if (familyId.startsWith("builtin:")) {
-    throw new FontRepositoryError("invalid-font", "外部字体不能覆盖内置字体。");
+    throw new FontRepositoryError(
+      "invalid-font",
+      translate("errors.fonts.invalid"),
+    );
   }
   const faceId =
     input.faceId ??
@@ -194,7 +202,10 @@ export function mergeInstalledFamily(
   );
   const incomingFace = incoming.faces[0];
   if (!incomingFace) {
-    throw new FontRepositoryError("invalid-font", "字体没有可安装的 face。");
+    throw new FontRepositoryError(
+      "invalid-font",
+      translate("errors.fonts.invalid"),
+    );
   }
   const replaced = existing?.faces.filter(
     (face) =>

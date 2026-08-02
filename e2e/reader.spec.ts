@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { EPUB_COMPILER_VERSION } from "@persimmon/epub-import";
 import { strToU8, zipSync, type Zippable } from "fflate";
 
 const COVER_PNG = Uint8Array.from(
@@ -9,7 +10,17 @@ const COVER_PNG = Uint8Array.from(
 );
 const IS_CI = Boolean(process.env.CI);
 
-function createTestEpub(): Buffer {
+interface TestEpubOptions {
+  readonly creator?: string;
+  readonly identifier?: string;
+  readonly title?: string;
+}
+
+function createTestEpub({
+  creator = "Persimmon Tests",
+  identifier = "urn:persimmon:e2e",
+  title = "E2E 柿子书",
+}: TestEpubOptions = {}): Buffer {
   const paragraphs = Array.from(
     { length: 64 },
     (_, index) =>
@@ -26,9 +37,9 @@ function createTestEpub(): Buffer {
     "EPUB/package.opf": strToU8(`<?xml version="1.0"?>
       <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
         <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-          <dc:identifier>urn:persimmon:e2e</dc:identifier>
-          <dc:title>E2E 柿子书</dc:title>
-          <dc:creator>Persimmon Tests</dc:creator>
+          <dc:identifier>${identifier}</dc:identifier>
+          <dc:title>${title}</dc:title>
+          <dc:creator>${creator}</dc:creator>
           <dc:language>zh-CN</dc:language>
         </metadata>
         <manifest>
@@ -108,15 +119,33 @@ async function waitForReaderReady(page: Page): Promise<void> {
   await expect(readerProgressStatus(page)).toBeVisible({ timeout: 60_000 });
 }
 
-async function importTestEpub(page: Page, fileName: string): Promise<void> {
+async function importTestEpubToShelf(
+  page: Page,
+  fileName: string,
+  options: TestEpubOptions = {},
+): Promise<void> {
   const fileChooserPromise = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "导入 EPUB" }).click();
   const fileChooser = await fileChooserPromise;
   await fileChooser.setFiles({
     name: fileName,
     mimeType: "application/epub+zip",
-    buffer: createTestEpub(),
+    buffer: createTestEpub(options),
   });
+  const title = options.title ?? "E2E 柿子书";
+  const openButton = page.getByRole("button", { name: `打开 ${title}` });
+  await expect(openButton).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("NEW", { exact: true }).last()).toBeVisible();
+}
+
+async function importTestEpub(page: Page, fileName: string): Promise<void> {
+  await importTestEpubToShelf(page, fileName);
+  await openImportedTestBook(page);
+}
+
+async function openImportedTestBook(page: Page): Promise<void> {
+  const openButton = page.getByRole("button", { name: "打开 E2E 柿子书" });
+  await openButton.click();
   await waitForReaderReady(page);
 }
 
@@ -147,6 +176,25 @@ async function turnPageAndWait(
     .not.toBe(before);
 }
 
+async function dragSlider(
+  page: Page,
+  name: string,
+  fromRatio: number,
+  toRatio: number,
+): Promise<void> {
+  const slider = page.getByRole("slider", { name });
+  const bounds = await slider.boundingBox();
+  expect(bounds).not.toBeNull();
+  if (!bounds) {
+    throw new Error(`${name} slider has no layout bounds.`);
+  }
+  const y = bounds.y + bounds.height / 2;
+  await page.mouse.move(bounds.x + bounds.width * fromRatio, y);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width * toRatio, y, { steps: 8 });
+  await page.mouse.up();
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await page.evaluate(async () => {
@@ -164,8 +212,12 @@ test.beforeEach(async ({ page }) => {
 test("searches only title and author and keeps shelf controls in settings", async ({
   page,
 }) => {
-  await importTestEpub(page, "persimmon-search-e2e.epub");
-  await page.getByRole("button", { name: "返回书架" }).click();
+  const longTitle = "一本拥有足够长书名用于验证两行对齐的测试书";
+  await importTestEpubToShelf(page, "persimmon-search-e2e.epub");
+  await importTestEpubToShelf(page, "persimmon-long-title-e2e.epub", {
+    identifier: "urn:persimmon:e2e:long-title",
+    title: longTitle,
+  });
   await page.getByRole("button", { name: "搜索书名或作者" }).click();
   const search = page.getByRole("textbox", { name: "搜索书名或作者" });
   await search.fill("Persimmon");
@@ -176,11 +228,58 @@ test("searches only title and author and keeps shelf controls in settings", asyn
   await search.fill("验证分页");
   await expect(page.getByText("没有匹配的书", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "取消" }).click();
+  await expect(page.getByText("E2E 柿子书", { exact: true })).toBeVisible();
+  await expect(page.getByText(longTitle, { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Persimmon Tests", { exact: true }).first(),
+  ).toBeVisible();
+  const shortFooter = await page
+    .getByRole("button", { name: "更多 E2E 柿子书 操作" })
+    .boundingBox();
+  const longFooter = await page
+    .getByRole("button", { name: `更多 ${longTitle} 操作` })
+    .boundingBox();
+  expect(shortFooter).not.toBeNull();
+  expect(longFooter).not.toBeNull();
+  expect(
+    Math.abs((shortFooter?.y ?? 0) - (longFooter?.y ?? 0)),
+  ).toBeLessThanOrEqual(1);
 
   await page.getByRole("button", { name: "打开设置" }).click();
   await expect(page.getByText("Google Drive", { exact: true })).toBeVisible();
   await page.getByRole("radio", { name: "深色" }).click();
   await expect(page.getByRole("radio", { name: "深色" })).toBeChecked();
+  await expect(page.getByRole("radio", { name: "暖色纸张主题" })).toBeChecked();
+  await page.getByRole("radio", { name: "冷色纸张主题" }).click();
+  await expect(page.getByRole("radio", { name: "冷色纸张主题" })).toBeChecked();
+  const metadataSwitch = page.getByRole("switch", {
+    name: "显示书名和作者",
+  });
+  await expect(metadataSwitch).toBeChecked();
+  await metadataSwitch.click();
+  await page.getByRole("button", { name: "完成" }).click();
+  await expect(page.getByText("E2E 柿子书", { exact: true })).toHaveCount(0);
+  await expect(page.getByText(longTitle, { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Persimmon Tests", { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByRole("button", { name: "更多 E2E 柿子书 操作" }),
+  ).toBeVisible();
+  const hiddenShortFooter = await page
+    .getByRole("button", { name: "更多 E2E 柿子书 操作" })
+    .boundingBox();
+  const hiddenLongFooter = await page
+    .getByRole("button", { name: `更多 ${longTitle} 操作` })
+    .boundingBox();
+  expect(hiddenShortFooter).not.toBeNull();
+  expect(hiddenLongFooter).not.toBeNull();
+  expect(
+    Math.abs((hiddenShortFooter?.y ?? 0) - (hiddenLongFooter?.y ?? 0)),
+  ).toBeLessThanOrEqual(1);
+  await page.getByRole("button", { name: "打开设置" }).click();
+  await expect(page.getByRole("radio", { name: "冷色纸张主题" })).toBeChecked();
+  await expect(metadataSwitch).not.toBeChecked();
   await page.getByRole("button", { name: "完成" }).click();
 });
 
@@ -201,7 +300,7 @@ test("imports, reads, navigates, resumes, and deletes a local EPUB", async ({
     buffer: createTestEpub(),
   });
 
-  await waitForReaderReady(page);
+  await openImportedTestBook(page);
   await expect(page.getByLabel(/^全书 \d+%$/)).toBeVisible();
   await expect(readerPageStatus(page)).toHaveCount(0);
 
@@ -277,13 +376,15 @@ test("persists a two-page layout and hides floating controls while turning", asy
     buffer: createTestEpub(),
   });
 
-  await waitForReaderReady(page);
-  await page.getByRole("button", { name: "打开阅读布局" }).click();
+  await openImportedTestBook(page);
+  await page.getByRole("button", { name: "打开阅读设置" }).click();
   await page.getByRole("radio", { name: "双栏，每屏并排显示两页" }).click();
   await expect(
     page.getByRole("radio", { name: "双栏，每屏并排显示两页" }),
   ).toBeChecked();
-  await page.getByRole("button", { name: "关闭阅读布局" }).click();
+  await expect(
+    page.getByRole("button", { name: "打开阅读设置" }),
+  ).toBeVisible();
 
   await turnPageAndWait(page, "下一页");
   const pageStatus = readerPageStatus(page);
@@ -303,7 +404,7 @@ test("persists a two-page layout and hides floating controls while turning", asy
   await page.waitForTimeout(400);
   await page.getByRole("button", { name: "返回书架" }).click();
   await page.getByRole("button", { name: "打开 E2E 柿子书" }).click();
-  await page.getByRole("button", { name: "打开阅读布局" }).click();
+  await page.getByRole("button", { name: "打开阅读设置" }).click();
   await expect(
     page.getByRole("radio", { name: "双栏，每屏并排显示两页" }),
   ).toBeChecked();
@@ -321,6 +422,7 @@ test("opens a footnote and returns to its exact reference", async ({
     buffer: createTestEpub(),
   });
 
+  await openImportedTestBook(page);
   await page.getByRole("button", { name: "切换阅读工具" }).click();
   await expect(page.getByLabel(/全书第 1 页/)).toBeVisible();
   await page.getByRole("link", { name: "打开脚注 1" }).click();
@@ -421,7 +523,7 @@ test("opens a footnote and returns to its exact reference", async ({
         return books[0]?.compilerVersion;
       }),
     )
-    .toBe(4);
+    .toBe(EPUB_COMPILER_VERSION);
 });
 
 test("customizes typography and persists header progress placement", async ({
@@ -431,16 +533,30 @@ test("customizes typography and persists header progress placement", async ({
   await expect(page.getByLabel(/^全书 \d+%$/)).toBeVisible();
   await expect(readerPageStatus(page)).toHaveCount(0);
 
-  await page.getByRole("button", { name: "打开阅读样式" }).click();
-  await expect(page.getByText("阅读样式", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "打开阅读设置" }).click();
+  await expect(page.getByRole("radio", { name: "页面设置" })).toBeChecked();
+  await expect(page.getByRole("radio", { name: "文字设置" })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "自动颜色模式" })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "暖色纸张主题" })).toBeChecked();
+  await page.getByRole("radio", { name: "冷色纸张主题" }).click();
+  await expect(page.getByRole("radio", { name: "冷色纸张主题" })).toBeChecked();
+  await page.getByRole("radio", { name: "文字设置" }).click();
+  await expect(page.getByRole("radio", { name: "自动颜色模式" })).toHaveCount(
+    0,
+  );
+  await page.getByRole("button", { name: /^选择字体，当前/ }).click();
   await page.getByRole("radio", { name: "无衬线字体" }).click();
-  await page.getByRole("button", { name: "增大字号" }).click();
-  await page.getByRole("button", { name: "增大行距" }).click();
-  await page.getByRole("button", { name: "增大段落间距" }).click();
-  await page.getByRole("button", { name: "增大左右页边距" }).click();
+  await dragSlider(page, "字号", 0.25, 0.3125);
+  await dragSlider(page, "行距", 0.4706, 0.5294);
+  await dragSlider(page, "段落间距", 0.45, 0.5);
+  await dragSlider(page, "左右页边距", 0.2857, 0.3571);
+  await page.getByRole("radio", { name: "页面设置" }).click();
   await page.getByRole("radio", { name: "进度显示在页眉" }).click();
+  await page.getByRole("radio", { name: "文字设置" }).click();
 
-  await expect(page.getByRole("radio", { name: "无衬线字体" })).toBeChecked();
+  await expect(
+    page.getByRole("button", { name: /选择字体，当前无衬线/ }),
+  ).toBeVisible();
   await expect(page.getByRole("slider", { name: "字号" })).toHaveAttribute(
     "aria-valuenow",
     "21",
@@ -456,7 +572,7 @@ test("customizes typography and persists header progress placement", async ({
   await expect(
     page.getByRole("slider", { name: "左右页边距" }),
   ).toHaveAttribute("aria-valuenow", "36");
-  await page.getByRole("button", { name: "关闭阅读样式" }).click();
+  await page.getByRole("button", { name: "关闭阅读设置" }).click();
   await expect(page.getByLabel(/^目录层级：.+$/)).toBeVisible({
     timeout: 15_000,
   });
@@ -485,7 +601,10 @@ test("customizes typography and persists header progress placement", async ({
   await expect(page.locator('[aria-label^="全书第 "]')).toHaveCount(0);
 
   await page.getByRole("button", { name: "切换阅读工具" }).click();
-  await page.getByRole("button", { name: "打开阅读样式" }).click();
+  await page.getByRole("button", { name: "打开阅读设置" }).click();
+  await expect(page.getByRole("radio", { name: "冷色纸张主题" })).toBeChecked();
+  await page.getByRole("radio", { name: "文字设置" }).click();
+  await page.getByRole("button", { name: /^选择字体，当前/ }).click();
   await expect(page.getByRole("radio", { name: "无衬线字体" })).toBeChecked();
   await expect(page.getByRole("slider", { name: "字号" })).toHaveAttribute(
     "aria-valuenow",
@@ -506,14 +625,14 @@ test("keeps the TOC path between the corner toolbar controls", async ({
     mimeType: "application/epub+zip",
     buffer: createTestEpub(),
   });
-  await waitForReaderReady(page);
+  await openImportedTestBook(page);
 
-  await page.getByRole("button", { name: "打开阅读样式" }).click();
+  await page.getByRole("button", { name: "打开阅读设置" }).click();
   await page.getByRole("radio", { name: "进度显示在页眉" }).click();
-  await page.getByRole("button", { name: "关闭阅读样式" }).click();
+  await page.getByRole("button", { name: "关闭阅读设置" }).click();
 
   const breadcrumb = page.getByLabel(
-    "目录层级：第一部：这是一个用于验证工具栏长目录轮换效果的非常非常长的章节标题 › 第一章",
+    "目录层级：第一部：这是一个用于验证工具栏长目录轮换效果的非常非常长的章节标题 – 第一章",
   );
   await expect(breadcrumb).toBeVisible();
   const breadcrumbBox = await breadcrumb.boundingBox();
@@ -523,34 +642,33 @@ test("keeps the TOC path between the corner toolbar controls", async ({
   const tocButtonBox = await page
     .getByRole("button", { name: "打开目录" })
     .boundingBox();
-  const layoutButtonBox = await page
-    .getByRole("button", { name: "打开阅读布局" })
-    .boundingBox();
-  const curveButtonBox = await page
-    .getByRole("button", { name: "调节翻页常量" })
-    .boundingBox();
-  const styleButtonBox = await page
-    .getByRole("button", { name: "打开阅读样式" })
+  const settingsButtonBox = await page
+    .getByRole("button", { name: "打开阅读设置" })
     .boundingBox();
   expect(breadcrumbBox).not.toBeNull();
   expect(shelfButtonBox).not.toBeNull();
   expect(tocButtonBox).not.toBeNull();
-  expect(layoutButtonBox).not.toBeNull();
-  expect(curveButtonBox).not.toBeNull();
-  expect(styleButtonBox).not.toBeNull();
+  expect(settingsButtonBox).not.toBeNull();
+  await expect(page.getByRole("button", { name: "打开阅读布局" })).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole("button", { name: "打开阅读样式" })).toHaveCount(
+    0,
+  );
   expect(breadcrumbBox!.y).toBeLessThan(844 / 2);
+  const breadcrumbCenterY = breadcrumbBox!.y + breadcrumbBox!.height / 2;
+  const shelfButtonCenterY = shelfButtonBox!.y + shelfButtonBox!.height / 2;
+  const tocButtonCenterY = tocButtonBox!.y + tocButtonBox!.height / 2;
+  expect(Math.abs(breadcrumbCenterY - shelfButtonCenterY)).toBeLessThanOrEqual(
+    1,
+  );
+  expect(Math.abs(breadcrumbCenterY - tocButtonCenterY)).toBeLessThanOrEqual(1);
   expect(shelfButtonBox!.x).toBeLessThan(390 / 2);
   expect(shelfButtonBox!.y).toBeLessThan(844 / 2);
   expect(tocButtonBox!.x).toBeGreaterThan(390 / 2);
   expect(tocButtonBox!.y).toBeLessThan(844 / 2);
-  for (const buttonBox of [
-    layoutButtonBox!,
-    curveButtonBox!,
-    styleButtonBox!,
-  ]) {
-    expect(buttonBox.x).toBeGreaterThan(390 / 2);
-    expect(buttonBox.y).toBeGreaterThan(844 / 2);
-  }
+  expect(settingsButtonBox!.x).toBeGreaterThan(390 / 2);
+  expect(settingsButtonBox!.y).toBeGreaterThan(844 / 2);
   await expect(breadcrumb.getByText("1/2", { exact: true })).toBeVisible({
     timeout: 5_000,
   });

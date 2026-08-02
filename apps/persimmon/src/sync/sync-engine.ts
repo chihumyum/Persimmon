@@ -125,6 +125,11 @@ export class SyncEngine {
     publicationProgress?: number,
     updatedAt?: string,
   ): Promise<void> {
+    this.assertInitialized();
+    await this.library.saveProgress(locator, {
+      ...(publicationProgress === undefined ? {} : { publicationProgress }),
+      ...(updatedAt ? { updatedAt } : {}),
+    });
     const state = this.requireState();
     if (!state.knownBooks[locator.bookId]) {
       return;

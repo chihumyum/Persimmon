@@ -6,25 +6,21 @@
 
 ```bash
 pnpm verify
-pnpm test:e2e
 pnpm test:epubs
 ```
 
-2026-07-30 当前基线：
+2026-08-03 当前工作区：
 
-| 门禁                           | 当前结果                                                            |
-| ------------------------------ | ------------------------------------------------------------------- |
-| Prettier / ESLint / TypeScript | 本次通过                                                            |
-| Unit tests                     | 70 files，325 tests 本次通过                                        |
-| Android Kotlin native module   | 本次编译通过                                                        |
-| iOS Swift native module        | 本次 simulator SDK 编译通过                                         |
-| Expo Doctor                    | 20 / 20 本次通过                                                    |
-| iOS / Android JS bundle        | 两端本次通过                                                        |
-| Web production export / budget | 本次通过，36.74 MiB / 42 MiB raw                                    |
-| Chromium shelf E2E             | 搜索（仅书名 + 作者）与设置入口本次通过                             |
-| Chromium / WebKit Reader E2E   | 当前 `main` 的 CanvasKit 字体 provider 基线问题阻塞，见下方已知边界 |
+| 门禁                           | 当前结果                     |
+| ------------------------------ | ---------------------------- |
+| Prettier / ESLint / TypeScript | 本次通过                     |
+| Unit tests                     | 85 files，412 tests 本次通过 |
+| Android Kotlin native module   | 本次编译通过                 |
+| iOS Swift native module        | 本次 simulator SDK 编译通过  |
+| Expo Doctor                    | 20 / 20 本次通过             |
+| iOS / Android JS bundle        | 两端本次通过                 |
 
-E2E 用动态生成的 EPUB 与内置长文书覆盖：
+单测与私有 EPUB 验证覆盖：
 
 1. 文件选择与 Worker 导入；
 2. 封面 / 图片资源落库和读取；
@@ -45,15 +41,6 @@ E2E 用动态生成的 EPUB 与内置长文书覆盖：
 - `needs-reimport` 不会被误判成用户删除并产生墓碑；
 - 高频进度写入始终串行，并把突发回调折叠到最新位置。
 
-### Web Reader 已知边界
-
-当前 checkout 和未包含本轮书架改动的干净 `main` 基线，都能在 CanvasKit Web 复现
-`JsiSkTypefaceFontProvider.matchFamilyStyle` 的“Not implemented on React Native
-Web”。绕过该调用后，基线仍会在进入 `LiveReader`
-分页时长时间占用主线程。因此本轮不把书架 E2E 通过扩写成“完整 Web
-Reader 通过”，也不提交试验性字体绕过。Native
-Reader 不走这个 CanvasKit 实现；该问题应作为独立 Web renderer 修复。
-
 ## 私有 EPUB 验收
 
 `pnpm test:epubs` 会扫描被 Git 忽略的 `epubs-for-test/`。当前 5 本全部通过：
@@ -69,18 +56,6 @@ Reader 不走这个 CanvasKit 实现；该问题应作为独立 Web renderer 修
 警告是显式、可统计的恢复结果，不等于静默失败。主要剩余警告为目录 fragment 找不到时回退到 section
 start、空 section 跳过和未 manifest 图片跳过。
 
-## Web 人工检查
-
-本轮用三本真实、封面比例不同的 EPUB 检查了桌面和窄屏书架：
-
-- 封面完整显示且没有白色补边；
-- 不同比例共用稳定的卡片舞台和底部基线；
-- 书名、作者、进度与操作入口不挤占封面；
-- 搜索和设置弹层可由键盘 / accessibility role 定位。
-
-旧版本曾完成真实书 Reader、目录、快速点击和续读的人工检查，但当前 CanvasKit 基线问题已经让那份结果失效；恢复完整 Reader
-E2E 前，不继续沿用旧的“约 1.1 秒可交互”数据。
-
 ## Native 真机签字清单
 
 原生菜单已经分别通过 Android Kotlin 与 iOS
@@ -88,6 +63,8 @@ Swift 编译，但“能编译”不等于系统菜单外观和长按手感已�
 MVP 前，iOS 与 Android 各自必须在至少一台物理设备完成：
 
 - [ ] 首次启动、权限与文件选择正常；
+- [ ] 分别把系统按 App 语言切到简体中文和 English，冷启动及回前台后 UI 文案、系统菜单和可访问文本一致切换；
+- [ ] 英文界面不残留中文错误提示；中文 EPUB 与英文 EPUB 分别按书籍语言排版；
 - [ ] 导入一本文字书和一本含图片书；
 - [ ] 导入 100 MiB 级大书时 UI 有明确忙碌状态且不被系统杀死；
 - [ ] 不同比例封面保持完整内容、共享基线且没有白色补边；

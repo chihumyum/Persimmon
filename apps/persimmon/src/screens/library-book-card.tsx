@@ -9,11 +9,19 @@ import {
   View,
   type GestureResponderEvent,
 } from "react-native";
+import { useTranslation } from "react-i18next";
 
 import { UiIcon } from "../components/ui-icon";
 import { UiText as Text } from "../components/ui-text";
 import { uiRadius, uiSpace } from "../components/ui-tokens";
+import { formatPercentage } from "../i18n";
 import {
+  libraryCoverCache,
+  libraryCoverCacheKey,
+  type CachedLibraryCover,
+} from "../library/library-cover-cache";
+import {
+  isNewLibraryEntry,
   readingProgressPercent,
   readingStatusForEntry,
 } from "../library/library-view";
@@ -23,26 +31,7 @@ import {
 } from "../library/repository";
 import type { BookMenuRect } from "../../modules/persimmon-selection-menu";
 
-const BASE64_ALPHABET =
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 const DEFAULT_COVER_RATIO = 0.7;
-
-function base64Of(bytes: Uint8Array): string {
-  let output = "";
-  for (let index = 0; index < bytes.length; index += 3) {
-    const first = bytes[index]!;
-    const second = bytes[index + 1];
-    const third = bytes[index + 2];
-    output += BASE64_ALPHABET[first >> 2];
-    output += BASE64_ALPHABET[((first & 0x03) << 4) | ((second ?? 0) >> 4)];
-    output +=
-      second === undefined
-        ? "="
-        : BASE64_ALPHABET[((second & 0x0f) << 2) | ((third ?? 0) >> 6)];
-    output += third === undefined ? "=" : BASE64_ALPHABET[third & 0x3f];
-  }
-  return output;
-}
 
 function fittedCoverSize(
   ratio: number,
@@ -73,27 +62,49 @@ function BookCover({
   readonly maximumWidth: number;
   readonly theme: ReaderTheme;
 }) {
-  const [uri, setUri] = useState<string>();
-  const [ratio, setRatio] = useState(DEFAULT_COVER_RATIO);
+  const { t } = useTranslation();
+  const coverAssetId = entry.coverAssetId;
+  const coverMediaType = entry.coverMediaType;
+  const cacheKey =
+    coverAssetId && coverMediaType
+      ? libraryCoverCacheKey(entry.id, coverAssetId, coverMediaType)
+      : undefined;
+  const [cover, setCover] = useState<CachedLibraryCover | undefined>(() =>
+    cacheKey ? libraryCoverCache.peek(cacheKey) : undefined,
+  );
 
   useEffect(() => {
-    setRatio(DEFAULT_COVER_RATIO);
-    if (!entry.coverAssetId || !entry.coverMediaType) {
-      setUri(undefined);
+    if (!cacheKey || !coverAssetId || !coverMediaType) {
+      setCover(undefined);
       return;
     }
+    const cached = libraryCoverCache.peek(cacheKey);
+    if (cached) {
+      setCover(cached);
+      return;
+    }
+    setCover(undefined);
     let cancelled = false;
-    void libraryRepository
-      .getResource(entry.id, entry.coverAssetId)
-      .then((bytes) => {
-        if (!cancelled && bytes) {
-          setUri(`data:${entry.coverMediaType};base64,${base64Of(bytes)}`);
+    void libraryCoverCache
+      .load(cacheKey, coverMediaType, () =>
+        libraryRepository.getResource(entry.id, coverAssetId),
+      )
+      .then((loadedCover) => {
+        if (!cancelled && loadedCover) {
+          setCover(loadedCover);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCover(undefined);
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [entry.coverAssetId, entry.coverMediaType, entry.id]);
+  }, [cacheKey, coverAssetId, coverMediaType, entry.id]);
+
+  const ratio = cover?.ratio ?? DEFAULT_COVER_RATIO;
 
   const size = useMemo(
     () => fittedCoverSize(ratio, maximumWidth, maximumHeight),
@@ -113,17 +124,25 @@ function BookCover({
             },
       ]}
     >
-      {uri ? (
+      {cover ? (
         <Image
-          accessibilityLabel={`${entry.title} 封面`}
+          accessibilityLabel={t("library.card.coverAccessibility", {
+            title: entry.title,
+          })}
           onLoad={({ nativeEvent }) => {
             const source = nativeEvent.source;
             if (source?.width > 0 && source.height > 0) {
-              setRatio(source.width / source.height);
+              const nextRatio = source.width / source.height;
+              setCover((current) =>
+                current ? { ...current, ratio: nextRatio } : current,
+              );
+              if (cacheKey) {
+                libraryCoverCache.rememberRatio(cacheKey, nextRatio);
+              }
             }
           }}
           resizeMode="contain"
-          source={{ uri }}
+          source={{ uri: cover.uri }}
           style={[styles.coverImage, size]}
         />
       ) : (
@@ -153,6 +172,7 @@ function anchorFromEvent(event: GestureResponderEvent): BookMenuRect {
 }
 
 export interface LibraryBookCardProps {
+  readonly bookMetadataVisible: boolean;
   readonly entry: LibraryBookSummary;
   readonly opening: boolean;
   readonly theme: ReaderTheme;
@@ -165,6 +185,7 @@ export interface LibraryBookCardProps {
 }
 
 export function LibraryBookCard({
+  bookMetadataVisible,
   entry,
   opening,
   theme,
@@ -172,18 +193,20 @@ export function LibraryBookCard({
   onContextMenu,
   onOpen,
 }: LibraryBookCardProps) {
+  const { t } = useTranslation();
   const longPressTriggered = useRef(false);
   const stageHeight = Math.round(width * 1.45);
   const status = readingStatusForEntry(entry);
+  const isNew = isNewLibraryEntry(entry);
   const progressPercent = readingProgressPercent(entry);
   const progressLabel =
     entry.status === "needs-reimport"
-      ? "需要下载"
+      ? t("library.card.needsDownload")
       : status === "finished"
-        ? "已读"
+        ? t("library.card.finished")
         : status === "reading"
-          ? `${progressPercent}%`
-          : "新书";
+          ? formatPercentage(progressPercent)
+          : t("library.card.unread");
 
   const openContextMenu = (event: GestureResponderEvent) => {
     onContextMenu(entry, anchorFromEvent(event));
@@ -192,8 +215,10 @@ export function LibraryBookCard({
   return (
     <View style={[styles.card, { width }]}>
       <Pressable
-        accessibilityHint="长按可查看书籍操作"
-        accessibilityLabel={`打开 ${entry.title}`}
+        accessibilityHint={t("library.card.longPressHint")}
+        accessibilityLabel={t("library.card.openAccessibility", {
+          title: entry.title,
+        })}
         accessibilityRole="button"
         disabled={opening}
         delayLongPress={360}
@@ -249,32 +274,51 @@ export function LibraryBookCard({
         </View>
       </Pressable>
 
-      <Text numberOfLines={2} style={[styles.title, { color: theme.text }]}>
-        {entry.title}
-      </Text>
-      <Text
-        numberOfLines={1}
-        style={[styles.author, { color: theme.secondaryText }]}
+      {bookMetadataVisible ? (
+        <>
+          <Text numberOfLines={2} style={[styles.title, { color: theme.text }]}>
+            {entry.title}
+          </Text>
+          <Text
+            numberOfLines={1}
+            style={[styles.author, { color: theme.secondaryText }]}
+          >
+            {entry.author ?? t("common.unknownAuthor")}
+          </Text>
+        </>
+      ) : null}
+      <View
+        style={[
+          styles.metadataRow,
+          !bookMetadataVisible && styles.metadataRowWithoutBookInfo,
+        ]}
       >
-        {entry.author ?? "未知作者"}
-      </Text>
-      <View style={styles.metadataRow}>
-        <Text
-          numberOfLines={1}
-          style={[
-            styles.progress,
-            {
-              color:
-                entry.status === "needs-reimport"
-                  ? theme.noteAccent
-                  : theme.secondaryText,
-            },
-          ]}
-        >
-          {progressLabel}
-        </Text>
+        {isNew ? (
+          <View style={[styles.newBadge, { backgroundColor: theme.accent }]}>
+            <Text style={[styles.newBadgeText, { color: theme.panelRaised }]}>
+              {t("library.card.new")}
+            </Text>
+          </View>
+        ) : (
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.progress,
+              {
+                color:
+                  entry.status === "needs-reimport"
+                    ? theme.noteAccent
+                    : theme.secondaryText,
+              },
+            ]}
+          >
+            {progressLabel}
+          </Text>
+        )}
         <Pressable
-          accessibilityLabel={`更多 ${entry.title} 操作`}
+          accessibilityLabel={t("library.card.moreAccessibility", {
+            title: entry.title,
+          })}
           accessibilityRole="button"
           hitSlop={8}
           onPress={openContextMenu}
@@ -356,6 +400,9 @@ const styles = StyleSheet.create({
     marginTop: 3,
     minHeight: 28,
   },
+  metadataRowWithoutBookInfo: {
+    marginTop: uiSpace.sm,
+  },
   moreButton: {
     alignItems: "center",
     borderRadius: uiSpace.md,
@@ -363,6 +410,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: -5,
     width: 34,
+  },
+  newBadge: {
+    borderRadius: uiRadius.pill,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  newBadgeText: {
+    fontSize: 9,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+    lineHeight: 12,
   },
   progress: {
     flex: 1,
@@ -375,6 +433,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     lineHeight: 19,
     marginTop: uiSpace.sm + uiSpace.xxs + uiSpace.hairline,
-    minHeight: 19,
+    minHeight: 38,
   },
 });

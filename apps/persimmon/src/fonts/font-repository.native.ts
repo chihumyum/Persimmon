@@ -5,6 +5,7 @@ import {
 } from "@persimmon/font-core";
 import { Directory, File, Paths } from "expo-file-system";
 
+import { translate } from "../i18n";
 import {
   allFontFamilies,
   mergeInstalledFamily,
@@ -65,7 +66,7 @@ class NativeFontRepository implements FontRepository {
     ) {
       throw new FontRepositoryError(
         "storage-full",
-        "设备可用空间不足，无法安全保存字体。",
+        translate("errors.fonts.storageFull"),
       );
     }
     const prepared = await prepareFontInstall(input);
@@ -80,7 +81,7 @@ class NativeFontRepository implements FontRepository {
       staged.delete();
       throw new FontRepositoryError(
         "storage-full",
-        "字体文件没有完整写入设备。",
+        translate("errors.fonts.storageFull"),
       );
     }
     const destination = new File(this.files, storageKey);
@@ -174,7 +175,7 @@ class NativeFontRepository implements FontRepository {
 
   private assertInitialized(): void {
     if (!this.initialized) {
-      throw new Error("FontRepository.initialize() 必须先调用。");
+      throw new Error("FontRepository.initialize() must be called first");
     }
   }
 }

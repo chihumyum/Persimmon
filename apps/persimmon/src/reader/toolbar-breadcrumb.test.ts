@@ -8,13 +8,13 @@ import {
 describe("toolbar breadcrumb", () => {
   it("keeps every non-empty TOC level from outermost to innermost", () => {
     expect(toolbarBreadcrumbLabel([" 第一部 ", "第五章", " 第三节 "])).toBe(
-      "第一部 › 第五章 › 第三节",
+      "第一部 – 第五章 – 第三节",
     );
   });
 
   it("drops empty levels without changing the remaining order", () => {
     expect(toolbarBreadcrumbLabel(["第一部", " ", "第三节"])).toBe(
-      "第一部 › 第三节",
+      "第一部 – 第三节",
     );
   });
 

@@ -4,7 +4,7 @@ import { Platform } from "react-native";
 
 export interface PickedEpub {
   fileName: string;
-  bytes: Uint8Array;
+  readBytes: () => Promise<Uint8Array>;
 }
 
 async function bytesOf(
@@ -22,23 +22,19 @@ async function bytesOf(
   return new ExpoFile(asset.uri).bytes();
 }
 
-export async function pickAndImportEpub(): Promise<PickedEpub | null> {
+export async function pickEpubs(): Promise<readonly PickedEpub[]> {
   const picked = await DocumentPicker.getDocumentAsync({
     type: "application/epub+zip",
-    multiple: false,
+    multiple: true,
     copyToCacheDirectory: true,
     base64: false,
   });
   if (picked.canceled) {
-    return null;
+    return [];
   }
 
-  const asset = picked.assets[0];
-  if (!asset) {
-    return null;
-  }
-  return {
+  return picked.assets.map((asset) => ({
     fileName: asset.name,
-    bytes: await bytesOf(asset),
-  };
+    readBytes: () => bytesOf(asset),
+  }));
 }

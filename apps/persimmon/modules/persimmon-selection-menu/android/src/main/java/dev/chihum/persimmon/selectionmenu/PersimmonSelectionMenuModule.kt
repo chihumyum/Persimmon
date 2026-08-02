@@ -147,7 +147,7 @@ class PersimmonSelectionMenuModule : Module() {
     }.runOnQueue(Queues.MAIN)
 
     AsyncFunction("showBookMenu") {
-      syncLabel: String,
+      labels: List<String>,
       canDelete: Boolean,
       x: Double,
       y: Double,
@@ -159,6 +159,9 @@ class PersimmonSelectionMenuModule : Module() {
         promise.resolve(null)
         return@AsyncFunction
       }
+      val detailsLabel = labels.getOrElse(0) { "Details" }
+      val syncLabel = labels.getOrElse(1) { "Sync" }
+      val deleteLabel = labels.getOrElse(2) { "Delete" }
       val decorView = activity.window.decorView
       val generation = ++presentationGeneration
       decorView.post {
@@ -184,7 +187,7 @@ class PersimmonSelectionMenuModule : Module() {
                 Menu.NONE,
                 MENU_ITEM_BOOK_DETAILS,
                 Menu.NONE,
-                activity.getString(R.string.persimmon_book_details)
+                detailsLabel
               )
               .setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
             if (syncLabel.isNotBlank()) {
@@ -198,7 +201,7 @@ class PersimmonSelectionMenuModule : Module() {
                   Menu.NONE,
                   MENU_ITEM_BOOK_DELETE,
                   Menu.NONE,
-                  activity.getString(R.string.persimmon_book_delete)
+                  deleteLabel
                 )
                 .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
             }

@@ -8,6 +8,7 @@ import Animated, {
   withRepeat,
   withTiming,
 } from "react-native-reanimated";
+import { useTranslation } from "react-i18next";
 
 import { UiText as Text } from "../components/ui-text";
 import { READER_UI_FONT_FAMILY } from "./reader-ui-typography";
@@ -29,6 +30,7 @@ export function ToolbarBreadcrumbCarousel({
   color = "#6e6259",
   labels,
 }: ToolbarBreadcrumbCarouselProps) {
+  const { t } = useTranslation();
   const fullLabel = useMemo(() => toolbarBreadcrumbLabel(labels), [labels]);
   const estimatedFullLabelWidth = useMemo(
     () => estimatedToolbarBreadcrumbWidth(fullLabel),
@@ -73,7 +75,9 @@ export function ToolbarBreadcrumbCarousel({
   return (
     <View
       accessible
-      accessibilityLabel={`目录层级：${fullLabel}`}
+      accessibilityLabel={t("reader.toolbar.breadcrumbAccessibility", {
+        label: fullLabel,
+      })}
       accessibilityRole="header"
       onLayout={(event) =>
         setAvailableWidth(

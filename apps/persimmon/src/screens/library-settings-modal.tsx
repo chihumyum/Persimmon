@@ -10,46 +10,40 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTranslation } from "react-i18next";
 
 import { UiButton } from "../components/ui-button";
 import { UiModalSurface } from "../components/ui-modal-surface";
+import { ReaderThemeSelector } from "../components/reader-theme-selector";
 import { UiSegmentedControl } from "../components/ui-segmented-control";
 import { uiBackdropColor } from "../components/ui-shadow";
 import { UiText as Text } from "../components/ui-text";
 import { uiRadius, uiSpace } from "../components/ui-tokens";
-import type { ReaderColorMode } from "../library/types";
+import { formatTime, translate } from "../i18n";
+import type { ReaderColorMode, ReaderThemeName } from "../library/types";
 import type { GoogleDriveSyncStatus } from "../sync/types";
-
-const COLOR_MODE_OPTIONS: readonly {
-  readonly value: ReaderColorMode;
-  readonly label: string;
-  readonly accessibilityLabel: string;
-}[] = [
-  { value: "system", label: "自动", accessibilityLabel: "自动颜色模式" },
-  { value: "light", label: "浅色", accessibilityLabel: "浅色模式" },
-  { value: "dark", label: "深色", accessibilityLabel: "深色模式" },
-];
 
 export function syncDescription(status: GoogleDriveSyncStatus): string {
   switch (status.phase) {
     case "loading":
-      return "正在读取同步状态…";
+      return translate("sync.description.loading");
     case "unconfigured":
       return status.message;
     case "disconnected":
-      return "连接后会自动上传和下载 EPUB，并用稳定文本位置同步阅读进度。";
+      return translate("sync.description.disconnected");
     case "authorizing":
-      return "正在等待 Google 授权…";
+      return translate("sync.description.authorizing");
     case "syncing":
       return status.accountEmail
-        ? `正在与 ${status.accountEmail} 同步书架…`
-        : "正在同步书架与阅读进度…";
+        ? translate("sync.description.syncingAccount", {
+            accountEmail: status.accountEmail,
+          })
+        : translate("sync.description.syncing");
     case "idle": {
-      const time = new Date(status.lastSyncedAt).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
+      return translate("sync.description.idle", {
+        account: status.accountEmail ?? "Google Drive",
+        time: formatTime(new Date(status.lastSyncedAt)),
       });
-      return `${status.accountEmail ?? "Google Drive"} · ${time} 已同步`;
     }
     case "reauthorization-required":
     case "error":
@@ -58,33 +52,59 @@ export function syncDescription(status: GoogleDriveSyncStatus): string {
 }
 
 export interface LibrarySettingsModalProps {
+  readonly bookMetadataVisible: boolean;
   readonly colorMode: ReaderColorMode;
-  readonly syncBannerVisible: boolean;
+  readonly readerThemeName: ReaderThemeName;
   readonly syncStatus: GoogleDriveSyncStatus;
   readonly theme: ReaderTheme;
   readonly visible: boolean;
+  readonly onBookMetadataVisibleChange: (visible: boolean) => void;
   readonly onClose: () => void;
   readonly onColorModeChange: (mode: ReaderColorMode) => void;
   readonly onConnectGoogleDrive: () => void;
   readonly onDisconnectGoogleDrive: () => void;
-  readonly onSyncBannerVisibleChange: (visible: boolean) => void;
   readonly onSyncNow: () => void;
+  readonly onThemeChange: (theme: ReaderThemeName) => void;
 }
 
 export function LibrarySettingsModal({
+  bookMetadataVisible,
   colorMode,
-  syncBannerVisible,
+  readerThemeName,
   syncStatus,
   theme,
   visible,
+  onBookMetadataVisibleChange,
   onClose,
   onColorModeChange,
   onConnectGoogleDrive,
   onDisconnectGoogleDrive,
-  onSyncBannerVisibleChange,
   onSyncNow,
+  onThemeChange,
 }: LibrarySettingsModalProps) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const colorModeOptions: readonly {
+    readonly value: ReaderColorMode;
+    readonly label: string;
+    readonly accessibilityLabel: string;
+  }[] = [
+    {
+      value: "system",
+      label: t("appearance.colorModes.system"),
+      accessibilityLabel: t("appearance.colorModes.systemAccessibility"),
+    },
+    {
+      value: "light",
+      label: t("appearance.colorModes.light"),
+      accessibilityLabel: t("appearance.colorModes.lightAccessibility"),
+    },
+    {
+      value: "dark",
+      label: t("appearance.colorModes.dark"),
+      accessibilityLabel: t("appearance.colorModes.darkAccessibility"),
+    },
+  ];
   const busy =
     syncStatus.phase === "loading" ||
     syncStatus.phase === "authorizing" ||
@@ -118,7 +138,7 @@ export function LibrarySettingsModal({
         ]}
       >
         <Pressable
-          accessibilityLabel="关闭设置"
+          accessibilityLabel={t("library.settings.closeAccessibility")}
           accessibilityRole="button"
           onPress={onClose}
           style={StyleSheet.absoluteFill}
@@ -126,11 +146,11 @@ export function LibrarySettingsModal({
         <UiModalSurface theme={theme}>
           <View style={styles.header}>
             <Text variant="modalTitle" style={{ color: theme.text }}>
-              设置
+              {t("common.settings")}
             </Text>
             <UiButton
               compact
-              label="完成"
+              label={t("common.done")}
               onPress={onClose}
               textTone="accent"
               theme={theme}
@@ -144,15 +164,77 @@ export function LibrarySettingsModal({
           >
             <View style={styles.section}>
               <Text style={[styles.sectionTitle, { color: theme.controlText }]}>
-                外观
+                {t("appearance.section")}
               </Text>
-              <UiSegmentedControl
-                accessibilityLabel="应用颜色模式"
-                options={COLOR_MODE_OPTIONS}
-                theme={theme}
-                value={colorMode}
-                onChange={onColorModeChange}
-              />
+              <View style={styles.appearanceControl}>
+                <Text
+                  style={[styles.appearanceLabel, { color: theme.controlText }]}
+                >
+                  {t("appearance.colorMode")}
+                </Text>
+                <UiSegmentedControl
+                  accessibilityLabel={t("appearance.colorModeGroup")}
+                  options={colorModeOptions}
+                  theme={theme}
+                  value={colorMode}
+                  onChange={onColorModeChange}
+                />
+              </View>
+              <View style={styles.appearanceControl}>
+                <Text
+                  style={[styles.appearanceLabel, { color: theme.controlText }]}
+                >
+                  {t("appearance.theme")}
+                </Text>
+                <ReaderThemeSelector
+                  accessibilityLabel={t("appearance.libraryThemeGroup")}
+                  theme={theme}
+                  value={readerThemeName}
+                  onChange={onThemeChange}
+                />
+              </View>
+              <View
+                style={[
+                  styles.preferenceRow,
+                  {
+                    backgroundColor: theme.panelRaised,
+                    borderColor: theme.border,
+                  },
+                ]}
+              >
+                <View style={styles.preferenceCopy}>
+                  <Text
+                    style={[
+                      styles.preferenceTitle,
+                      { color: theme.controlText },
+                    ]}
+                  >
+                    {t("library.settings.showMetadata")}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.preferenceBody,
+                      { color: theme.secondaryText },
+                    ]}
+                  >
+                    {t("library.settings.showMetadataDescription")}
+                  </Text>
+                </View>
+                <Switch
+                  accessibilityLabel={t(
+                    "library.settings.showMetadataAccessibility",
+                  )}
+                  onValueChange={onBookMetadataVisibleChange}
+                  thumbColor={
+                    Platform.OS === "android" ? theme.panelRaised : undefined
+                  }
+                  trackColor={{
+                    false: theme.panelMuted,
+                    true: theme.accent,
+                  }}
+                  value={bookMetadataVisible}
+                />
+              </View>
             </View>
 
             <View style={[styles.divider, { backgroundColor: theme.border }]} />
@@ -179,8 +261,8 @@ export function LibrarySettingsModal({
                   <UiButton
                     label={
                       syncStatus.phase === "disconnected"
-                        ? "连接 Google Drive"
-                        : "重新连接"
+                        ? t("sync.actions.connect")
+                        : t("sync.actions.reconnect")
                     }
                     onPress={onConnectGoogleDrive}
                     theme={theme}
@@ -189,61 +271,20 @@ export function LibrarySettingsModal({
                 ) : null}
                 {canSync ? (
                   <UiButton
-                    label="立即同步"
+                    label={t("sync.actions.syncNow")}
                     onPress={onSyncNow}
                     theme={theme}
                   />
                 ) : null}
                 {canDisconnect ? (
                   <UiButton
-                    label="断开连接"
+                    label={t("sync.actions.disconnect")}
                     onPress={onDisconnectGoogleDrive}
                     textTone="muted"
                     theme={theme}
                     variant="ghost"
                   />
                 ) : null}
-              </View>
-
-              <View
-                style={[
-                  styles.preferenceRow,
-                  {
-                    backgroundColor: theme.panelRaised,
-                    borderColor: theme.border,
-                  },
-                ]}
-              >
-                <View style={styles.preferenceCopy}>
-                  <Text
-                    style={[
-                      styles.preferenceTitle,
-                      { color: theme.controlText },
-                    ]}
-                  >
-                    在书架显示同步提示
-                  </Text>
-                  <Text
-                    style={[
-                      styles.preferenceBody,
-                      { color: theme.secondaryText },
-                    ]}
-                  >
-                    关闭后仍会在后台自动同步
-                  </Text>
-                </View>
-                <Switch
-                  accessibilityLabel="在书架显示同步提示"
-                  onValueChange={onSyncBannerVisibleChange}
-                  thumbColor={
-                    Platform.OS === "android" ? theme.panelRaised : undefined
-                  }
-                  trackColor={{
-                    false: theme.panelMuted,
-                    true: theme.accent,
-                  }}
-                  value={syncBannerVisible}
-                />
               </View>
             </View>
           </ScrollView>
@@ -259,6 +300,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 9,
+  },
+  appearanceControl: {
+    gap: 6,
+  },
+  appearanceLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.3,
   },
   content: {
     gap: 20,

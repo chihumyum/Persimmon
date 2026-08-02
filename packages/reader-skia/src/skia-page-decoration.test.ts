@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createSkiaPageDecoration } from "./skia-page-decoration";
 
 const mocks = vi.hoisted(() => {
+  const paragraphStyles: unknown[] = [];
   const paragraphs: Array<{
     dispose: ReturnType<typeof vi.fn>;
     getHeight: ReturnType<typeof vi.fn>;
@@ -22,7 +23,7 @@ const mocks = vi.hoisted(() => {
       dispose: vi.fn(),
     };
   };
-  return { makeBuilder, paragraphs };
+  return { makeBuilder, paragraphStyles, paragraphs };
 });
 
 vi.mock("react-native", () => ({ Platform: { OS: "android" } }));
@@ -32,7 +33,10 @@ vi.mock("@shopify/react-native-skia", () => ({
   Skia: {
     Color: (color: string) => color,
     ParagraphBuilder: {
-      Make: () => mocks.makeBuilder(),
+      Make: (style: unknown) => {
+        mocks.paragraphStyles.push(style);
+        return mocks.makeBuilder();
+      },
     },
   },
   TextAlign: {
@@ -43,6 +47,7 @@ vi.mock("@shopify/react-native-skia", () => ({
 
 describe("native page-decoration ownership", () => {
   beforeEach(() => {
+    mocks.paragraphStyles.length = 0;
     mocks.paragraphs.length = 0;
   });
 
@@ -101,7 +106,36 @@ describe("native page-decoration ownership", () => {
     }
   });
 
-  it("places one spread header on the left page and one footer on the right", () => {
+  it("centers the single-page header and footer on the viewport axis", () => {
+    const decoration = createSkiaPageDecoration({
+      model: {
+        sectionTitle: "章节",
+        pageLabel: "5",
+        percentageLabel: "42%",
+        pageNumber: 5,
+        pageCount: 12,
+        percentage: 42,
+      },
+      fontProvider: {} as SkTypefaceFontProvider,
+      fontFamily: "Noto Serif SC",
+      width: 400,
+      height: 800,
+      horizontalMargin: 24,
+      topInset: 0,
+      bottomInset: 0,
+    });
+
+    expect(decoration.headerTitle).toMatchObject({ x: 24, width: 352 });
+    expect(decoration.footerPage).toMatchObject({ x: 24, width: 352 });
+    expect(decoration.footerPercentage).toMatchObject({ x: 24, width: 352 });
+    expect(mocks.paragraphStyles).toEqual([
+      expect.objectContaining({ textAlign: "center" }),
+      expect.objectContaining({ textAlign: "center" }),
+      expect.objectContaining({ textAlign: "center" }),
+    ]);
+  });
+
+  it("centers one header and footer across the complete spread", () => {
     const decoration = createSkiaPageDecoration({
       model: {
         sectionTitle: "章节",
@@ -121,8 +155,13 @@ describe("native page-decoration ownership", () => {
       bottomInset: 0,
     });
 
-    expect(decoration.headerTitle).toMatchObject({ x: 24, width: 352 });
-    expect(decoration.footerPage).toMatchObject({ x: 424, width: 352 });
-    expect(decoration.footerPercentage).toMatchObject({ x: 424, width: 352 });
+    expect(decoration.headerTitle).toMatchObject({ x: 24, width: 752 });
+    expect(decoration.footerPage).toMatchObject({ x: 24, width: 752 });
+    expect(decoration.footerPercentage).toMatchObject({ x: 24, width: 752 });
+    expect(mocks.paragraphStyles).toEqual([
+      expect.objectContaining({ textAlign: "center" }),
+      expect.objectContaining({ textAlign: "center" }),
+      expect.objectContaining({ textAlign: "center" }),
+    ]);
   });
 });

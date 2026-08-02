@@ -15,7 +15,6 @@ import {
   ActivityIndicator,
   Alert,
   AppState,
-  Platform,
   StyleSheet,
   View,
 } from "react-native";
@@ -25,6 +24,9 @@ import { downloadFontFamily } from "./fonts/download-font";
 import { DOWNLOADABLE_FONT_CATALOG } from "./fonts/downloadable-font-catalog";
 import { fontRepository } from "./fonts/font-repository";
 import { FontRepositoryError } from "./fonts/types";
+import { translate } from "./i18n";
+import { useSystemLanguage } from "./i18n/use-system-language";
+import { importEpubBatch, type FailedEpubImport } from "./import-epub-batch";
 import {
   libraryRepository,
   type LibraryBookSummary,
@@ -39,8 +41,9 @@ import {
   type ReaderPageTurnAnimation,
   type ReaderPageTurnTuning,
   type ReaderSettings,
+  type ReaderThemeName,
 } from "./library/types";
-import { pickAndImportEpub } from "./pick-epub";
+import { pickEpubs } from "./pick-epub";
 import { pickLocalFont } from "./pick-font";
 import { useSystemReaderColorScheme } from "./reader/reader-color-scheme";
 import { resolveReaderColorScheme } from "./reader/reader-color-mode";
@@ -56,22 +59,61 @@ function userFacingError(error: unknown): string {
   if (error instanceof EpubImportError) {
     switch (error.code) {
       case "unsupported-fixed-layout":
-        return "暂不支持固定版式 EPUB；第一版专注可重排小说。";
+        return translate("errors.epub.fixedLayout");
       case "archive-limit-exceeded":
-        return "这本书超过第一版的安全导入限制。";
+        return translate("errors.epub.archiveLimit");
       case "unsafe-archive-path":
-        return "EPUB 内含不安全路径，已拒绝导入。";
+        return translate("errors.epub.unsafePath");
       default:
-        return `无法读取这本 EPUB：${error.message}`;
+        return translate("errors.epub.unreadable", { message: error.message });
     }
   }
   if (error instanceof LibraryError) {
-    return error.message;
+    switch (error.code) {
+      case "book-not-found":
+        return translate("errors.library.bookNotFound");
+      case "needs-reimport":
+        return translate("errors.library.needsReimport");
+      case "corrupt-storage":
+        return translate("errors.library.corruptStorage");
+      case "storage-full":
+        return translate("errors.library.storageFull");
+    }
   }
   if (error instanceof FontRepositoryError) {
-    return error.message;
+    switch (error.code) {
+      case "font-not-found":
+        return translate("errors.fonts.notFound");
+      case "invalid-font":
+        return translate("errors.fonts.invalid");
+      case "integrity-mismatch":
+        return translate("errors.fonts.integrity");
+      case "storage-full":
+        return translate("errors.fonts.storageFull");
+    }
   }
-  return error instanceof Error ? error.message : "发生未知错误。";
+  return error instanceof Error ? error.message : translate("errors.unknown");
+}
+
+function importFailureMessage(
+  failures: readonly FailedEpubImport[],
+  importedCount: number,
+): string {
+  const summary = importedCount
+    ? translate("errors.import.withImported", {
+        count: failures.length,
+        importedCount,
+      })
+    : translate("errors.import.failed", { count: failures.length });
+  const details = failures
+    .map(({ error, fileName }) =>
+      translate("errors.import.detail", {
+        fileName,
+        message: userFacingError(error),
+      }),
+    )
+    .join("\n");
+  return `${summary}\n${details}`;
 }
 
 function LoadingScreen({ theme }: { readonly theme: ReaderTheme }) {
@@ -85,6 +127,7 @@ function LoadingScreen({ theme }: { readonly theme: ReaderTheme }) {
 }
 
 export function PersimmonApp() {
+  useSystemLanguage();
   const systemColorScheme = useSystemReaderColorScheme();
   const [readerUiFontLoaded, readerUiFontError] = useFonts({
     [READER_UI_FONT_FAMILY]: NotoSansSC_400Regular,
@@ -111,10 +154,6 @@ export function PersimmonApp() {
   );
   const progressWriter = useRef<ProgressWriteQueue | undefined>(undefined);
   progressWriter.current ??= new ProgressWriteQueue(async (snapshot) => {
-    await libraryRepository.saveProgress(snapshot.progress.locator, {
-      publicationProgress: snapshot.progress.publicationProgress,
-      updatedAt: snapshot.updatedAt,
-    });
     await googleDriveSyncService.noteProgress(
       snapshot.progress.locator,
       snapshot.progress.publicationProgress,
@@ -144,7 +183,11 @@ export function PersimmonApp() {
       .then(() => fontRepository.listFamilies())
       .catch((fontError: unknown) => {
         if (!cancelled) {
-          setError(`无法读取本地字体：${userFacingError(fontError)}`);
+          setError(
+            translate("errors.fonts.loadFailed", {
+              message: userFacingError(fontError),
+            }),
+          );
         }
         return BUILTIN_FONT_FAMILIES;
       });
@@ -159,7 +202,11 @@ export function PersimmonApp() {
       })
       .catch((loadError: unknown) => {
         if (!cancelled) {
-          setError(`无法读取本地书架：${userFacingError(loadError)}`);
+          setError(
+            translate("errors.library.loadFailed", {
+              message: userFacingError(loadError),
+            }),
+          );
         }
       })
       .finally(() => {
@@ -257,23 +304,37 @@ export function PersimmonApp() {
     setError(null);
     setImporting(true);
     try {
-      const picked = await pickAndImportEpub();
-      if (!picked) {
+      const pickedEpubs = await pickEpubs();
+      if (pickedEpubs.length === 0) {
         return;
       }
-      const entry = await libraryRepository.importBook({
-        bytes: picked.bytes,
-        fileName: picked.fileName,
-      });
-      await googleDriveSyncService.noteBookImported(entry);
-      await refreshLibrary();
-      await openBook(entry.id);
+      const result = await importEpubBatch(pickedEpubs, (input) =>
+        libraryRepository.importBook(input),
+      );
+      for (const imported of result.imported) {
+        try {
+          await googleDriveSyncService.noteBookImported(imported.value);
+        } catch {
+          setError(
+            translate("errors.import.syncRecordFailed", {
+              fileName: imported.fileName,
+              message: translate("sync.errors.failed"),
+            }),
+          );
+        }
+      }
+      if (result.imported.length > 0) {
+        await refreshLibrary();
+      }
+      if (result.failures.length > 0) {
+        setError(importFailureMessage(result.failures, result.imported.length));
+      }
     } catch (importError: unknown) {
       setError(userFacingError(importError));
     } finally {
       setImporting(false);
     }
-  }, [openBook, refreshLibrary]);
+  }, [refreshLibrary]);
 
   const importFont = useCallback(async (): Promise<string | undefined> => {
     setError(null);
@@ -302,7 +363,7 @@ export function PersimmonApp() {
       if (!family) {
         throw new FontRepositoryError(
           "font-not-found",
-          "下载字体目录中没有这个字体。",
+          translate("errors.fonts.catalogNotFound"),
         );
       }
       try {
@@ -330,7 +391,7 @@ export function PersimmonApp() {
     try {
       await progressWriter.current?.flush();
     } catch {
-      setError("阅读进度保存失败，将自动重试。");
+      setError(translate("errors.library.progressSaveFailed"));
       if (progressTimer.current) {
         clearTimeout(progressTimer.current);
       }
@@ -390,7 +451,7 @@ export function PersimmonApp() {
     settingsTimer.current = setTimeout(() => {
       libraryRepository
         .saveSettings(next)
-        .catch(() => setError("阅读设置保存失败。"));
+        .catch(() => setError(translate("errors.library.settingsSaveFailed")));
     }, 250);
   }, []);
   const updateAppearance = useCallback(
@@ -431,6 +492,12 @@ export function PersimmonApp() {
     },
     [updateAppearance],
   );
+  const updateTheme = useCallback(
+    (theme: ReaderThemeName) => {
+      updateAppearance({ ...readerSettingsRef.current.appearance, theme });
+    },
+    [updateAppearance],
+  );
   const updateLayout = useCallback(
     (layout: ReaderSettings["layout"]) => {
       updateReaderSettings({ layout });
@@ -455,23 +522,30 @@ export function PersimmonApp() {
       const remove = async () => {
         try {
           await libraryRepository.removeBook(entry.id);
-          await googleDriveSyncService.noteBookDeleted(entry.id);
-          await refreshLibrary();
         } catch (deleteError: unknown) {
           setError(userFacingError(deleteError));
+          return;
         }
+        try {
+          await googleDriveSyncService.noteBookDeleted(entry.id);
+        } catch {
+          setError(translate("sync.errors.failed"));
+        }
+        await refreshLibrary();
       };
 
-      if (Platform.OS === "web" && typeof globalThis.confirm === "function") {
-        if (globalThis.confirm(`确定删除《${entry.title}》及其本地资源吗？`)) {
-          void remove();
-        }
-        return;
-      }
-      Alert.alert("删除书籍", `确定删除《${entry.title}》及其本地资源吗？`, [
-        { text: "取消", style: "cancel" },
-        { text: "删除", style: "destructive", onPress: () => void remove() },
-      ]);
+      Alert.alert(
+        translate("errors.library.deleteTitle"),
+        translate("errors.library.deleteConfirmation", { title: entry.title }),
+        [
+          { text: translate("common.cancel"), style: "cancel" },
+          {
+            text: translate("common.delete"),
+            style: "destructive",
+            onPress: () => void remove(),
+          },
+        ],
+      );
     },
     [refreshLibrary],
   );
@@ -485,7 +559,7 @@ export function PersimmonApp() {
       (candidate) => candidate.id === entry.id,
     );
     if (entry.status === "needs-reimport" && refreshed?.status !== "ready") {
-      setError("云端没有可用于修复这本书的 EPUB，请重新导入原文件。");
+      setError(translate("errors.library.cloudRepairUnavailable"));
     }
   }, []);
 
@@ -526,6 +600,7 @@ export function PersimmonApp() {
     <LibraryScreen
       entries={entries}
       colorMode={readerSettings.appearance.colorMode}
+      readerThemeName={readerSettings.appearance.theme}
       error={error}
       importing={importing}
       openingBookId={openingBookId}
@@ -548,6 +623,7 @@ export function PersimmonApp() {
       onSyncNow={() => {
         void googleDriveSyncService.syncNow();
       }}
+      onThemeChange={updateTheme}
     />
   );
 }

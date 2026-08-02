@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 
 import type { LibraryBookSummary } from "./types";
 import {
+  arrangeLibraryGridEntries,
+  isNewLibraryEntry,
   readingProgressPercent,
   readingStatusForEntry,
   searchLibraryEntries,
@@ -51,6 +53,21 @@ describe("library view state", () => {
     expect(readingProgressPercent(finished)).toBe(100);
   });
 
+  it("marks only ready books without a saved reading position as new", () => {
+    expect(isNewLibraryEntry(entry("new"))).toBe(true);
+    expect(
+      isNewLibraryEntry(
+        entry("opened", {
+          locator: { ...LOCATOR, bookId: "opened" },
+          readingProgress: 0,
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      isNewLibraryEntry(entry("legacy", { status: "needs-reimport" })),
+    ).toBe(false);
+  });
+
   it("filters by state and sorts read books before unread books by recency", () => {
     const entries = [
       entry("new-unread", { addedAt: "2026-07-27T10:00:00.000Z" }),
@@ -71,6 +88,16 @@ describe("library view state", () => {
     ).toEqual(["latest-read", "older-read", "new-unread"]);
     expect(
       selectLibraryEntries(entries, "reading", "recent").map(({ id }) => id),
+    ).toEqual(["latest-read", "older-read"]);
+
+    const gridEntries = arrangeLibraryGridEntries(entries, "reading", "recent");
+    expect(gridEntries.map(({ entry }) => entry.id)).toEqual([
+      "latest-read",
+      "older-read",
+      "new-unread",
+    ]);
+    expect(
+      gridEntries.filter(({ visible }) => visible).map(({ entry }) => entry.id),
     ).toEqual(["latest-read", "older-read"]);
   });
 

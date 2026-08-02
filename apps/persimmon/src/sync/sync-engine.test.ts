@@ -257,6 +257,154 @@ describe("SyncEngine", () => {
     );
   });
 
+  it("keeps progress recorded after a sync durable across restart", async () => {
+    const remoteLocator: BookLocator = {
+      bookId: BOOK_ID,
+      revisionId: REVISION_ID,
+      position: { sectionId: "s1", blockId: "remote", offset: 12 },
+    };
+    const activeReaderLocator: BookLocator = {
+      bookId: BOOK_ID,
+      revisionId: REVISION_ID,
+      position: { sectionId: "s2", blockId: "local", offset: 84 },
+    };
+    const remoteDocument: DeviceSyncDocument = {
+      schemaVersion: SYNC_SCHEMA_VERSION,
+      deviceId: "remote-device",
+      generation: 2,
+      books: {
+        [BOOK_ID]: {
+          kind: "upsert",
+          clock: { wallTime: 100, counter: 0, deviceId: "remote-device" },
+          bookId: BOOK_ID,
+          revisionId: REVISION_ID,
+          fileName: "cloud.epub",
+          title: "Cloud Book",
+          addedAt: "2026-01-01T00:00:00.000Z",
+          byteLength: EPUB_BYTES.byteLength,
+        },
+      },
+      progress: {
+        [BOOK_ID]: {
+          clock: { wallTime: 200, counter: 0, deviceId: "remote-device" },
+          locator: remoteLocator,
+          publicationProgress: 0.2,
+        },
+      },
+    };
+    const snapshot: CloudSyncSnapshot = {
+      account: { id: "account" },
+      deviceDocuments: [
+        { fileId: "remote-state-file", document: remoteDocument },
+      ],
+    };
+    const library = new FakeLibrary();
+    const entry = summary();
+    library.books.set(entry.id, entry);
+    library.bytes.set(entry.id, EPUB_BYTES);
+    const store = new MemoryStateStore(emptyLocalState());
+    let now = 1_000;
+    const engine = new SyncEngine(
+      library,
+      store,
+      async () => ABC_DIGEST,
+      () => now,
+    );
+
+    await engine.initialize();
+    await engine.sync(new FakeCloud(snapshot));
+    now = 2_000;
+    await engine.noteProgress(
+      activeReaderLocator,
+      0.84,
+      new Date(now).toISOString(),
+    );
+
+    expect((await library.listBooks())[0]).toMatchObject({
+      locator: activeReaderLocator,
+      readingProgress: 0.84,
+    });
+
+    const restarted = new SyncEngine(
+      library,
+      store,
+      async () => ABC_DIGEST,
+      () => 3_000,
+    );
+    await restarted.initialize();
+    const afterRestartCloud = new FakeCloud(snapshot);
+    await restarted.sync(afterRestartCloud);
+
+    expect((await library.listBooks())[0]).toMatchObject({
+      locator: activeReaderLocator,
+      readingProgress: 0.84,
+    });
+    expect(afterRestartCloud.savedDocument?.progress[BOOK_ID]).toMatchObject({
+      locator: activeReaderLocator,
+      publicationProgress: 0.84,
+    });
+  });
+
+  it("recovers a locally written position when sync registration was interrupted", async () => {
+    const remoteLocator: BookLocator = {
+      bookId: BOOK_ID,
+      revisionId: REVISION_ID,
+      position: { sectionId: "s1", blockId: "remote", offset: 10 },
+    };
+    const activeReaderLocator: BookLocator = {
+      bookId: BOOK_ID,
+      revisionId: REVISION_ID,
+      position: { sectionId: "s3", blockId: "local", offset: 90 },
+    };
+    const library = new FakeLibrary();
+    library.books.set(BOOK_ID, {
+      ...summary(activeReaderLocator),
+      readingProgress: 0.9,
+      lastReadAt: new Date(2_000).toISOString(),
+    });
+    library.bytes.set(BOOK_ID, EPUB_BYTES);
+    const store = new MemoryStateStore({
+      ...emptyLocalState(),
+      generation: 2,
+      lastClock: {
+        wallTime: 1_000,
+        counter: 0,
+        deviceId: "remote-device",
+      },
+      knownBooks: {
+        [BOOK_ID]: { revisionId: REVISION_ID },
+      },
+      knownProgress: {
+        [BOOK_ID]: { locator: remoteLocator, publicationProgress: 0.1 },
+      },
+      progress: {
+        [BOOK_ID]: {
+          clock: {
+            wallTime: 1_000,
+            counter: 0,
+            deviceId: "remote-device",
+          },
+          locator: remoteLocator,
+          publicationProgress: 0.1,
+        },
+      },
+    });
+    const restarted = new SyncEngine(
+      library,
+      store,
+      async () => ABC_DIGEST,
+      () => 3_000,
+    );
+
+    await restarted.initialize();
+
+    expect(store.state.progress[BOOK_ID]).toMatchObject({
+      locator: activeReaderLocator,
+      publicationProgress: 0.9,
+      clock: { wallTime: 2_000, deviceId: "local-device" },
+    });
+  });
+
   it("applies a newer remote tombstone without re-uploading the stale EPUB", async () => {
     const library = new FakeLibrary();
     const entry = summary();

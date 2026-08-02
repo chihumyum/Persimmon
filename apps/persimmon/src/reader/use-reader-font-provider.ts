@@ -19,6 +19,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Platform } from "react-native";
 
+import { translate } from "../i18n";
 import {
   resolveReaderFontTransition,
   type PreparedReaderFont,
@@ -179,7 +180,7 @@ export function useReaderFontProvider(
           setFailure({
             familyId: selectedFamily.id,
             familyKey: selectedFamilyKey,
-            message: "字体文件缺失，已回退到内置衬线字体。",
+            message: translate("errors.fonts.missingFallback"),
           });
           return;
         }
@@ -197,7 +198,7 @@ export function useReaderFontProvider(
           setFailure({
             familyId: selectedFamily.id,
             familyKey: selectedFamilyKey,
-            message: "字体文件读取失败，已回退到内置衬线字体。",
+            message: translate("errors.fonts.readFallback"),
           });
         }
       });
@@ -373,7 +374,7 @@ export function useReaderFontProvider(
     const preparedError =
       selectedExternalFailure ??
       (selectedExternalInvalid
-        ? "字体无法载入，已回退到内置衬线字体。"
+        ? translate("errors.fonts.loadFallback")
         : undefined);
     return {
       fontProvider: builtProvider.fontProvider,

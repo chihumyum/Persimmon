@@ -4,7 +4,7 @@ import ImageIO
 import UniformTypeIdentifiers
 
 private let canvasSize = 1024
-private let safeZoneSize: CGFloat = 560
+private let safeZoneSize: CGFloat = 504
 
 private struct IconLayer {
   let image: CGImage

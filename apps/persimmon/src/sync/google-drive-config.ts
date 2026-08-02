@@ -1,6 +1,8 @@
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 
+import { translate } from "../i18n";
+
 export const GOOGLE_DRIVE_APPDATA_SCOPE =
   "https://www.googleapis.com/auth/drive.appdata";
 
@@ -54,13 +56,11 @@ export function isGoogleDriveConfigured(): boolean {
 
 export function googleDriveConfigurationMessage(): string {
   switch (Platform.OS) {
-    case "web":
-      return "Google Drive 尚未配置 Web OAuth Client ID。";
     case "ios":
-      return "Google Drive 尚未配置 iOS OAuth Client ID。";
+      return translate("sync.errors.unconfiguredIos");
     case "android":
-      return "Google Drive 尚未配置 Android OAuth Client ID。";
+      return translate("sync.errors.unconfiguredAndroid");
     default:
-      return "当前平台不支持 Google Drive 同步。";
+      return translate("sync.errors.unsupportedPlatform");
   }
 }

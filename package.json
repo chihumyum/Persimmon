@@ -7,7 +7,6 @@
     "node": ">=22.13 <23"
   },
   "scripts": {
-    "dev:web": "pnpm --filter @persimmon/app web",
     "dev:native": "pnpm --filter @persimmon/app run dev:client",
     "dev:native:tunnel": "pnpm --filter @persimmon/app run dev:client:tunnel",
     "native:ios": "pnpm --filter @persimmon/app run native:ios",
@@ -21,8 +20,6 @@
     "stress:android:page-turn": "tsx scripts/stress-android-page-turn.ts",
     "check:expo": "pnpm --filter @persimmon/app run doctor",
     "check:native-bundles": "pnpm --filter @persimmon/app run bundle:ios && pnpm --filter @persimmon/app run bundle:android",
-    "check:web-size": "tsx scripts/check-web-bundle-size.ts",
-    "build:web": "pnpm --filter @persimmon/app build:web",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint . --max-warnings=0",
@@ -33,7 +30,7 @@
     "corpus:gutenberg": "tsx scripts/download-gutenberg-corpus.ts",
     "test:epubs:corpus": "tsx scripts/validate-epub-corpus.ts",
     "test:watch": "vitest",
-    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm check:expo && pnpm check:native-bundles && pnpm build:web && pnpm check:web-size"
+    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm check:expo && pnpm check:native-bundles"
   },
   "devDependencies": {
     "@eslint/js": "9.39.1",

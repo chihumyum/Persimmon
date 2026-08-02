@@ -108,7 +108,9 @@ private final class BookMenuAnchorView: UIView, UIEditMenuInteractionDelegate {
   }
 
   func present(
+    detailsLabel: String,
     syncLabel: String,
+    deleteLabel: String,
     canDelete: Bool,
     rectInWindow: CGRect,
     from viewController: UIViewController,
@@ -116,11 +118,11 @@ private final class BookMenuAnchorView: UIView, UIEditMenuInteractionDelegate {
   ) {
     self.onSelection = onSelection
     menuActions = [
-      (id: "details", title: "查看详情", destructive: false),
+      (id: "details", title: detailsLabel, destructive: false),
       (id: "sync", title: syncLabel, destructive: false)
     ]
     if canDelete {
-      menuActions.append((id: "delete", title: "删除", destructive: true))
+      menuActions.append((id: "delete", title: deleteLabel, destructive: true))
     }
 
     let container = viewController.view!
@@ -219,7 +221,7 @@ public final class PersimmonSelectionMenuModule: Module {
 
     AsyncFunction("showBookMenu") {
       (
-        syncLabel: String,
+        labels: [String],
         canDelete: Bool,
         x: Double,
         y: Double,
@@ -236,10 +238,16 @@ public final class PersimmonSelectionMenuModule: Module {
       self.resolveBookMenu(nil)
       self.bookMenuPromise = promise
 
+      let detailsLabel = labels.indices.contains(0) ? labels[0] : "Details"
+      let syncLabel = labels.indices.contains(1) ? labels[1] : "Sync"
+      let deleteLabel = labels.indices.contains(2) ? labels[2] : "Delete"
+
       let anchorView = BookMenuAnchorView()
       self.bookMenuAnchorView = anchorView
       anchorView.present(
+        detailsLabel: detailsLabel,
         syncLabel: syncLabel,
+        deleteLabel: deleteLabel,
         canDelete: canDelete,
         rectInWindow: CGRect(x: x, y: y, width: width, height: height),
         from: viewController

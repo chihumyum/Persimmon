@@ -12,7 +12,7 @@ Persimmon 的设计系统是代码优先、阅读器专用的产品基础层。�
 - `apps/persimmon/src/components/ui-button.tsx`：primary、secondary、ghost 与 Reader
   chrome 按钮，支持文字、前后图标与图标按钮。
 - `apps/persimmon/src/components/ui-icon.tsx`：跨平台图标语义入口；iOS 使用 SF
-  Symbols，Android 与 Web 使用 Material Symbols。
+  Symbols，Android 使用 Material Symbols。
 - `apps/persimmon/src/components/ui-segmented-control.tsx`：单选分段控件。
 - `apps/persimmon/src/components/ui-modal-surface.tsx`：居中 Modal 的表面、边框与 elevation。
 - `apps/persimmon/src/components/reader-floating-panel.tsx`：Reader 目录和设置浮层及其标题栏。
@@ -29,8 +29,7 @@ Figma 可以镜像这些 token 和组件，但代码是当前行为与尺寸的�
 4. Reader chrome 的视觉区域只占用 safe
    area 后已经为工具栏保留的 34pt，不通过显隐工具栏改变正文分页，也不移动稳定 locator。
 5. 原生菜单、系统 Switch 和系统授权界面保留平台行为；设计系统不仿制系统控件。
-6. light / dark、Web / iOS /
-   Android 必须消费相同语义角色，不以平台分支复制一套颜色。
+6. light / dark、iOS / Android 必须消费相同语义角色，不以平台分支复制一套颜色。
 7. 搜索、设置、关闭、更多、排序、增减等通用动作必须使用 `UiIcon`
    的语义名称，不以 `＋`、`×`、`•••`、`⌄`
    等文本字符伪装图标；图标按钮必须保留完整的 `accessibilityLabel`。

@@ -22,6 +22,7 @@ import {
   type LayoutChangeEvent,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTranslation } from "react-i18next";
 
 import { AsyncSkia } from "../../components/async-skia";
 import { UiButton } from "../components/ui-button";
@@ -35,12 +36,11 @@ import type {
   ReaderPageTurnAnimation,
   ReaderPageTurnTuning,
 } from "../library/types";
-import { navigationLabelsForPosition } from "../reader/navigation-path";
+import { navigationPathForPosition } from "../reader/navigation-path";
 import { ToolbarBreadcrumbCarousel } from "../reader/toolbar-breadcrumb-carousel";
 import { useAndroidReaderBack } from "../reader/use-android-reader-back";
 import { PageTurnTuningPanel } from "./page-turn-tuning-panel";
-import { ReadingLayoutPanel } from "./reading-layout-panel";
-import { ReadingStylePanel } from "./reading-style-panel";
+import { ReadingSettingsPanel } from "./reading-style-panel";
 import {
   flattenNavigation,
   TableOfContentsPanel,
@@ -101,6 +101,7 @@ export function ReaderScreen({
   onProgress,
   onRemoveFont,
 }: ReaderScreenProps) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const theme = useMemo(
     () => resolveReaderTheme(appearance.theme, resolvedColorScheme),
@@ -112,8 +113,7 @@ export function ReaderScreen({
   const [turning, setTurning] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
-  const [styleVisible, setStyleVisible] = useState(false);
-  const [layoutVisible, setLayoutVisible] = useState(false);
+  const [settingsVisible, setSettingsVisible] = useState(false);
   const [layoutTransitioning, setLayoutTransitioning] = useState(false);
   const [tuningVisible, setTuningVisible] = useState(false);
   const layoutTransitioningRef = useRef(false);
@@ -133,12 +133,11 @@ export function ReaderScreen({
 
   const closePanels = useCallback(() => {
     setTocVisible(false);
-    setStyleVisible(false);
-    setLayoutVisible(false);
+    setSettingsVisible(false);
     setTuningVisible(false);
   }, []);
   useAndroidReaderBack({
-    panelVisible: tocVisible || styleVisible || layoutVisible || tuningVisible,
+    panelVisible: tocVisible || settingsVisible || tuningVisible,
     onBack,
     onClosePanels: closePanels,
   });
@@ -190,7 +189,7 @@ export function ReaderScreen({
       }
       pendingLayoutRef.current = nextLayout;
       layoutTransitioningRef.current = true;
-      setLayoutVisible(false);
+      setSettingsVisible(false);
       setLayoutTransitioning(true);
       cancelLayoutFrame();
       layoutFrameRef.current = requestAnimationFrame(() => {
@@ -237,8 +236,14 @@ export function ReaderScreen({
     },
     [onProgress],
   );
+  const activeNavigationPath = useMemo(
+    () => navigationPathForPosition(opened.book, currentPosition),
+    [currentPosition, opened.book],
+  );
   const toolbarNavigationLabels = useMemo(() => {
-    const labels = navigationLabelsForPosition(opened.book, currentPosition);
+    const labels = activeNavigationPath
+      .map((item) => item.label.trim())
+      .filter(Boolean);
     if (labels.length > 0) {
       return labels;
     }
@@ -248,7 +253,7 @@ export function ReaderScreen({
           ?.title?.trim()
       : opened.book.sections[0]?.title?.trim();
     return [sectionTitle || opened.book.title];
-  }, [currentPosition, opened.book]);
+  }, [activeNavigationPath, currentPosition, opened.book]);
   const toolbarHeaderEnabled =
     appearance.progressDisplay === "header" ||
     appearance.progressDisplay === "both";
@@ -261,8 +266,7 @@ export function ReaderScreen({
       return;
     }
     if (controlsVisible) {
-      setStyleVisible(false);
-      setLayoutVisible(false);
+      setSettingsVisible(false);
       setTuningVisible(false);
       setTocVisible(false);
     }
@@ -272,8 +276,7 @@ export function ReaderScreen({
     setTurning(nextTurning);
     if (nextTurning) {
       setControlsVisible(false);
-      setStyleVisible(false);
-      setLayoutVisible(false);
+      setSettingsVisible(false);
       setTuningVisible(false);
       setTocVisible(false);
     }
@@ -282,7 +285,7 @@ export function ReaderScreen({
     setSelecting(nextSelecting);
     if (nextSelecting) {
       setControlsVisible(false);
-      setLayoutVisible(false);
+      setSettingsVisible(false);
       setTuningVisible(false);
       setTocVisible(false);
     }
@@ -363,26 +366,14 @@ export function ReaderScreen({
         </View>
       </View>
 
-      {!turning && !selecting && controlsVisible && toolbarHeaderEnabled ? (
-        <View
-          pointerEvents="none"
-          style={[styles.toolbarHeaderRow, { top: insets.top + 8 }]}
-        >
-          <ToolbarBreadcrumbCarousel
-            color={theme.controlText}
-            labels={toolbarNavigationLabels}
-          />
-        </View>
-      ) : null}
-
       {!turning && !selecting && controlsVisible ? (
         <View
           pointerEvents="box-none"
           style={[styles.topControls, { top: insets.top }]}
         >
           <UiButton
-            accessibilityLabel="返回书架"
-            label="书架"
+            accessibilityLabel={t("reader.toolbar.backAccessibility")}
+            label={t("reader.toolbar.library")}
             leadingIcon="back"
             onPress={onBack}
             style={styles.backButton}
@@ -390,15 +381,22 @@ export function ReaderScreen({
             theme={theme}
             variant="chrome"
           />
+          {toolbarHeaderEnabled ? (
+            <View pointerEvents="none" style={styles.toolbarHeaderRow}>
+              <ToolbarBreadcrumbCarousel
+                color={theme.controlText}
+                labels={toolbarNavigationLabels}
+              />
+            </View>
+          ) : null}
           <UiButton
-            accessibilityLabel="打开目录"
+            accessibilityLabel={t("reader.toolbar.tocAccessibility")}
             disabled={navigationRows.length === 0}
             iconOnly
-            label="目录"
+            label={t("reader.toolbar.toc")}
             leadingIcon="toc"
             onPress={() => {
-              setStyleVisible(false);
-              setLayoutVisible(false);
+              setSettingsVisible(false);
               setTuningVisible(false);
               setTocVisible((visible) => !visible);
             }}
@@ -415,28 +413,26 @@ export function ReaderScreen({
         >
           <View pointerEvents="box-none" style={styles.controlGroup}>
             <UiButton
-              accessibilityLabel="打开阅读布局"
+              accessibilityLabel={t("reader.toolbar.settingsAccessibility")}
               iconOnly
-              label="布局"
-              leadingIcon="layout"
+              label={t("reader.toolbar.settings")}
+              leadingIcon="settings"
               onPress={() => {
-                setStyleVisible(false);
                 setTuningVisible(false);
                 setTocVisible(false);
-                setLayoutVisible((visible) => !visible);
+                setSettingsVisible((visible) => !visible);
               }}
               theme={theme}
               variant="chrome"
             />
             {SHOW_PAGE_TURN_TUNING ? (
               <UiButton
-                accessibilityLabel="调节翻页常量"
+                accessibilityLabel={t("reader.toolbar.tuningAccessibility")}
                 iconOnly
-                label="曲线"
+                label={t("reader.toolbar.tuning")}
                 leadingIcon="tuning"
                 onPress={() => {
-                  setStyleVisible(false);
-                  setLayoutVisible(false);
+                  setSettingsVisible(false);
                   setTocVisible(false);
                   setTuningVisible((visible) => !visible);
                 }}
@@ -444,20 +440,6 @@ export function ReaderScreen({
                 variant="chrome"
               />
             ) : null}
-            <UiButton
-              accessibilityLabel="打开阅读样式"
-              iconOnly
-              label="Aa"
-              leadingIcon="typography"
-              onPress={() => {
-                setTuningVisible(false);
-                setLayoutVisible(false);
-                setTocVisible(false);
-                setStyleVisible((visible) => !visible);
-              }}
-              theme={theme}
-              variant="chrome"
-            />
           </View>
         </View>
       ) : null}
@@ -474,8 +456,11 @@ export function ReaderScreen({
         />
       ) : null}
 
-      {!turning && !selecting && controlsVisible && layoutVisible ? (
-        <ReadingLayoutPanel
+      {!turning && !selecting && controlsVisible && settingsVisible ? (
+        <ReadingSettingsPanel
+          appearance={appearance}
+          fontFamilies={fontFamilies}
+          hasBookFonts={Object.keys(opened.book.fontFamilies ?? {}).length > 0}
           layout={layout}
           pageTurnAnimation={pageTurnAnimation}
           theme={theme}
@@ -483,31 +468,18 @@ export function ReaderScreen({
             insets.bottom + uiSize.readerChrome + uiSize.readerChromePanelGap
           }
           onAnimationChange={onPageTurnAnimationChange}
-          onClose={() => setLayoutVisible(false)}
-          onLayoutChange={handleLayoutChange}
-        />
-      ) : null}
-
-      {!turning && controlsVisible && styleVisible ? (
-        <ReadingStylePanel
-          appearance={appearance}
-          fontFamilies={fontFamilies}
-          hasBookFonts={Object.keys(opened.book.fontFamilies ?? {}).length > 0}
-          theme={theme}
-          bottom={
-            insets.bottom + uiSize.readerChrome + uiSize.readerChromePanelGap
-          }
           onChange={onAppearanceChange}
-          onClose={() => setStyleVisible(false)}
+          onClose={() => setSettingsVisible(false)}
           onDownloadFont={onDownloadFont}
           onImportFont={onImportFont}
+          onLayoutChange={handleLayoutChange}
           onRemoveFont={onRemoveFont}
         />
       ) : null}
 
       {!turning && !selecting && controlsVisible && tocVisible ? (
         <TableOfContentsPanel
-          currentPosition={currentPosition}
+          currentItemId={activeNavigationPath.at(-1)?.id}
           rows={navigationRows}
           theme={theme}
           top={insets.top + uiSize.readerChrome + uiSize.readerChromePanelGap}
@@ -577,12 +549,14 @@ const styles = StyleSheet.create({
   },
   toolbarHeaderRow: {
     alignItems: "center",
+    bottom: 0,
     flexDirection: "row",
-    left: Platform.OS === "web" ? 112 : 92,
+    justifyContent: "center",
+    left: Platform.OS === "web" ? 82 : 80,
     pointerEvents: "none",
     position: "absolute",
-    right: Platform.OS === "web" ? 112 : 92,
-    zIndex: 20,
+    right: Platform.OS === "web" ? 82 : 80,
+    top: 0,
   },
   controlGroup: {
     flexDirection: "row",

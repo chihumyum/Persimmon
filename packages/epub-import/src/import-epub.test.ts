@@ -481,6 +481,74 @@ describe("importEpub", () => {
     ]);
   });
 
+  it("preserves nested EPUB 3 navigation groups without their own links", () => {
+    const bytes = fixtureBytes({
+      packageXml: minimalPackage(
+        "chapter.xhtml",
+        `<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>`,
+      ),
+      resources: {
+        "EPUB/chapter.xhtml": `<?xml version="1.0"?>
+          <html xmlns="http://www.w3.org/1999/xhtml">
+            <body>
+              <h1 id="chapter">Chapter</h1>
+              <h2 id="part">Part</h2>
+            </body>
+          </html>`,
+        "EPUB/nav.xhtml": `<?xml version="1.0"?>
+          <html xmlns="http://www.w3.org/1999/xhtml"
+                xmlns:epub="http://www.idpf.org/2007/ops">
+            <body>
+              <nav epub:type="toc">
+                <ol>
+                  <li>
+                    <span>Volume one</span>
+                    <ol>
+                      <li>
+                        <a href="chapter.xhtml#chapter">Chapter</a>
+                        <ol>
+                          <li><a href="chapter.xhtml#part">Part</a></li>
+                        </ol>
+                      </li>
+                    </ol>
+                  </li>
+                </ol>
+              </nav>
+            </body>
+          </html>`,
+      },
+    });
+
+    const result = importEpub(bytes);
+
+    expect(result.book.navigation).toHaveLength(1);
+    expect(result.book.navigation?.[0]).toMatchObject({
+      label: "Volume one",
+      target: {
+        sectionId: "epub-section:chapter",
+        blockId: "epub-section:chapter:block:1",
+      },
+      children: [
+        {
+          label: "Chapter",
+          target: {
+            sectionId: "epub-section:chapter",
+            blockId: "epub-section:chapter:block:1",
+          },
+          children: [
+            {
+              label: "Part",
+              target: {
+                sectionId: "epub-section:chapter",
+                blockId: "epub-section:chapter:block:2",
+              },
+            },
+          ],
+        },
+      ],
+    });
+  });
+
   it("imports a nested EPUB 2 NCX table of contents", () => {
     const bytes = fixtureBytes({
       packageXml: `<?xml version="1.0" encoding="utf-8"?>

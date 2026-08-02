@@ -1,10 +1,20 @@
 {
   "expo": {
     "scheme": "persimmon",
-    "web": {
-      "output": "single"
-    },
-    "plugins": ["expo-router", "expo-system-ui"],
+    "platforms": ["ios", "android"],
+    "plugins": [
+      "expo-router",
+      "expo-system-ui",
+      [
+        "expo-localization",
+        {
+          "supportedLocales": {
+            "ios": ["zh-Hans", "en"],
+            "android": ["zh-Hans", "en"]
+          }
+        }
+      ]
+    ],
     "name": "Persimmon",
     "slug": "persimmon",
     "orientation": "portrait",

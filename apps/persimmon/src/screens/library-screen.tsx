@@ -1,6 +1,9 @@
 import type { ReaderTheme } from "@persimmon/reader-skia";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
+  Animated,
+  Easing,
   Modal,
   Platform,
   Pressable,
@@ -10,6 +13,8 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTranslation } from "react-i18next";
 
 import {
   showBookMenu,
@@ -23,18 +28,25 @@ import { UiEmptyState, UiInlineAlert } from "../components/ui-state-message";
 import { UiText as Text } from "../components/ui-text";
 import { uiRadius, uiSpace } from "../components/ui-tokens";
 import {
-  loadSyncBannerVisible,
-  saveSyncBannerVisible,
+  dismissGoogleDrivePrompt,
+  loadBookMetadataVisible,
+  loadGoogleDrivePromptDismissed,
+  saveBookMetadataVisible,
 } from "../library/library-ui-preferences";
 import {
+  librarySyncBannerPlacement,
+  shouldAnnounceSyncCompletion,
+  SYNC_COMPLETION_VISIBLE_MS,
+} from "../library/library-sync-banner";
+import {
+  arrangeLibraryGridEntries,
   readingStatusForEntry,
   searchLibraryEntries,
-  selectLibraryEntries,
   type LibraryFilter,
   type LibrarySort,
 } from "../library/library-view";
 import type { LibraryBookSummary } from "../library/repository";
-import type { ReaderColorMode } from "../library/types";
+import type { ReaderColorMode, ReaderThemeName } from "../library/types";
 import type { GoogleDriveSyncStatus } from "../sync/types";
 import { BookDetailsModal } from "./book-details-modal";
 import { LibraryBookCard } from "./library-book-card";
@@ -43,29 +55,6 @@ import {
   LibrarySettingsModal,
   syncDescription,
 } from "./library-settings-modal";
-
-const FILTER_OPTIONS: readonly {
-  readonly value: LibraryFilter;
-  readonly label: string;
-}[] = [
-  { value: "all", label: "全部" },
-  { value: "reading", label: "在读" },
-  { value: "unread", label: "未读" },
-  { value: "finished", label: "读完" },
-];
-
-const SORT_OPTIONS: readonly {
-  readonly value: LibrarySort;
-  readonly label: string;
-}[] = [
-  { value: "recent", label: "最近阅读" },
-  { value: "added", label: "加入时间" },
-  { value: "title", label: "书名" },
-];
-
-function labelForSort(sort: LibrarySort): string {
-  return SORT_OPTIONS.find((option) => option.value === sort)?.label ?? "排序";
-}
 
 function FilterOption({
   label,
@@ -113,15 +102,27 @@ function SortControl({
   readonly theme: ReaderTheme;
   readonly onChange: (sort: LibrarySort) => void;
 }) {
+  const { t } = useTranslation();
   const [visible, setVisible] = useState(false);
+  const sortOptions: readonly {
+    readonly value: LibrarySort;
+    readonly label: string;
+  }[] = [
+    { value: "recent", label: t("library.sort.recent") },
+    { value: "added", label: t("library.sort.added") },
+    { value: "title", label: t("library.sort.title") },
+  ];
+  const label =
+    sortOptions.find((option) => option.value === sort)?.label ??
+    t("library.sort.default");
 
   return (
     <>
       <UiButton
-        accessibilityLabel={`排序，当前${labelForSort(sort)}`}
+        accessibilityLabel={t("library.sort.currentAccessibility", { label })}
         accessibilityState={{ expanded: visible }}
         compact
-        label={labelForSort(sort)}
+        label={label}
         leadingIcon="sort"
         onPress={() => setVisible(true)}
         textTone="muted"
@@ -143,7 +144,7 @@ function SortControl({
           ]}
         >
           <Pressable
-            accessibilityLabel="关闭排序"
+            accessibilityLabel={t("library.sort.closeAccessibility")}
             accessibilityRole="button"
             onPress={() => setVisible(false)}
             style={StyleSheet.absoluteFill}
@@ -159,9 +160,9 @@ function SortControl({
             ]}
           >
             <Text style={[styles.sortTitle, { color: theme.text }]}>
-              排序方式
+              {t("library.sort.heading")}
             </Text>
-            {SORT_OPTIONS.map((option) => {
+            {sortOptions.map((option) => {
               const selected = option.value === sort;
               return (
                 <Pressable
@@ -210,16 +211,19 @@ function SortControl({
 }
 
 function SyncBanner({
+  floating = false,
   status,
   theme,
   onClose,
   onOpenSettings,
 }: {
+  readonly floating?: boolean;
   readonly status: GoogleDriveSyncStatus;
   readonly theme: ReaderTheme;
-  readonly onClose: () => void;
+  readonly onClose?: () => void;
   readonly onOpenSettings: () => void;
 }) {
+  const { t } = useTranslation();
   if (status.phase === "unconfigured") {
     return null;
   }
@@ -227,6 +231,14 @@ function SyncBanner({
     status.phase === "disconnected" ||
     status.phase === "reauthorization-required" ||
     status.phase === "error";
+  const title =
+    status.phase === "idle"
+      ? t("sync.banner.complete")
+      : needsAttention
+        ? t("sync.banner.setup")
+        : status.phase === "syncing"
+          ? t("sync.banner.syncing")
+          : "Google Drive";
 
   return (
     <View
@@ -235,24 +247,37 @@ function SyncBanner({
         {
           backgroundColor: theme.panel,
           borderColor: needsAttention ? theme.noteAccent : theme.border,
+          ...(floating && Platform.OS !== "web"
+            ? { shadowColor: theme.shadow }
+            : {}),
         },
+        floating && styles.syncBannerFloating,
       ]}
     >
       <Pressable
-        accessibilityLabel="打开云同步设置"
+        accessibilityLabel={t("sync.banner.openSettingsAccessibility")}
         accessibilityRole="button"
         onPress={onOpenSettings}
         style={styles.syncBannerMain}
       >
-        <UiIcon
-          color={theme.accentStrong}
-          name="cloud"
-          size={20}
-          style={styles.syncBannerIcon}
-        />
+        {status.phase === "syncing" ? (
+          <ActivityIndicator
+            accessibilityLabel={t("sync.banner.syncingAccessibility")}
+            color={theme.accentStrong}
+            size="small"
+            style={styles.syncBannerIcon}
+          />
+        ) : (
+          <UiIcon
+            color={theme.accentStrong}
+            name="cloud"
+            size={20}
+            style={styles.syncBannerIcon}
+          />
+        )}
         <View style={styles.syncBannerCopy}>
           <Text style={[styles.syncBannerTitle, { color: theme.text }]}>
-            {needsAttention ? "设置云同步" : "Google Drive"}
+            {title}
           </Text>
           <Text
             numberOfLines={2}
@@ -265,22 +290,129 @@ function SyncBanner({
           </Text>
         </View>
       </Pressable>
-      <Pressable
-        accessibilityLabel="关闭云同步提示"
-        accessibilityRole="button"
-        hitSlop={8}
-        onPress={onClose}
-        style={styles.syncBannerClose}
-      >
-        <UiIcon color={theme.secondaryText} name="close" size={17} />
-      </Pressable>
+      {status.phase !== "syncing" && onClose ? (
+        <Pressable
+          accessibilityLabel={t("sync.banner.closeAccessibility")}
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={onClose}
+          style={styles.syncBannerClose}
+        >
+          <UiIcon color={theme.secondaryText} name="close" size={17} />
+        </Pressable>
+      ) : null}
     </View>
+  );
+}
+
+function FloatingSyncBanner({
+  bottom,
+  horizontalPadding,
+  status,
+  theme,
+  visible,
+  onClose,
+  onOpenSettings,
+}: {
+  readonly bottom: number;
+  readonly horizontalPadding: number;
+  readonly status: GoogleDriveSyncStatus;
+  readonly theme: ReaderTheme;
+  readonly visible: boolean;
+  readonly onClose?: () => void;
+  readonly onOpenSettings: () => void;
+}) {
+  const transition = useRef(new Animated.Value(0)).current;
+  const mountedRef = useRef(visible);
+  const [mounted, setMounted] = useState(visible);
+  const [displayStatus, setDisplayStatus] = useState(status);
+
+  useEffect(() => {
+    if (visible) {
+      setDisplayStatus(status);
+    }
+  }, [status, visible]);
+
+  useEffect(() => {
+    let frame = 0;
+    transition.stopAnimation();
+    if (visible) {
+      const entering = !mountedRef.current;
+      mountedRef.current = true;
+      setMounted(true);
+      if (entering) {
+        transition.setValue(0);
+      }
+      frame = requestAnimationFrame(() => {
+        Animated.timing(transition, {
+          duration: 240,
+          easing: Easing.out(Easing.cubic),
+          toValue: 1,
+          useNativeDriver: true,
+        }).start();
+      });
+    } else if (mountedRef.current) {
+      Animated.timing(transition, {
+        duration: 180,
+        easing: Easing.in(Easing.cubic),
+        toValue: 0,
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished) {
+          mountedRef.current = false;
+          setMounted(false);
+        }
+      });
+    }
+    return () => {
+      if (frame) {
+        cancelAnimationFrame(frame);
+      }
+      transition.stopAnimation();
+    };
+  }, [transition, visible]);
+
+  if (!mounted) {
+    return null;
+  }
+
+  return (
+    <Animated.View
+      pointerEvents={visible ? "box-none" : "none"}
+      style={[
+        styles.syncBannerFloatingLayer,
+        {
+          bottom,
+          opacity: transition,
+          paddingHorizontal: horizontalPadding,
+          transform: [
+            {
+              translateY: transition.interpolate({
+                inputRange: [0, 1],
+                outputRange: [18, 0],
+              }),
+            },
+          ],
+        },
+      ]}
+    >
+      <View style={styles.syncBannerFloatingWidth}>
+        <SyncBanner
+          floating
+          status={displayStatus}
+          theme={theme}
+          onClose={onClose}
+          onOpenSettings={onOpenSettings}
+        />
+      </View>
+    </Animated.View>
   );
 }
 
 export interface LibraryScreenProps {
   readonly entries: readonly LibraryBookSummary[];
   readonly colorMode: ReaderColorMode;
+  readonly readerThemeName: ReaderThemeName;
   readonly error: string | null;
   readonly importing: boolean;
   readonly openingBookId: string | null;
@@ -295,11 +427,13 @@ export interface LibraryScreenProps {
   readonly onOpen: (bookId: string) => void;
   readonly onSyncBook: (entry: LibraryBookSummary) => void;
   readonly onSyncNow: () => void;
+  readonly onThemeChange: (theme: ReaderThemeName) => void;
 }
 
 export function LibraryScreen({
   entries,
   colorMode,
+  readerThemeName,
   error,
   importing,
   openingBookId,
@@ -314,7 +448,10 @@ export function LibraryScreen({
   onOpen,
   onSyncBook,
   onSyncNow,
+  onThemeChange,
 }: LibraryScreenProps) {
+  const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const compact = windowWidth < 720;
   const horizontalPadding = compact ? 18 : 30;
@@ -337,14 +474,46 @@ export function LibraryScreen({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchVisible, setSearchVisible] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
+  const [bookMetadataVisible, setBookMetadataVisible] = useState(true);
   const [sort, setSort] = useState<LibrarySort>("recent");
-  const [syncBannerVisible, setSyncBannerVisible] = useState(true);
+  const filterOptions: readonly {
+    readonly value: LibraryFilter;
+    readonly label: string;
+  }[] = [
+    { value: "all", label: t("library.filters.all") },
+    { value: "reading", label: t("library.filters.reading") },
+    { value: "unread", label: t("library.filters.unread") },
+    { value: "finished", label: t("library.filters.finished") },
+  ];
+  const [connectionPromptDismissed, setConnectionPromptDismissed] = useState<
+    boolean | undefined
+  >(undefined);
+  const [syncCompletionVisible, setSyncCompletionVisible] = useState(false);
+  const [syncErrorDismissed, setSyncErrorDismissed] = useState(false);
+  const previousSyncPhase = useRef<GoogleDriveSyncStatus["phase"]>(
+    syncStatus.phase,
+  );
+  const enteringSyncCompletion = shouldAnnounceSyncCompletion(
+    previousSyncPhase.current,
+    syncStatus.phase,
+  );
+  const syncBannerPlacement = librarySyncBannerPlacement(syncStatus, {
+    connectionPromptDismissed,
+    syncCompletionVisible: syncCompletionVisible || enteringSyncCompletion,
+  });
+  const floatingSyncBannerVisible =
+    syncBannerPlacement === "floating" &&
+    !(syncStatus.phase === "error" && syncErrorDismissed);
 
   useEffect(() => {
     let cancelled = false;
-    void loadSyncBannerVisible().then((visible) => {
+    void Promise.all([
+      loadGoogleDrivePromptDismissed(),
+      loadBookMetadataVisible(),
+    ]).then(([promptDismissed, nextBookMetadataVisible]) => {
       if (!cancelled) {
-        setSyncBannerVisible(visible);
+        setConnectionPromptDismissed(promptDismissed);
+        setBookMetadataVisible(nextBookMetadataVisible);
       }
     });
     return () => {
@@ -352,9 +521,36 @@ export function LibraryScreen({
     };
   }, []);
 
-  const visibleEntries = useMemo(
-    () => selectLibraryEntries(entries, filter, sort),
+  useEffect(() => {
+    const previousPhase = previousSyncPhase.current;
+    previousSyncPhase.current = syncStatus.phase;
+
+    if (!shouldAnnounceSyncCompletion(previousPhase, syncStatus.phase)) {
+      if (syncStatus.phase === "syncing") {
+        setSyncCompletionVisible(false);
+        setSyncErrorDismissed(false);
+      } else if (syncStatus.phase === "error") {
+        setSyncCompletionVisible(false);
+        setSyncErrorDismissed(false);
+      }
+      return;
+    }
+
+    setSyncCompletionVisible(true);
+    const timer = setTimeout(() => {
+      setSyncCompletionVisible(false);
+    }, SYNC_COMPLETION_VISIBLE_MS);
+    return () => clearTimeout(timer);
+  }, [syncStatus]);
+
+  const gridEntries = useMemo(
+    () => arrangeLibraryGridEntries(entries, filter, sort),
     [entries, filter, sort],
+  );
+  const visibleEntries = useMemo(
+    () =>
+      gridEntries.filter(({ visible }) => visible).map(({ entry }) => entry),
+    [gridEntries],
   );
   const searchResults = useMemo(
     () => searchLibraryEntries(entries, searchQuery),
@@ -376,9 +572,14 @@ export function LibraryScreen({
     [entries],
   );
 
-  const updateSyncBannerVisible = (visible: boolean) => {
-    setSyncBannerVisible(visible);
-    void saveSyncBannerVisible(visible);
+  const dismissConnectionPrompt = () => {
+    setConnectionPromptDismissed(true);
+    void dismissGoogleDrivePrompt();
+  };
+
+  const updateBookMetadataVisible = (visible: boolean) => {
+    setBookMetadataVisible(visible);
+    void saveBookMetadataVisible(visible);
   };
 
   const syncBook = (entry: LibraryBookSummary) => {
@@ -404,7 +605,11 @@ export function LibraryScreen({
     let action: BookMenuAction | undefined;
     try {
       action = await showBookMenu(
-        entry.status === "ready" ? "立即同步" : "从云端下载",
+        t("library.nativeMenu.details"),
+        entry.status === "ready"
+          ? t("library.actions.syncNow")
+          : t("library.actions.downloadFromCloud"),
+        t("library.nativeMenu.delete"),
         !entry.builtIn,
         rect,
       );
@@ -450,35 +655,38 @@ export function LibraryScreen({
             paddingHorizontal: horizontalPadding,
           },
           compact && styles.contentCompact,
+          floatingSyncBannerVisible && styles.contentWithFloatingSyncBanner,
         ]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
           <Text variant="display" style={{ color: theme.text }}>
-            全部
+            {t("library.title")}
           </Text>
           <View style={styles.headerActions}>
             <UiButton
-              accessibilityLabel="搜索书名或作者"
+              accessibilityLabel={t("library.actions.searchAccessibility")}
               iconOnly
-              label="搜索"
+              label={t("common.search")}
               leadingIcon="search"
               onPress={() => setSearchVisible(true)}
               theme={theme}
             />
             <UiButton
-              accessibilityLabel="打开设置"
+              accessibilityLabel={t(
+                "library.actions.openSettingsAccessibility",
+              )}
               iconOnly
-              label="设置"
+              label={t("common.settings")}
               leadingIcon="settings"
               onPress={() => setSettingsVisible(true)}
               theme={theme}
             />
             <UiButton
-              accessibilityLabel="导入 EPUB"
+              accessibilityLabel={t("library.actions.importAccessibility")}
               disabled={importing}
               iconOnly
-              label="导入 EPUB"
+              label={t("library.actions.importLabel")}
               leadingIcon="add"
               loading={importing}
               onPress={onImport}
@@ -490,18 +698,18 @@ export function LibraryScreen({
 
         {error ? (
           <UiInlineAlert
-            actionLabel="关闭"
+            actionLabel={t("library.actions.closeError")}
             message={error}
             theme={theme}
             onAction={onDismissError}
           />
         ) : null}
 
-        {syncBannerVisible ? (
+        {syncBannerPlacement === "top" ? (
           <SyncBanner
             status={syncStatus}
             theme={theme}
-            onClose={() => updateSyncBannerVisible(false)}
+            onClose={dismissConnectionPrompt}
             onOpenSettings={() => setSettingsVisible(true)}
           />
         ) : null}
@@ -515,10 +723,13 @@ export function LibraryScreen({
             horizontal
             showsHorizontalScrollIndicator={false}
           >
-            {FILTER_OPTIONS.map((option) => (
+            {filterOptions.map((option) => (
               <FilterOption
                 key={option.value}
-                label={`${option.label} ${counts[option.value]}`}
+                label={t("library.filters.withCount", {
+                  label: option.label,
+                  count: counts[option.value],
+                })}
                 selected={filter === option.value}
                 theme={theme}
                 onPress={() => setFilter(option.value)}
@@ -529,29 +740,53 @@ export function LibraryScreen({
         </View>
 
         <View style={[styles.grid, { columnGap: gridGap, rowGap: 30 }]}>
-          {visibleEntries.map((entry) => (
-            <LibraryBookCard
-              entry={entry}
-              key={entry.id}
-              opening={openingBookId === entry.id}
-              theme={theme}
-              width={cardWidth}
-              onContextMenu={(selectedEntry, rect) => {
-                void openBookMenu(selectedEntry, rect);
-              }}
-              onOpen={() => onOpen(entry.id)}
-            />
-          ))}
+          {gridEntries.map(({ entry, visible }) => {
+            return (
+              <View
+                key={entry.id}
+                style={[
+                  { width: cardWidth },
+                  !visible && styles.hiddenGridEntry,
+                ]}
+              >
+                <LibraryBookCard
+                  bookMetadataVisible={bookMetadataVisible}
+                  entry={entry}
+                  opening={openingBookId === entry.id}
+                  theme={theme}
+                  width={cardWidth}
+                  onContextMenu={(selectedEntry, rect) => {
+                    void openBookMenu(selectedEntry, rect);
+                  }}
+                  onOpen={() => onOpen(entry.id)}
+                />
+              </View>
+            );
+          })}
         </View>
 
         {visibleEntries.length === 0 ? (
           <UiEmptyState
-            body="换一个分类，或导入一本 EPUB。"
+            body={t("library.empty.body")}
             theme={theme}
-            title="这里还没有书"
+            title={t("library.empty.title")}
           />
         ) : null}
       </ScrollView>
+
+      <FloatingSyncBanner
+        bottom={Math.max(insets.bottom, uiSpace.md)}
+        horizontalPadding={horizontalPadding}
+        status={syncStatus}
+        theme={theme}
+        visible={floatingSyncBannerVisible}
+        onClose={
+          syncStatus.phase === "error"
+            ? () => setSyncErrorDismissed(true)
+            : undefined
+        }
+        onOpenSettings={() => setSettingsVisible(true)}
+      />
 
       <LibrarySearchModal
         entries={searchResults}
@@ -566,17 +801,19 @@ export function LibraryScreen({
         onQueryChange={setSearchQuery}
       />
       <LibrarySettingsModal
+        bookMetadataVisible={bookMetadataVisible}
         colorMode={colorMode}
-        syncBannerVisible={syncBannerVisible}
+        readerThemeName={readerThemeName}
         syncStatus={syncStatus}
         theme={theme}
         visible={settingsVisible}
+        onBookMetadataVisibleChange={updateBookMetadataVisible}
         onClose={() => setSettingsVisible(false)}
         onColorModeChange={onColorModeChange}
         onConnectGoogleDrive={onConnectGoogleDrive}
         onDisconnectGoogleDrive={onDisconnectGoogleDrive}
-        onSyncBannerVisibleChange={updateSyncBannerVisible}
         onSyncNow={onSyncNow}
+        onThemeChange={onThemeChange}
       />
       <BookDetailsModal
         entry={detailsEntry}
@@ -600,6 +837,9 @@ const styles = StyleSheet.create({
   contentCompact: {
     paddingBottom: 42,
     paddingTop: Platform.OS === "web" ? 30 : 50,
+  },
+  contentWithFloatingSyncBanner: {
+    paddingBottom: 132,
   },
   controls: {
     alignItems: "center",
@@ -638,6 +878,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
     gap: uiSpace.sm,
+  },
+  hiddenGridEntry: {
+    display: "none",
   },
   screen: {
     flex: 1,
@@ -693,6 +936,28 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     marginBottom: 20,
     minHeight: 68,
+  },
+  syncBannerFloating: {
+    marginBottom: 0,
+    ...(Platform.OS === "web"
+      ? { boxShadow: "0 12px 36px rgba(0, 0, 0, 0.18)" }
+      : {
+          elevation: 8,
+          shadowOffset: { width: 0, height: 9 },
+          shadowOpacity: 0.2,
+          shadowRadius: 18,
+        }),
+  },
+  syncBannerFloatingLayer: {
+    alignItems: "center",
+    left: 0,
+    position: "absolute",
+    right: 0,
+    zIndex: 20,
+  },
+  syncBannerFloatingWidth: {
+    maxWidth: 560,
+    width: "100%",
   },
   syncBannerClose: {
     alignItems: "center",

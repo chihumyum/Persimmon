@@ -1,4 +1,4 @@
-const BREADCRUMB_SEPARATOR = " › ";
+const BREADCRUMB_SEPARATOR = " – ";
 
 export function toolbarBreadcrumbLabel(labels: readonly string[]): string {
   return labels

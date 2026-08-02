@@ -10,7 +10,7 @@ EPUB bytes
 versioned BookIR ── stable BookPosition / navigation / asset metadata
    │
    ▼
-ParagraphLayoutBackend ── SkParagraph on Native and CanvasKit Web
+ParagraphLayoutBackend ── native SkParagraph
    │
    ▼
 PageScene + PageLocationIndex
@@ -43,8 +43,19 @@ book-core
   UI、文件选择、Repository、同步编排与平台生命周期。
 
 ESLint 对这些边界有硬约束：核心包不能引用 Expo / React
-Native，渲染器不能引用存储，UI 不能绕过 Repository 直接访问 IndexedDB /
-AsyncStorage / FileSystem。
+Native，渲染器不能引用存储，UI 不能绕过 Repository 直接访问 AsyncStorage /
+FileSystem。
+
+### 平台与语言边界
+
+发布平台只有 iOS 和 Android。`expo-localization`
+读取系统或系统“按 App语言”的首选语言，`i18next` 管理 App 内置的 `zh-Hans` / `en`
+资源，并在应用回到前台时重新同步。系统语言只决定应用 UI；正文的 SkParagraph
+locale 使用 EPUB 的 `BookIR.language`，缺失时使用
+`und`，不会用界面语言覆盖书籍语言。
+
+仓库暂时保留少量默认 `.ts` Web
+adapter 和 CanvasKit 分支，供既有单测与跨平台核心代码校验；Expo 配置、开发命令、发布和验收门禁均不再包含 Web。
 
 ### 应用设计系统
 
@@ -81,21 +92,6 @@ Native，不得引用 Repository、同步或分页实现。完整约束与开发
 
 Repository 是唯一存储入口。
 
-### Web
-
-IndexedDB 使用五个 object store：
-
-```text
-books       original EPUB + manifest
-sections    [bookId, sectionId] → SectionIR
-resources   [bookId, assetId]   → bytes
-progress    bookId              → BookLocator
-settings    key                 → reader settings
-```
-
-导入在单个 read-write transaction 中替换书籍、章节与资源；配额错误会转换成稳定的
-`LibraryError`。
-
 ### Native
 
 Native 目录结构：
@@ -120,14 +116,16 @@ backup；启动恢复会覆盖“旧目录已备份”和“新目录已落地�
 `contain`
 并靠下对齐；舞台空余区域就是书架背景，不用白色容器补齐。这样横版、方版与常规竖版封面可以共享同一基线，同时阴影仍只包住真实封面。
 
-搜索只匹配规范化后的书名和作者，不把章节正文载入内存。主题、Google
-Drive 和可关闭的同步提示统一放在设置弹层；同步提示可见性作为本机 UI 偏好保存，不参与云同步。
+搜索只匹配规范化后的书名和作者，不把章节正文载入内存。主题和 Google
+Drive 管理放在设置弹层。应用先完成 Google
+Drive 授权状态恢复，再决定是否渲染书架提示，因此冷启动的 `loading`
+状态不会误闪“连接 Google
+Drive”。未关联或需要重新授权时，接入提示位于书架顶部；用户关闭后把永久关闭标记保存在本机，之后仍可从设置主动连接。已关联设备只有在实际同步时才显示固定在视口底部的浮层；成功后浮层切换为“同步完成”，短暂停留再带出场动画自动隐藏。同步失败仍保留可关闭的底部状态，书卡始终可以打开本地内容。
 
 Native 书卡长按通过平台 adapter 打开系统菜单：
 
 - iOS：`UIEditMenuInteraction`；
 - Android：floating `ActionMode`；
-- Web：回退到应用内书籍详情弹层。
 
 菜单只返回 `details` / `sync` / `delete`
 意图，实际存储和同步仍由应用层回调执行。Reader 中的目录同样是浮层，不改变页面宽度，也不会触发重排；Android
@@ -156,8 +154,7 @@ upload，再发布引用它的设备状态。下载时校验长度和 SHA-256 �
 
 Android 使用 Google Sign-In 恢复账号身份，再由 Google Identity Services
 `AuthorizationClient` 独立申请 Drive scope 和 access token；iOS 继续由 Google
-Sign-In SDK 管理原生授权。Web 使用 Google Identity
-Services 的短期 token。同步凭证只授予
+Sign-In SDK 管理原生授权。同步凭证只授予
 `drive.appdata`，不需要 Persimmon 自有账号，也不会访问用户普通 Drive 文件。具体配置和验收见
 [google-drive-sync.md](google-drive-sync.md)。
 
@@ -189,9 +186,11 @@ display metadata:
 只负责书架与页眉显示，并和 locator 一起参与“是否有新进度”的判断，避免位置已相同但百分比仍旧。
 
 Reader 的高频进度回调进入单写者
-`ProgressWriteQueue`：同一时间最多一个本地 + 同步状态写入，写入期间的新回调折叠成最新快照。失败时只有在没有更新快照的情况下才重试旧值，避免较慢的旧写入晚于新位置完成并把进度倒退。离开 Reader、应用进入后台或组件卸载时会立即 flush；常态下使用短防抖减少 I/O。
+`ProgressWriteQueue`：同一时间最多一个本地 + 同步状态写入，写入期间的新回调折叠成最新快照。进度先写本地作为崩溃恢复前日志，再进入与
+`syncNow` 相同的串行队列；队列内重放本地写入并登记 HLC
+mutation，避免进行中的远端合并晚一步覆盖正在阅读的位置。失败时只有在没有更新快照的情况下才重试旧值。离开 Reader、应用进入后台或组件卸载时会立即 flush；常态下使用短防抖减少 I/O。
 
-图片按需从 Repository 取 bytes，由 Skia 解码。LRU 预算为 Web 64 MiB、Native 32
+图片按需从 Repository 取 bytes，由 Skia 解码。Native LRU 预算为 32
 MiB；当前页、相邻页和目标页资源被 pin，淘汰或卸载时显式 dispose。
 
 ## 连续曲率翻页

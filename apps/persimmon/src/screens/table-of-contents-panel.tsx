@@ -1,6 +1,13 @@
 import type { BookNavigationItem, BookPosition } from "@persimmon/book-core";
 import type { ReaderTheme } from "@persimmon/reader-skia";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { useCallback, useEffect, useRef } from "react";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  type LayoutChangeEvent,
+} from "react-native";
+import { useTranslation } from "react-i18next";
 
 import {
   ReaderFloatingPanel,
@@ -25,7 +32,7 @@ export function flattenNavigation(
 }
 
 export interface TableOfContentsPanelProps {
-  readonly currentPosition?: BookPosition;
+  readonly currentItemId?: string;
   readonly rows: readonly NavigationRow[];
   readonly theme: ReaderTheme;
   readonly top: number;
@@ -34,13 +41,40 @@ export interface TableOfContentsPanelProps {
 }
 
 export function TableOfContentsPanel({
-  currentPosition,
+  currentItemId,
   rows,
   theme,
   top,
   onClose,
   onSelect,
 }: TableOfContentsPanelProps) {
+  const { t } = useTranslation();
+  const scrollViewRef = useRef<ScrollView>(null);
+  const viewportHeightRef = useRef(0);
+  const rowLayoutsRef = useRef(
+    new Map<string, { readonly y: number; readonly height: number }>(),
+  );
+  const scrolledItemIdRef = useRef<string | undefined>(undefined);
+  const scrollToCurrent = useCallback(() => {
+    if (!currentItemId || scrolledItemIdRef.current === currentItemId) {
+      return;
+    }
+    const row = rowLayoutsRef.current.get(currentItemId);
+    const viewportHeight = viewportHeightRef.current;
+    if (!row || viewportHeight <= 0) {
+      return;
+    }
+    scrolledItemIdRef.current = currentItemId;
+    scrollViewRef.current?.scrollTo({
+      animated: false,
+      y: Math.max(0, row.y - (viewportHeight - row.height) / 2),
+    });
+  }, [currentItemId]);
+  useEffect(() => {
+    scrolledItemIdRef.current = undefined;
+    scrollToCurrent();
+  }, [currentItemId, scrollToCurrent]);
+
   return (
     <ReaderFloatingPanel
       maxHeight="72%"
@@ -50,45 +84,49 @@ export function TableOfContentsPanel({
       top={top}
     >
       <ReaderPanelHeader
-        closeAccessibilityLabel="关闭目录"
-        eyebrow="本书导航"
+        closeAccessibilityLabel={t("reader.toc.closeAccessibility")}
         theme={theme}
-        title="目录"
+        title={t("reader.toc.title")}
         style={styles.header}
         onClose={onClose}
       />
       <ScrollView
         contentContainerStyle={styles.rows}
+        onContentSizeChange={scrollToCurrent}
+        onLayout={(event: LayoutChangeEvent) => {
+          viewportHeightRef.current = event.nativeEvent.layout.height;
+          scrollToCurrent();
+        }}
+        ref={scrollViewRef}
         showsVerticalScrollIndicator={false}
       >
         {rows.map(({ item, depth }) => {
-          const selected =
-            currentPosition?.sectionId === item.target.sectionId &&
-            (currentPosition.blockId === item.target.blockId || depth === 0);
+          const selected = currentItemId === item.id;
           return (
             <Pressable
-              accessibilityLabel={`跳转到 ${item.label}`}
+              accessibilityLabel={t("reader.toc.jumpAccessibility", {
+                label: item.label,
+              })}
               accessibilityRole="button"
               accessibilityState={{ selected }}
               key={item.id}
+              onLayout={(event: LayoutChangeEvent) => {
+                const { y, height } = event.nativeEvent.layout;
+                rowLayoutsRef.current.set(item.id, { y, height });
+                if (selected) {
+                  scrollToCurrent();
+                }
+              }}
               onPress={() => onSelect(item.target)}
               style={({ pressed }) => [
                 styles.row,
                 {
                   backgroundColor: selected ? theme.panelRaised : "transparent",
-                  paddingLeft: 12 + Math.min(depth, 4) * 15,
+                  paddingLeft: 12 + Math.min(depth, 6) * 19,
                 },
                 pressed && { backgroundColor: theme.panelMuted },
               ]}
             >
-              <View
-                style={[
-                  styles.selectionMarker,
-                  {
-                    backgroundColor: selected ? theme.accent : "transparent",
-                  },
-                ]}
-              />
               <Text
                 numberOfLines={2}
                 style={[
@@ -131,11 +169,5 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
     letterSpacing: 0.1,
     lineHeight: 19,
-  },
-  selectionMarker: {
-    borderRadius: 2,
-    height: 18,
-    marginRight: 9,
-    width: 3,
   },
 });

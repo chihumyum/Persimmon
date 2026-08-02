@@ -259,6 +259,50 @@ export interface ReaderSelectionMenuRequest {
   };
 }
 
+export interface ReaderUiMessages {
+  readonly previousPage: string;
+  readonly nextPage: string;
+  readonly toggleTools: string;
+  readonly selectionStart: string;
+  readonly selectionEnd: string;
+  readonly header: (title: string) => string;
+  readonly publicationPercentage: (percentage: string) => string;
+  readonly publicationPage: (page: string) => string;
+  readonly noteKindEndnote: string;
+  readonly noteKindFootnote: string;
+  readonly noteKindAnnotation: string;
+  readonly openNote: (noteKind: string, label: string) => string;
+  readonly returnToText: (label: string) => string;
+  readonly jumpTo: (label: string) => string;
+  readonly noteHint: string;
+  readonly returnToReference: (noteKind: string, label: string) => string;
+  readonly returnToTextButton: string;
+  readonly dismissReturnButton: (noteKind: string) => string;
+}
+
+export const DEFAULT_READER_UI_MESSAGES: ReaderUiMessages = {
+  previousPage: "Previous page",
+  nextPage: "Next page",
+  toggleTools: "Toggle reading tools",
+  selectionStart: "Drag the start of the text selection",
+  selectionEnd: "Drag the end of the text selection",
+  header: (title) => `Header: ${title}`,
+  publicationPercentage: (percentage) => `Book progress ${percentage}`,
+  publicationPage: (page) => `Book page ${page}`,
+  noteKindEndnote: "endnote",
+  noteKindFootnote: "footnote",
+  noteKindAnnotation: "note",
+  openNote: (noteKind, label) => `Open ${noteKind} ${label}`,
+  returnToText: (label) => `Return to text ${label}`,
+  jumpTo: (label) => `Go to ${label}`,
+  noteHint: "Opens the note and provides a button to return to the text",
+  returnToReference: (noteKind, label) =>
+    `Return to the ${noteKind} reference ${label}`,
+  returnToTextButton: "↩ Return to Text",
+  dismissReturnButton: (noteKind) =>
+    `Dismiss the return-to-${noteKind}-reference button`,
+};
+
 export interface LiveReaderProps {
   book: BookIR;
   fontProvider: SkTypefaceFontProvider;
@@ -278,6 +322,7 @@ export interface LiveReaderProps {
   topInset?: number;
   bottomInset?: number;
   toolbarVisible?: boolean;
+  uiMessages?: ReaderUiMessages;
   initialPosition?: BookPosition;
   loadResource?: ResourceLoader;
   automaticPageTurnTuning?: AutomaticPageTurnTuning;
@@ -435,22 +480,31 @@ function expandedLinkHitFrame(
   };
 }
 
-function noteKindLabel(noteKind: PageLinkRegion["link"]["noteKind"]): string {
+function noteKindLabel(
+  messages: ReaderUiMessages,
+  noteKind: PageLinkRegion["link"]["noteKind"],
+): string {
   return noteKind === "endnote"
-    ? "尾注"
+    ? messages.noteKindEndnote
     : noteKind === "footnote"
-      ? "脚注"
-      : "注释";
+      ? messages.noteKindFootnote
+      : messages.noteKindAnnotation;
 }
 
-function linkAccessibilityLabel(region: PageLinkRegion): string {
+function linkAccessibilityLabel(
+  messages: ReaderUiMessages,
+  region: PageLinkRegion,
+): string {
   if (region.link.kind === "note-reference") {
-    return `打开${noteKindLabel(region.link.noteKind)} ${region.link.label}`;
+    return messages.openNote(
+      noteKindLabel(messages, region.link.noteKind),
+      region.link.label,
+    );
   }
   if (region.link.kind === "note-backlink") {
-    return `返回正文 ${region.link.label}`;
+    return messages.returnToText(region.link.label);
   }
-  return `跳转到 ${region.link.label}`;
+  return messages.jumpTo(region.link.label);
 }
 
 function LazyReaderEngine({
@@ -467,6 +521,7 @@ function LazyReaderEngine({
   imageCache,
   readerGeneration,
   toolbarVisible = false,
+  uiMessages = DEFAULT_READER_UI_MESSAGES,
   initialPosition,
   loadResource,
   automaticPageTurnTuning = DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
@@ -502,12 +557,13 @@ function LazyReaderEngine({
   const decorationFontFamily =
     appearance.decorationFontFamily ?? appearance.fontFamily;
   const backend = useMemo(
-    () => createSkiaParagraphBackend(fontProvider, theme),
-    [fontProvider, theme],
+    () => createSkiaParagraphBackend(fontProvider, theme, book.language),
+    [book.language, fontProvider, theme],
   );
   const transientBackend = useMemo(
-    () => createTransientSkiaParagraphBackend(fontProvider, theme),
-    [fontProvider, theme],
+    () =>
+      createTransientSkiaParagraphBackend(fontProvider, theme, book.language),
+    [book.language, fontProvider, theme],
   );
   const typographyAppearance = useMemo<ReaderAppearance>(
     () => ({
@@ -795,6 +851,7 @@ function LazyReaderEngine({
         theme.name,
         theme.colorScheme,
         theme.decoration,
+        book.language,
       ]);
       const cached = pageDecorationCache.get(key);
       if (cached) {
@@ -813,6 +870,7 @@ function LazyReaderEngine({
         topInset,
         bottomInset,
         theme,
+        locale: book.language,
       });
       pageDecorationCache.set(key, { decoration });
       while (pageDecorationCache.size > PAGE_DECORATION_CACHE_LIMIT) {
@@ -830,6 +888,7 @@ function LazyReaderEngine({
     },
     [
       appearance.horizontalMargin,
+      book.language,
       bottomInset,
       decorationFontFamily,
       fontProvider,
@@ -4355,7 +4414,7 @@ function LazyReaderEngine({
         ]}
       >
         <Pressable
-          accessibilityLabel="上一页"
+          accessibilityLabel={uiMessages.previousPage}
           accessibilityRole="button"
           disabled={previousDisabled || Platform.OS !== "web"}
           onPress={() => requestTurn(-1)}
@@ -4371,7 +4430,7 @@ function LazyReaderEngine({
         ]}
       >
         <Pressable
-          accessibilityLabel="下一页"
+          accessibilityLabel={uiMessages.nextPage}
           accessibilityRole="button"
           disabled={nextDisabled || Platform.OS !== "web"}
           onPress={() => requestTurn(1)}
@@ -4382,7 +4441,7 @@ function LazyReaderEngine({
       {Platform.OS === "web" ? (
         <View style={styles.centerTapArea}>
           <Pressable
-            accessibilityLabel="切换阅读工具"
+            accessibilityLabel={uiMessages.toggleTools}
             accessibilityRole="button"
             onPress={onCenterPress}
             style={styles.edgePressable}
@@ -4393,13 +4452,13 @@ function LazyReaderEngine({
       {!transitionReady && anchorSelectionHandle && focusSelectionHandle ? (
         <>
           <TextSelectionHandleView
-            accessibilityLabel="拖动文本选择起点"
+            accessibilityLabel={uiMessages.selectionStart}
             gesture={anchorSelectionHandleGesture}
             handle={anchorSelectionHandle}
             start={anchorIsSelectionStart}
           />
           <TextSelectionHandleView
-            accessibilityLabel="拖动文本选择终点"
+            accessibilityLabel={uiMessages.selectionEnd}
             gesture={focusSelectionHandleGesture}
             handle={focusSelectionHandle}
             start={!anchorIsSelectionStart}
@@ -4410,7 +4469,9 @@ function LazyReaderEngine({
       {showProgressHeader ? (
         <View
           accessible
-          accessibilityLabel={`页眉：${settledProgressDecoration.sectionTitle}`}
+          accessibilityLabel={uiMessages.header(
+            settledProgressDecoration.sectionTitle,
+          )}
           accessibilityLiveRegion="polite"
           style={[
             styles.accessibilityProgress,
@@ -4428,8 +4489,10 @@ function LazyReaderEngine({
           accessible
           accessibilityLabel={
             progressPresentation === "toolbar"
-              ? `全书 ${settledProgressDecoration.percentageLabel}`
-              : `全书第 ${settledProgressDecoration.pageLabel} 页`
+              ? uiMessages.publicationPercentage(
+                  settledProgressDecoration.percentageLabel,
+                )
+              : uiMessages.publicationPage(settledProgressDecoration.pageLabel)
           }
           accessibilityLiveRegion="polite"
           style={[
@@ -4456,10 +4519,10 @@ function LazyReaderEngine({
             key={key}
             accessibilityHint={
               region.link.kind === "note-reference"
-                ? "跳到注释内容，并提供返回正文的按钮"
+                ? uiMessages.noteHint
                 : undefined
             }
-            accessibilityLabel={linkAccessibilityLabel(region)}
+            accessibilityLabel={linkAccessibilityLabel(uiMessages, region)}
             accessibilityRole="link"
             onPress={() => handleLinkPress(region)}
             style={({ pressed }) => [
@@ -4489,7 +4552,10 @@ function LazyReaderEngine({
             ]}
           >
             <Pressable
-              accessibilityLabel={`返回${noteKindLabel(noteReturnAnchor.noteKind)}引用位置 ${noteReturnAnchor.label}`}
+              accessibilityLabel={uiMessages.returnToReference(
+                noteKindLabel(uiMessages, noteReturnAnchor.noteKind),
+                noteReturnAnchor.label,
+              )}
               accessibilityRole="button"
               hitSlop={6}
               onPress={returnToNoteReference}
@@ -4508,7 +4574,7 @@ function LazyReaderEngine({
               >
                 {noteReturnAnchor.presentation === "compact"
                   ? "↩"
-                  : "↩ 返回正文"}
+                  : uiMessages.returnToTextButton}
               </Text>
             </Pressable>
             <View
@@ -4518,7 +4584,9 @@ function LazyReaderEngine({
               ]}
             />
             <Pressable
-              accessibilityLabel={`关闭返回${noteKindLabel(noteReturnAnchor.noteKind)}引用位置的按钮`}
+              accessibilityLabel={uiMessages.dismissReturnButton(
+                noteKindLabel(uiMessages, noteReturnAnchor.noteKind),
+              )}
               accessibilityRole="button"
               hitSlop={6}
               onPress={clearNoteReturnAnchor}
@@ -4798,6 +4866,7 @@ export function LiveReader({
   topInset = 0,
   bottomInset = 0,
   toolbarVisible = false,
+  uiMessages = DEFAULT_READER_UI_MESSAGES,
   initialPosition,
   loadResource,
   automaticPageTurnTuning,
@@ -4881,6 +4950,7 @@ export function LiveReader({
       imageCache={imageCache}
       readerGeneration={readerGeneration}
       toolbarVisible={toolbarVisible}
+      uiMessages={uiMessages}
       initialPosition={anchorRef.current}
       loadResource={loadResource}
       automaticPageTurnTuning={normalizedAutomaticPageTurnTuning}

@@ -19,6 +19,7 @@ export interface ReaderFloatingPanelProps {
   readonly theme: ReaderTheme;
   readonly top?: number;
   readonly bottom?: number;
+  readonly height?: DimensionValue;
   readonly maxHeight?: DimensionValue;
   readonly maxWidth?: number;
   readonly width?: DimensionValue;
@@ -29,6 +30,7 @@ export interface ReaderFloatingPanelProps {
 export function ReaderFloatingPanel({
   bottom,
   children,
+  height,
   maxHeight = "84%",
   maxWidth = 360,
   padding = uiSpace.lg,
@@ -46,6 +48,7 @@ export function ReaderFloatingPanel({
           backgroundColor: theme.panel,
           borderColor: theme.border,
           bottom,
+          height,
           maxHeight,
           maxWidth,
           padding,
@@ -61,7 +64,6 @@ export function ReaderFloatingPanel({
 }
 
 export interface ReaderPanelHeaderProps {
-  readonly eyebrow?: string;
   readonly title: string;
   readonly closeAccessibilityLabel: string;
   readonly theme: ReaderTheme;
@@ -71,7 +73,6 @@ export interface ReaderPanelHeaderProps {
 
 export function ReaderPanelHeader({
   closeAccessibilityLabel,
-  eyebrow,
   onClose,
   style,
   theme,
@@ -80,11 +81,6 @@ export function ReaderPanelHeader({
   return (
     <View style={[styles.header, style]}>
       <View style={styles.heading}>
-        {eyebrow ? (
-          <UiText variant="eyebrow" style={{ color: theme.accentStrong }}>
-            {eyebrow}
-          </UiText>
-        ) : null}
         <UiText variant="panelTitle" style={{ color: theme.text }}>
           {title}
         </UiText>

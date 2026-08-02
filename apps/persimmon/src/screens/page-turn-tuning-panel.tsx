@@ -9,6 +9,7 @@ import {
   type GestureResponderEvent,
   type LayoutChangeEvent,
 } from "react-native";
+import { useTranslation } from "react-i18next";
 
 import {
   ReaderFloatingPanel,
@@ -51,6 +52,7 @@ function TuningSlider({
   valueLabel,
   onChange,
 }: TuningSliderProps) {
+  const { t } = useTranslation();
   const trackWidth = useRef(1);
   const updateFromEvent = useCallback(
     (event: GestureResponderEvent) => {
@@ -112,8 +114,14 @@ function TuningSlider({
       <View
         {...responder.panHandlers}
         accessibilityActions={[
-          { name: "decrement", label: `减小${label}` },
-          { name: "increment", label: `增大${label}` },
+          {
+            name: "decrement",
+            label: t("accessibility.decrease", { label }),
+          },
+          {
+            name: "increment",
+            label: t("accessibility.increase", { label }),
+          },
         ]}
         accessibilityLabel={label}
         accessibilityRole="adjustable"
@@ -167,6 +175,7 @@ export function PageTurnTuningPanel({
   onChange,
   onClose,
 }: PageTurnTuningPanelProps) {
+  const { t } = useTranslation();
   const updateGesture = useCallback(
     (key: keyof ReaderGesturePageTurnTuning, value: number) => {
       const gesture = { ...tuning.gesture, [key]: value };
@@ -194,10 +203,9 @@ export function PageTurnTuningPanel({
       style={styles.panel}
     >
       <ReaderPanelHeader
-        closeAccessibilityLabel="关闭翻页曲线"
-        eyebrow="开发工具"
+        closeAccessibilityLabel={t("reader.tuning.closeAccessibility")}
         theme={theme}
-        title="手势翻页常量"
+        title={t("reader.tuning.title")}
         style={styles.header}
         onClose={onClose}
       />
@@ -208,7 +216,7 @@ export function PageTurnTuningPanel({
         style={styles.sliderScroller}
       >
         <TuningSlider
-          label="反向落页起点 · releaseX"
+          label={t("reader.tuning.releaseX")}
           maximum={0.8}
           minimum={0.58}
           step={0.01}
@@ -218,7 +226,7 @@ export function PageTurnTuningPanel({
           onChange={(value) => updateGesture("releaseX", value)}
         />
         <TuningSlider
-          label="松手向上速度 · liftVelocity"
+          label={t("reader.tuning.liftVelocity")}
           maximum={1.8}
           minimum={0.7}
           step={0.05}
@@ -228,7 +236,7 @@ export function PageTurnTuningPanel({
           onChange={(value) => updateGesture("liftVelocity", value)}
         />
         <TuningSlider
-          label="松手横向展开 · liftToLeft"
+          label={t("reader.tuning.liftToLeft")}
           maximum={2.6}
           minimum={1.4}
           step={0.05}
@@ -238,7 +246,7 @@ export function PageTurnTuningPanel({
           onChange={(value) => updateGesture("liftToLeft", value)}
         />
         <TuningSlider
-          label="曲率衰减 · curvatureRelaxation"
+          label={t("reader.tuning.curvatureRelaxation")}
           maximum={14}
           minimum={3.5}
           step={0.25}
@@ -248,7 +256,7 @@ export function PageTurnTuningPanel({
           onChange={(value) => updateGesture("curvatureRelaxation", value)}
         />
         <TuningSlider
-          label="纸张重量 · pageWeight"
+          label={t("reader.tuning.pageWeight")}
           maximum={1.8}
           minimum={0.5}
           step={0.05}
@@ -258,7 +266,7 @@ export function PageTurnTuningPanel({
           onChange={(value) => updateGesture("pageWeight", value)}
         />
         <TuningSlider
-          label="提交阈值 · commitThreshold"
+          label={t("reader.tuning.commitThreshold")}
           maximum={1.2}
           minimum={0.4}
           step={0.01}
@@ -268,7 +276,7 @@ export function PageTurnTuningPanel({
           onChange={(value) => updateGesture("commitThreshold", value)}
         />
         <TuningSlider
-          label="最低收尾速度 · minimumSpeedScale"
+          label={t("reader.tuning.minimumSpeedScale")}
           maximum={1.5}
           minimum={0.5}
           step={0.05}
@@ -278,7 +286,7 @@ export function PageTurnTuningPanel({
           onChange={(value) => updateGesture("minimumSpeedScale", value)}
         />
         <TuningSlider
-          label="最高收尾速度 · maximumSpeedScale"
+          label={t("reader.tuning.maximumSpeedScale")}
           maximum={3}
           minimum={tuning.gesture.minimumSpeedScale}
           step={0.05}
@@ -288,7 +296,7 @@ export function PageTurnTuningPanel({
           onChange={(value) => updateGesture("maximumSpeedScale", value)}
         />
         <TuningSlider
-          label="甩动速度增益 · velocityGain"
+          label={t("reader.tuning.velocityGain")}
           maximum={1.2}
           minimum={0.1}
           step={0.05}
@@ -298,7 +306,7 @@ export function PageTurnTuningPanel({
           onChange={(value) => updateGesture("velocityGain", value)}
         />
         <TuningSlider
-          label="松手衰减秒数 · idleDecaySeconds"
+          label={t("reader.tuning.idleDecaySeconds")}
           maximum={0.2}
           minimum={0.03}
           step={0.005}
@@ -311,11 +319,14 @@ export function PageTurnTuningPanel({
 
       <View style={styles.footer}>
         <Text style={[styles.equation, { color: theme.secondaryText }]}>
-          传播速度{" "}
-          {(tuning.gesture.liftVelocity * tuning.gesture.liftToLeft).toFixed(2)}
+          {t("reader.tuning.propagationSpeed", {
+            value: (
+              tuning.gesture.liftVelocity * tuning.gesture.liftToLeft
+            ).toFixed(2),
+          })}
         </Text>
         <Pressable
-          accessibilityLabel="恢复手势默认常量"
+          accessibilityLabel={t("reader.tuning.resetAccessibility")}
           accessibilityRole="button"
           onPress={() =>
             onChange({
@@ -325,7 +336,7 @@ export function PageTurnTuningPanel({
           }
         >
           <Text style={[styles.resetText, { color: theme.accentStrong }]}>
-            恢复手势默认
+            {t("reader.tuning.reset")}
           </Text>
         </Pressable>
       </View>
@@ -335,7 +346,6 @@ export function PageTurnTuningPanel({
 
 const styles = StyleSheet.create({
   equation: {
-    color: "#8a7d72",
     fontSize: 12,
     fontVariant: ["tabular-nums"],
   },
@@ -352,13 +362,11 @@ const styles = StyleSheet.create({
     zIndex: 25,
   },
   resetText: {
-    color: "#b94b24",
     fontSize: 12,
     fontWeight: "600",
     paddingVertical: 5,
   },
   sliderFill: {
-    backgroundColor: "#d95f2b",
     borderRadius: 2,
     bottom: 0,
     left: 0,
@@ -366,7 +374,6 @@ const styles = StyleSheet.create({
     top: 0,
   },
   sliderLabel: {
-    color: "#5c534b",
     fontSize: 12,
     fontWeight: "600",
   },
@@ -379,7 +386,6 @@ const styles = StyleSheet.create({
     paddingRight: 4,
   },
   sliderRail: {
-    backgroundColor: "#ddd2c7",
     borderRadius: 2,
     height: 4,
     left: 0,
@@ -395,8 +401,6 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   sliderThumb: {
-    backgroundColor: "#fbf7f0",
-    borderColor: "#d95f2b",
     borderRadius: 7,
     borderWidth: 2,
     height: 14,
@@ -410,7 +414,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   sliderValue: {
-    color: "#8a7d72",
     fontSize: 11,
     fontVariant: ["tabular-nums"],
   },

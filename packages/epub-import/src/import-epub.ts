@@ -72,7 +72,7 @@ const FONT_MEDIA_TYPES = new Set([
   "font/woff2",
 ]);
 
-export const EPUB_COMPILER_VERSION = 5 as const;
+export const EPUB_COMPILER_VERSION = 6 as const;
 
 export interface EpubImportWarning {
   code:
@@ -2029,54 +2029,59 @@ function compileNavigation(
     const resolved: BookNavigationItem[] = [];
     for (const item of items) {
       const children = resolveItems(item.children);
-      if (!item.href) {
-        resolved.push(...children);
-        continue;
+      let target: BookPosition | undefined;
+      if (item.href) {
+        let targetPath: string | undefined;
+        try {
+          targetPath = resolveArchiveReference(
+            navigationItem.path ?? packageModel.path,
+            item.href,
+          );
+        } catch {
+          warnings.push({
+            code: "navigation-item-skipped",
+            message: `Navigation target is unsupported and was skipped: ${item.href}`,
+            context: item.href,
+          });
+        }
+
+        const section = targetPath
+          ? firstSectionByPath.get(targetPath)
+          : undefined;
+        if (targetPath && !section) {
+          warnings.push({
+            code: "navigation-item-skipped",
+            message: `Navigation target does not resolve to a readable spine section: ${item.href}`,
+            context: item.href,
+          });
+        }
+        if (targetPath && section) {
+          const fragment = fragmentFromReference(item.href);
+          const fragmentTarget = fragment
+            ? fragmentTargetsByPath.get(targetPath)?.get(fragment)
+            : undefined;
+          if (fragment && !fragmentTarget) {
+            warnings.push({
+              code: "navigation-target-fallback",
+              message: `Navigation fragment was not found; using the section start: ${item.href}`,
+              context: item.href,
+            });
+          }
+          target = fragmentTarget ?? {
+            sectionId: section.id,
+            blockId: section.blocks[0].id,
+            offset: 0,
+          };
+        }
       }
 
-      let targetPath: string;
-      try {
-        targetPath = resolveArchiveReference(
-          navigationItem.path ?? packageModel.path,
-          item.href,
-        );
-      } catch {
-        warnings.push({
-          code: "navigation-item-skipped",
-          message: `Navigation target is unsupported and was skipped: ${item.href}`,
-          context: item.href,
-        });
-        resolved.push(...children);
+      // EPUB 3 permits non-linking labels (usually a <span>) to group nested
+      // entries. Keep that original hierarchy and make the group navigate to
+      // its first readable child instead of flattening all descendants.
+      target ??= children[0]?.target;
+      if (!target) {
         continue;
       }
-
-      const section = firstSectionByPath.get(targetPath);
-      if (!section) {
-        warnings.push({
-          code: "navigation-item-skipped",
-          message: `Navigation target does not resolve to a readable spine section: ${item.href}`,
-          context: item.href,
-        });
-        resolved.push(...children);
-        continue;
-      }
-
-      const fragment = fragmentFromReference(item.href);
-      const fragmentTarget = fragment
-        ? fragmentTargetsByPath.get(targetPath)?.get(fragment)
-        : undefined;
-      if (fragment && !fragmentTarget) {
-        warnings.push({
-          code: "navigation-target-fallback",
-          message: `Navigation fragment was not found; using the section start: ${item.href}`,
-          context: item.href,
-        });
-      }
-      const target: BookPosition = fragmentTarget ?? {
-        sectionId: section.id,
-        blockId: section.blocks[0].id,
-        offset: 0,
-      };
       itemCounter += 1;
       resolved.push({
         id: `epub-nav:${itemCounter}`,

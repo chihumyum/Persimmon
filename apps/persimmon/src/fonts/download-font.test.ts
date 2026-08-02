@@ -6,14 +6,14 @@ import { DOWNLOADABLE_FONT_CATALOG } from "./downloadable-font-catalog";
 import type { FontRepository, InstallFontInput } from "./types";
 
 class RecordingRepository implements FontRepository {
-  installed?: InstallFontInput;
+  readonly installed: InstallFontInput[] = [];
 
   async initialize(): Promise<void> {}
   async listFamilies(): Promise<readonly FontFamilyRecord[]> {
     return [];
   }
   async installFont(input: InstallFontInput): Promise<FontFamilyRecord> {
-    this.installed = input;
+    this.installed.push(input);
     return {
       id: input.familyId!,
       displayName: input.displayName!,
@@ -33,6 +33,18 @@ afterEach(() => {
 });
 
 describe("official font download", () => {
+  it("offers only the selected Chinese and English reading families", () => {
+    expect(
+      DOWNLOADABLE_FONT_CATALOG.families.map((family) => ({
+        id: family.id,
+        displayName: family.displayName,
+      })),
+    ).toEqual([
+      { id: "download:lxgw-wenkai-screen", displayName: "霞鹜文楷屏幕阅读版" },
+      { id: "download:literata", displayName: "Literata" },
+    ]);
+  });
+
   it("passes catalog integrity metadata to the repository", async () => {
     const catalogFamily = DOWNLOADABLE_FONT_CATALOG.families[1]!;
     const face = catalogFamily.faces[0]!;
@@ -45,7 +57,8 @@ describe("official font download", () => {
 
     await downloadFontFamily(catalogFamily, repository);
 
-    expect(repository.installed).toMatchObject({
+    expect(repository.installed).toHaveLength(catalogFamily.faces.length);
+    expect(repository.installed[0]).toMatchObject({
       source: "downloaded",
       familyId: catalogFamily.id,
       faceId: face.id,
@@ -53,6 +66,9 @@ describe("official font download", () => {
       expectedSha256: face.sha256,
       expectedByteLength: face.byteLength,
     });
+    expect(repository.installed.map((input) => input.faceId)).toEqual(
+      catalogFamily.faces.map((candidate) => candidate.id),
+    );
   });
 
   it("rejects a response whose declared size exceeds the pinned catalog", async () => {

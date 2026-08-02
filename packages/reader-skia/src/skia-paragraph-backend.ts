@@ -45,6 +45,7 @@ function textAlignOf(align: TypographyPreset["align"]): TextAlign {
 function textStyleOf(
   input: ParagraphLayoutInput,
   theme: ReaderTheme,
+  locale: string,
   run?: Pick<
     ResolvedRun,
     "bookFontFamilyId" | "link" | "marks" | "verticalAlign"
@@ -89,17 +90,18 @@ function textStyleOf(
           : FontSlant.Upright,
     },
     heightMultiplier: input.style.heightMultiplier,
-    locale: "zh-CN",
+    locale,
   };
 }
 
 function paragraphStyleOf(
   input: ParagraphLayoutInput,
   theme: ReaderTheme,
+  locale: string,
 ): SkParagraphStyle {
   return {
     textAlign: textAlignOf(input.style.align),
-    textStyle: textStyleOf(input, theme),
+    textStyle: textStyleOf(input, theme, locale),
   };
 }
 
@@ -120,14 +122,15 @@ function buildParagraph(
   input: ParagraphLayoutInput,
   fontProvider: SkTypefaceFontProvider,
   theme: ReaderTheme,
+  locale: string,
 ): SkParagraph {
   const builder = Skia.ParagraphBuilder.Make(
-    paragraphStyleOf(input, theme),
+    paragraphStyleOf(input, theme, locale),
     fontProvider,
   );
   try {
     for (const run of input.runs) {
-      builder.pushStyle(textStyleOf(input, theme, run));
+      builder.pushStyle(textStyleOf(input, theme, locale, run));
       builder.addText(run.text);
       builder.pop();
     }
@@ -141,8 +144,9 @@ function layoutParagraph(
   input: ParagraphLayoutInput,
   fontProvider: SkTypefaceFontProvider,
   theme: ReaderTheme,
+  locale: string,
 ): SkParagraph {
-  const paragraph = buildParagraph(input, fontProvider, theme);
+  const paragraph = buildParagraph(input, fontProvider, theme, locale);
   paragraph.layout(input.width);
   return paragraph;
 }
@@ -197,6 +201,7 @@ export function retireLazySkiaParagraph(
 export function createSkiaParagraphBackend(
   fontProvider: SkTypefaceFontProvider,
   theme: ReaderTheme = DEFAULT_READER_THEME,
+  locale = "und",
 ): ParagraphLayoutBackend<SkParagraph> {
   const handles = new SkiaParagraphHandleCache<SkParagraph>(
     MATERIALIZED_PARAGRAPH_LIMIT,
@@ -212,13 +217,13 @@ export function createSkiaParagraphBackend(
       // identity. Give each measured owner an independent cache slot so
       // retiring the old generation cannot dispose the new one's handle.
       const handleKey = `${++paragraphInstance}:${input.key}`;
-      const measurement = layoutParagraph(input, fontProvider, theme);
+      const measurement = layoutParagraph(input, fontProvider, theme, locale);
       const geometry = measuredParagraph(input, measurement);
       measurement.dispose();
 
       const materialized = (): SkParagraph =>
         handles.getOrCreate(handleKey, () =>
-          layoutParagraph(input, fontProvider, theme),
+          layoutParagraph(input, fontProvider, theme, locale),
         );
       const measured: MeasuredParagraph<SkParagraph> = {
         ...geometry,
@@ -263,10 +268,11 @@ export function createSkiaParagraphBackend(
 export function createTransientSkiaParagraphBackend(
   fontProvider: SkTypefaceFontProvider,
   theme: ReaderTheme = DEFAULT_READER_THEME,
+  locale = "und",
 ): ParagraphLayoutBackend<SkParagraph> {
   return {
     layout(input) {
-      const paragraph = layoutParagraph(input, fontProvider, theme);
+      const paragraph = layoutParagraph(input, fontProvider, theme, locale);
       return {
         ...measuredParagraph(input, paragraph),
         handle: paragraph,

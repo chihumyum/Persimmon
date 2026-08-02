@@ -11,6 +11,7 @@ import {
   type ReaderPageTurnTuning,
   type ReaderProgressDisplay,
   type ReaderSettings,
+  type ReaderThemeName,
 } from "./types";
 
 export function normalizeSettings(value: unknown): ReaderSettings {
@@ -41,7 +42,7 @@ export function normalizeSettings(value: unknown): ReaderSettings {
 
 function normalizeAppearance(value: object): ReaderAppearanceSettings {
   return {
-    theme: "warm",
+    theme: readerTheme(value),
     colorMode: readerColorMode(value),
     font: normalizeReaderFontSettings(
       "font" in value ? value.font : undefined,
@@ -81,6 +82,10 @@ function normalizeAppearance(value: object): ReaderAppearanceSettings {
     ),
     progressDisplay: readerProgressDisplay(value),
   };
+}
+
+function readerTheme(value: object): ReaderThemeName {
+  return "theme" in value && value.theme === "cool" ? "cool" : "warm";
 }
 
 function readerColorMode(value: object): ReaderColorMode {

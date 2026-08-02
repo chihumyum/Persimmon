@@ -21,9 +21,6 @@ function reversedIosClientId(clientId) {
 }
 
 module.exports = ({ config }) => {
-  const webClientId =
-    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ??
-    "REPLACE_WITH_WEB_CLIENT_ID.apps.googleusercontent.com";
   const iosClientId =
     process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ??
     DEFAULT_GOOGLE_IOS_CLIENT_ID;
@@ -48,7 +45,6 @@ module.exports = ({ config }) => {
     extra: {
       ...(config.extra ?? {}),
       googleDrive: {
-        webClientId,
         iosClientId,
         androidClientId,
       },

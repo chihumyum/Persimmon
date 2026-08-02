@@ -15,10 +15,10 @@ interface NavigationCandidate {
   readonly position: OrderedPosition;
 }
 
-export function navigationLabelsForPosition(
+export function navigationPathForPosition(
   book: BookIR,
   position: BookPosition | undefined,
-): readonly string[] {
+): readonly BookNavigationItem[] {
   if (!position || !book.navigation?.length) {
     return [];
   }
@@ -47,9 +47,16 @@ export function navigationLabelsForPosition(
   };
   visit(book.navigation, []);
 
-  return active
-    ? active.path.map((item) => item.label.trim()).filter(Boolean)
-    : [];
+  return active?.path ?? [];
+}
+
+export function navigationLabelsForPosition(
+  book: BookIR,
+  position: BookPosition | undefined,
+): readonly string[] {
+  return navigationPathForPosition(book, position)
+    .map((item) => item.label.trim())
+    .filter(Boolean);
 }
 
 function orderedPosition(

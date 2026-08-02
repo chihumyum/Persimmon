@@ -1,4 +1,4 @@
-export type ReaderThemeName = "warm";
+export type ReaderThemeName = "warm" | "cool";
 
 export type ReaderColorMode = "system" | "light" | "dark";
 
@@ -71,6 +71,51 @@ const WARM_THEME: Readonly<Record<ResolvedReaderColorScheme, ReaderTheme>> = {
   },
 };
 
+const COOL_THEME: Readonly<Record<ResolvedReaderColorScheme, ReaderTheme>> = {
+  light: {
+    name: "cool",
+    colorScheme: "light",
+    paper: "#f7f7f7",
+    surrounding: "#e5e5e5",
+    text: "#2c2c2c",
+    link: "#a64f2d",
+    decoration: "#7d7d7d",
+    divider: "#d9d9d9",
+    imagePlaceholder: "#e8e8e8",
+    noteAccent: "#c97a52",
+    panel: "#f7f7f7",
+    panelRaised: "#ffffff",
+    panelMuted: "#ececec",
+    border: "#d2d2d2",
+    controlText: "#525252",
+    secondaryText: "#777777",
+    accent: "#d95f2b",
+    accentStrong: "#a94420",
+    shadow: "#2a2a2a",
+  },
+  dark: {
+    name: "cool",
+    colorScheme: "dark",
+    paper: "#1c1c1c",
+    surrounding: "#111111",
+    text: "#e8e8e8",
+    link: "#e5a079",
+    decoration: "#a6a6a6",
+    divider: "#3b3b3b",
+    imagePlaceholder: "#2c2c2c",
+    noteAccent: "#d68b63",
+    panel: "#222222",
+    panelRaised: "#2b2b2b",
+    panelMuted: "#343434",
+    border: "#474747",
+    controlText: "#dddddd",
+    secondaryText: "#aaaaaa",
+    accent: "#e57949",
+    accentStrong: "#f19a70",
+    shadow: "#080808",
+  },
+};
+
 export const DEFAULT_READER_THEME = WARM_THEME.light;
 
 /** Backwards-compatible alias for consumers that only need the default paper. */
@@ -83,5 +128,7 @@ export function resolveReaderTheme(
   switch (name) {
     case "warm":
       return WARM_THEME[colorScheme];
+    case "cool":
+      return COOL_THEME[colorScheme];
   }
 }

@@ -6,6 +6,11 @@ export type LibraryFilter = "all" | LibraryReadingStatus;
 
 export type LibrarySort = "recent" | "added" | "title";
 
+export interface LibraryGridEntry {
+  readonly entry: LibraryBookSummary;
+  readonly visible: boolean;
+}
+
 const FINISHED_THRESHOLD = 0.995;
 
 function normalizedSearchText(value: string): string {
@@ -36,6 +41,10 @@ export function readingStatusForEntry(
   return (entry.readingProgress ?? 0) >= FINISHED_THRESHOLD
     ? "finished"
     : "reading";
+}
+
+export function isNewLibraryEntry(entry: LibraryBookSummary): boolean {
+  return entry.status === "ready" && !entry.locator;
 }
 
 export function readingProgressPercent(entry: LibraryBookSummary): number {
@@ -92,4 +101,15 @@ export function selectLibraryEntries(
       compareTitle(left, right)
     );
   });
+}
+
+export function arrangeLibraryGridEntries(
+  entries: readonly LibraryBookSummary[],
+  filter: LibraryFilter,
+  sort: LibrarySort,
+): LibraryGridEntry[] {
+  return selectLibraryEntries(entries, "all", sort).map((entry) => ({
+    entry,
+    visible: filter === "all" || readingStatusForEntry(entry) === filter,
+  }));
 }

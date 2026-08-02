@@ -1,5 +1,6 @@
 import type { BookLocator } from "@persimmon/book-core";
 
+import { translate } from "../i18n";
 import { libraryRepository } from "../library/repository";
 import { sha256Hex } from "../library/shared";
 import type { LibraryBookSummary } from "../library/types";
@@ -18,15 +19,29 @@ type StatusListener = (status: GoogleDriveSyncStatus) => void;
 
 function userFacingSyncError(error: unknown): string {
   if (error instanceof GoogleAuthError) {
-    return error.message;
+    switch (error.code) {
+      case "unconfigured":
+        return googleDriveConfigurationMessage();
+      case "authorization-required":
+        return translate("sync.errors.authorizationRequired");
+      case "authorization-cancelled":
+        return translate("sync.errors.authorizationCancelled");
+      case "authorization-failed":
+        return translate("sync.errors.authorizationFailed");
+    }
   }
   if (error instanceof Error) {
-    if (error.message.includes("fetch") || error.message.includes("Network")) {
-      return "无法连接 Google Drive，请检查网络后重试。";
+    const message = error.message.toLowerCase();
+    if (
+      error instanceof TypeError ||
+      message.includes("fetch") ||
+      message.includes("network") ||
+      message.includes("无法连接")
+    ) {
+      return translate("sync.errors.network");
     }
-    return error.message;
   }
-  return "Google Drive 同步失败，请稍后重试。";
+  return translate("sync.errors.failed");
 }
 
 class GoogleDriveSyncService {
@@ -148,6 +163,10 @@ class GoogleDriveSyncService {
     updatedAt?: string,
   ): Promise<void> {
     await this.ensureEngine();
+    await libraryRepository.saveProgress(locator, {
+      ...(publicationProgress === undefined ? {} : { publicationProgress }),
+      ...(updatedAt ? { updatedAt } : {}),
+    });
     await this.enqueue(() =>
       this.engine.noteProgress(locator, publicationProgress, updatedAt),
     );
@@ -240,7 +259,7 @@ class GoogleDriveSyncService {
         phase: "reauthorization-required",
         message:
           error instanceof DriveApiError
-            ? "Google Drive 授权已失效，请重新连接。"
+            ? translate("sync.errors.authorizationRequired")
             : userFacingSyncError(error),
         ...shared,
       });

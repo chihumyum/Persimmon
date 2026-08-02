@@ -1,7 +1,8 @@
 import * as DocumentPicker from "expo-document-picker";
 import { File as ExpoFile } from "expo-file-system";
 import { MAX_USER_FONT_BYTES } from "@persimmon/font-core";
-import { Platform } from "react-native";
+
+import { translate } from "./i18n";
 
 export interface PickedFont {
   readonly fileName: string;
@@ -13,10 +14,6 @@ async function bytesOf(
 ): Promise<Uint8Array> {
   if (asset.file) {
     return new Uint8Array(await asset.file.arrayBuffer());
-  }
-  if (Platform.OS === "web") {
-    const response = await fetch(asset.uri);
-    return new Uint8Array(await response.arrayBuffer());
   }
   return new ExpoFile(asset.uri).bytes();
 }
@@ -34,7 +31,9 @@ export async function pickLocalFont(): Promise<PickedFont | null> {
   }
   if (asset.size !== undefined && asset.size > MAX_USER_FONT_BYTES) {
     throw new Error(
-      `字体文件不能超过 ${MAX_USER_FONT_BYTES / 1024 / 1024} MB。`,
+      translate("errors.fonts.fileTooLarge", {
+        maximumMb: MAX_USER_FONT_BYTES / 1024 / 1024,
+      }),
     );
   }
   return {
