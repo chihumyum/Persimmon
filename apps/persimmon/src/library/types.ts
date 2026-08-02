@@ -124,12 +124,12 @@ export interface ReaderGesturePageTurnTuning {
 
 export const DEFAULT_READER_GESTURE_PAGE_TURN_TUNING: ReaderGesturePageTurnTuning =
   {
-    releaseX: 0.72,
-    liftVelocity: 1.35,
-    liftToLeft: 2,
+    releaseX: 0.69,
+    liftVelocity: 0.9,
+    liftToLeft: 1.65,
     curvatureRelaxation: 7,
-    pageWeight: 1,
-    commitThreshold: 0.78,
+    pageWeight: 0.6,
+    commitThreshold: 0.53,
     minimumSpeedScale: 0.95,
     maximumSpeedScale: 2,
     velocityGain: 0.6,

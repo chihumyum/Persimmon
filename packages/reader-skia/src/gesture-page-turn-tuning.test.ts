@@ -6,10 +6,19 @@ import {
 } from "./gesture-page-turn-tuning";
 
 describe("gesture page turn tuning", () => {
-  it("uses raw solver constants as stable defaults", () => {
-    expect(normalizeGesturePageTurnTuning(undefined)).toEqual(
-      DEFAULT_GESTURE_PAGE_TURN_TUNING,
-    );
+  it("uses the tuned product constants as stable defaults", () => {
+    expect(normalizeGesturePageTurnTuning(undefined)).toEqual({
+      releaseX: 0.69,
+      liftVelocity: 0.9,
+      liftToLeft: 1.65,
+      curvatureRelaxation: 7,
+      pageWeight: 0.6,
+      commitThreshold: 0.53,
+      minimumSpeedScale: 0.95,
+      maximumSpeedScale: 2,
+      velocityGain: 0.6,
+      idleDecaySeconds: 0.09,
+    });
   });
 
   it("clamps gesture release and commit constants", () => {

@@ -1,5 +1,4 @@
 import {
-  DEFAULT_PAGE_TURN_TUNING,
   clampPageTurnTuning,
   type PageTurnTuning,
 } from "@persimmon/page-turn-core";
@@ -18,16 +17,16 @@ export interface GesturePageTurnTuning {
 }
 
 export const DEFAULT_GESTURE_PAGE_TURN_TUNING: GesturePageTurnTuning = {
-  releaseX: DEFAULT_PAGE_TURN_TUNING.releaseX,
-  liftVelocity: DEFAULT_PAGE_TURN_TUNING.liftVelocity,
-  liftToLeft: DEFAULT_PAGE_TURN_TUNING.liftToLeft,
-  curvatureRelaxation: DEFAULT_PAGE_TURN_TUNING.curvatureRelaxation,
-  pageWeight: DEFAULT_PAGE_TURN_TUNING.pageWeight,
-  commitThreshold: DEFAULT_PAGE_TURN_TUNING.gestureCommitThreshold,
-  minimumSpeedScale: DEFAULT_PAGE_TURN_TUNING.gestureMinimumSpeedScale,
-  maximumSpeedScale: DEFAULT_PAGE_TURN_TUNING.gestureMaximumSpeedScale,
-  velocityGain: DEFAULT_PAGE_TURN_TUNING.gestureVelocityGain,
-  idleDecaySeconds: DEFAULT_PAGE_TURN_TUNING.gestureIdleDecaySeconds,
+  releaseX: 0.69,
+  liftVelocity: 0.9,
+  liftToLeft: 1.65,
+  curvatureRelaxation: 7,
+  pageWeight: 0.6,
+  commitThreshold: 0.53,
+  minimumSpeedScale: 0.95,
+  maximumSpeedScale: 2,
+  velocityGain: 0.6,
+  idleDecaySeconds: 0.09,
 };
 
 export function normalizeGesturePageTurnTuning(

@@ -47,6 +47,7 @@ import {
 } from "./table-of-contents-panel";
 
 const ReaderSurface = React.lazy(() => import("../reader/reader-surface"));
+const SHOW_PAGE_TURN_TUNING = false;
 
 interface Viewport {
   readonly width: number;
@@ -427,20 +428,22 @@ export function ReaderScreen({
               theme={theme}
               variant="chrome"
             />
-            <UiButton
-              accessibilityLabel="调节翻页常量"
-              iconOnly
-              label="曲线"
-              leadingIcon="tuning"
-              onPress={() => {
-                setStyleVisible(false);
-                setLayoutVisible(false);
-                setTocVisible(false);
-                setTuningVisible((visible) => !visible);
-              }}
-              theme={theme}
-              variant="chrome"
-            />
+            {SHOW_PAGE_TURN_TUNING ? (
+              <UiButton
+                accessibilityLabel="调节翻页常量"
+                iconOnly
+                label="曲线"
+                leadingIcon="tuning"
+                onPress={() => {
+                  setStyleVisible(false);
+                  setLayoutVisible(false);
+                  setTocVisible(false);
+                  setTuningVisible((visible) => !visible);
+                }}
+                theme={theme}
+                variant="chrome"
+              />
+            ) : null}
             <UiButton
               accessibilityLabel="打开阅读样式"
               iconOnly

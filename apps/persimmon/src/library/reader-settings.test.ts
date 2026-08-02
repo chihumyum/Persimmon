@@ -13,6 +13,21 @@ import {
 } from "./types";
 
 describe("reader settings", () => {
+  it("uses the tuned gesture constants as defaults", () => {
+    expect(normalizeSettings({}).pageTurnTuning.gesture).toEqual({
+      releaseX: 0.69,
+      liftVelocity: 0.9,
+      liftToLeft: 1.65,
+      curvatureRelaxation: 7,
+      pageWeight: 0.6,
+      commitThreshold: 0.53,
+      minimumSpeedScale: 0.95,
+      maximumSpeedScale: 2,
+      velocityGain: 0.6,
+      idleDecaySeconds: 0.09,
+    });
+  });
+
   it("migrates old settings with default page-turn tuning", () => {
     expect(normalizeSettings({ fontSize: 22, layout: "spread" })).toEqual({
       appearance: {
