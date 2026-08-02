@@ -83,7 +83,7 @@ export interface ReaderFontSettings {
 
 export const DEFAULT_READER_FONT_SETTINGS: ReaderFontSettings = {
   selectedFontId: BUILTIN_READER_SERIF_ID,
-  useBookEmbeddedFonts: false,
+  useBookEmbeddedFonts: true,
 };
 
 export function normalizeFontWeight(value: number): number {
@@ -103,7 +103,7 @@ export function normalizeReaderFontSettings(
         legacyFamily === "sans"
           ? BUILTIN_READER_SANS_ID
           : BUILTIN_READER_SERIF_ID,
-      useBookEmbeddedFonts: false,
+      useBookEmbeddedFonts: DEFAULT_READER_FONT_SETTINGS.useBookEmbeddedFonts,
     };
   }
   const candidate = value as Partial<ReaderFontSettings>;
@@ -115,7 +115,10 @@ export function normalizeReaderFontSettings(
         : legacyFamily === "sans"
           ? BUILTIN_READER_SANS_ID
           : BUILTIN_READER_SERIF_ID,
-    useBookEmbeddedFonts: candidate.useBookEmbeddedFonts === true,
+    useBookEmbeddedFonts:
+      typeof candidate.useBookEmbeddedFonts === "boolean"
+        ? candidate.useBookEmbeddedFonts
+        : DEFAULT_READER_FONT_SETTINGS.useBookEmbeddedFonts,
   };
 }
 

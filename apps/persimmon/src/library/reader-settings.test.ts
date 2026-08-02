@@ -68,7 +68,7 @@ describe("reader settings", () => {
         colorMode: "dark",
         font: {
           selectedFontId: BUILTIN_READER_SANS_ID,
-          useBookEmbeddedFonts: false,
+          useBookEmbeddedFonts: true,
         },
         fontSize: 32,
         lineHeight: 1.85,
@@ -118,7 +118,7 @@ describe("reader settings", () => {
       }).appearance.font,
     ).toEqual({
       selectedFontId: BUILTIN_READER_SANS_ID,
-      useBookEmbeddedFonts: false,
+      useBookEmbeddedFonts: true,
     });
     expect(normalizeSettings({}).appearance.font.selectedFontId).toBe(
       BUILTIN_READER_SERIF_ID,

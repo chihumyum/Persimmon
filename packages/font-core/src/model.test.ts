@@ -30,11 +30,11 @@ describe("reader font settings", () => {
   it("migrates the legacy serif/sans choice", () => {
     expect(normalizeReaderFontSettings(undefined, "sans")).toEqual({
       selectedFontId: BUILTIN_READER_SANS_ID,
-      useBookEmbeddedFonts: false,
+      useBookEmbeddedFonts: true,
     });
     expect(normalizeReaderFontSettings(undefined, "serif")).toEqual({
       selectedFontId: BUILTIN_READER_SERIF_ID,
-      useBookEmbeddedFonts: false,
+      useBookEmbeddedFonts: true,
     });
   });
 
@@ -55,6 +55,15 @@ describe("reader font settings", () => {
       }),
     ).toEqual({
       selectedFontId: BUILTIN_READER_SERIF_ID,
+      useBookEmbeddedFonts: true,
+    });
+    expect(
+      normalizeReaderFontSettings({
+        selectedFontId: "user:source-han-serif",
+        useBookEmbeddedFonts: false,
+      }),
+    ).toEqual({
+      selectedFontId: "user:source-han-serif",
       useBookEmbeddedFonts: false,
     });
   });
