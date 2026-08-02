@@ -57,6 +57,7 @@ ID；iOS 和 Android Client ID 已配置，Web Client ID 可以等部署域名�
 Google 官方入口：
 
 - [appDataFolder 说明](https://developers.google.com/workspace/drive/api/guides/appdata)
+- [Android AuthorizationClient 授权](https://developer.android.com/identity/authorization)
 - [Google Identity Services Web token model](https://developers.google.com/identity/oauth2/web/guides/use-token-model)
 - [OAuth 2.0 for iOS and installed apps](https://developers.google.com/identity/protocols/oauth2/native-app)
 
@@ -130,3 +131,10 @@ Native Google SDK 会安全维护授权状态并刷新 access token。Web 使用
 Identity Services 短期 access
 token，只保存在当前浏览器会话中；浏览器会话过期后，界面会要求重新连接，不会把长期 refresh
 token 放进前端存储。
+
+Android 将“账号身份”和“Drive 数据权限”分开：Google Sign-In 只选择并恢复账号，
+`AuthorizationClient` 为同一账号申请 `drive.appdata` 并签发 access
+token。应用启动时只做静默检查，不会自行弹出授权页；用户点连接后才允许打开权限页。Drive 返回 401 时会通过
+`AuthorizationClient.clearToken`
+清除旧 token，再静默获取新 token。这个授权桥接是原生 Expo 模块，修改后必须重建 Android
+development build，单独刷新 Metro bundle 不会生效。

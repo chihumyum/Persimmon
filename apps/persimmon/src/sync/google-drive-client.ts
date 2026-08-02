@@ -150,7 +150,10 @@ export class GoogleDriveClient {
       throw new Error("Google Drive 未返回 resumable upload 地址。");
     }
 
-    const body = new Blob([Uint8Array.from(bytes)], { type: mimeType });
+    // React Native's Blob constructor rejects ArrayBufferView parts on both
+    // iOS and Android, while its networking layer supports ArrayBuffer bodies.
+    // Copy the bytes so the request owns an exact-length, reusable buffer.
+    const body = Uint8Array.from(bytes).buffer;
     const upload = await this.request(sessionUrl, {
       method: "PUT",
       headers: { "Content-Type": mimeType },

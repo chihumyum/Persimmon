@@ -154,7 +154,9 @@ upload，再发布引用它的设备状态。下载时校验长度和 SHA-256 �
 
 已授权设备会在冷启动、回到前台和前台每 60 秒同步；导入、删除或阅读位置变化后再以 1.5 秒合并窗口触发同步。首次关联的新设备在连接成功后立即执行同一条 sync 路径：合并远端设备文档、下载缺失 EPUB、原子导入、应用远端进度，然后把采用后的状态写进自己的设备文档。远端状态因此不会只存在于一次运行的内存里。
 
-Native 授权由 Google Sign-In SDK 管理；Web 使用 Google Identity
+Android 使用 Google Sign-In 恢复账号身份，再由 Google Identity Services
+`AuthorizationClient` 独立申请 Drive scope 和 access token；iOS 继续由 Google
+Sign-In SDK 管理原生授权。Web 使用 Google Identity
 Services 的短期 token。同步凭证只授予
 `drive.appdata`，不需要 Persimmon 自有账号，也不会访问用户普通 Drive 文件。具体配置和验收见
 [google-drive-sync.md](google-drive-sync.md)。
