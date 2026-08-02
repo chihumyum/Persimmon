@@ -166,7 +166,7 @@ import {
 import {
   DEFAULT_GESTURE_PAGE_TURN_TUNING,
   gestureTuningForCore,
-  normalizeGesturePageTurnTuning,
+  normalizeGesturePageTurnTuningForPlatform,
   type GesturePageTurnTuning,
 } from "./gesture-page-turn-tuning";
 import {
@@ -4858,7 +4858,11 @@ export function LiveReader({
     [automaticPageTurnTuning],
   );
   const normalizedGesturePageTurnTuning = useMemo(
-    () => normalizeGesturePageTurnTuning(gesturePageTurnTuning),
+    () =>
+      normalizeGesturePageTurnTuningForPlatform(
+        gesturePageTurnTuning,
+        Platform.OS,
+      ),
     [gesturePageTurnTuning],
   );
 

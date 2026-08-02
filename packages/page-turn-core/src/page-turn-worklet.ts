@@ -52,6 +52,10 @@ const WEAK_GRIP_MAX_COMPRESSION = 0.04;
 const WEAK_GRIP_COMPRESSION_PER_PAGE = 0.2;
 const MIN_PAGE_WEIGHT = 0.5;
 const MAX_PAGE_WEIGHT = 1.8;
+// The app-level tuning floor is 0.4. Keep the solver floor below its iOS
+// two-thirds scale so the platform adjustment is not silently clamped away.
+const MIN_GESTURE_COMMIT_THRESHOLD = 0.25;
+const MAX_GESTURE_COMMIT_THRESHOLD = 1.2;
 const COMMIT_VELOCITY_LIMIT = 3.2;
 const COMMIT_ACCELERATION_LIMIT = 10;
 const COMMIT_VELOCITY_GAIN = 0.18;
@@ -180,8 +184,8 @@ export function createPageTurnWorkletState(
     ),
     tuningGestureCommitThreshold: clamp(
       tuning.gestureCommitThreshold,
-      0.4,
-      1.2,
+      MIN_GESTURE_COMMIT_THRESHOLD,
+      MAX_GESTURE_COMMIT_THRESHOLD,
     ),
     tuningGestureMinimumSpeedScale: clamp(
       tuning.gestureMinimumSpeedScale,
@@ -268,8 +272,8 @@ export function setPageTurnWorkletTuning(
     Math.max(MIN_PAGE_WEIGHT, tuning.pageWeight),
   );
   state.tuningGestureCommitThreshold = Math.min(
-    1.2,
-    Math.max(0.4, tuning.gestureCommitThreshold),
+    MAX_GESTURE_COMMIT_THRESHOLD,
+    Math.max(MIN_GESTURE_COMMIT_THRESHOLD, tuning.gestureCommitThreshold),
   );
   state.tuningGestureMinimumSpeedScale = Math.min(
     1.5,

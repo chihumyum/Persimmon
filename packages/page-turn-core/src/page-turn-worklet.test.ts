@@ -19,6 +19,25 @@ import {
 } from "./page-turn-worklet";
 
 describe("UI-runtime page-turn engine", () => {
+  it("preserves the iOS two-thirds commit threshold", () => {
+    const commitThreshold = (0.53 * 2) / 3;
+    const tuning = {
+      ...DEFAULT_PAGE_TURN_TUNING,
+      gestureCommitThreshold: commitThreshold,
+    };
+    const worklet = createPageTurnWorkletState(tuning);
+
+    expect(worklet.tuningGestureCommitThreshold).toBeCloseTo(
+      commitThreshold,
+      12,
+    );
+    setPageTurnWorkletTuning(worklet, tuning);
+    expect(worklet.tuningGestureCommitThreshold).toBeCloseTo(
+      commitThreshold,
+      12,
+    );
+  });
+
   it("matches the reference programmatic turn without per-frame allocation", () => {
     const reference = new NaturalPageTurnController();
     const worklet = createPageTurnWorkletState();

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_GESTURE_PAGE_TURN_TUNING,
   normalizeGesturePageTurnTuning,
+  normalizeGesturePageTurnTuningForPlatform,
 } from "./gesture-page-turn-tuning";
 
 describe("gesture page turn tuning", () => {
@@ -44,5 +45,18 @@ describe("gesture page turn tuning", () => {
       velocityGain: 0.1,
       idleDecaySeconds: 0.2,
     });
+  });
+
+  it("reduces only the iOS commit threshold by one third", () => {
+    expect(
+      normalizeGesturePageTurnTuningForPlatform(undefined, "ios")
+        .commitThreshold,
+    ).toBeCloseTo((0.53 * 2) / 3, 12);
+    expect(
+      normalizeGesturePageTurnTuningForPlatform(undefined, "android"),
+    ).toEqual(DEFAULT_GESTURE_PAGE_TURN_TUNING);
+    expect(normalizeGesturePageTurnTuningForPlatform(undefined, "web")).toEqual(
+      DEFAULT_GESTURE_PAGE_TURN_TUNING,
+    );
   });
 });

@@ -9,6 +9,7 @@ import {
   GESTURE_LIFT_START_X,
   GESTURE_ROLL_TILT_RATE,
   MAX_PAGE_WEIGHT,
+  MIN_GESTURE_COMMIT_THRESHOLD,
   MIN_PAGE_WEIGHT,
   SLOW_COMMIT_EDGE_X,
   WEAK_GRIP_MAX_COMPRESSION,
@@ -60,6 +61,12 @@ describe("page-turn gesture kinematics", () => {
       gestureVelocityGain: 1.2,
       gestureIdleDecaySeconds: 0.2,
     });
+    expect(
+      clampPageTurnTuning({
+        ...DEFAULT_PAGE_TURN_TUNING,
+        gestureCommitThreshold: 0,
+      }).gestureCommitThreshold,
+    ).toBe(MIN_GESTURE_COMMIT_THRESHOLD);
   });
 
   it("maps release speed to a bounded propagation speed", () => {

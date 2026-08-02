@@ -54,6 +54,8 @@ export const FULL_GESTURE_START_MIN_X = 0.25;
 export const WEAK_GRIP_MAX_COMPRESSION = 0.04;
 export const MIN_PAGE_WEIGHT = 0.5;
 export const MAX_PAGE_WEIGHT = 1.8;
+export const MIN_GESTURE_COMMIT_THRESHOLD = 0.25;
+export const MAX_GESTURE_COMMIT_THRESHOLD = 1.2;
 const WEAK_GRIP_COMPRESSION_PER_PAGE = 0.2;
 export const SLOW_COMMIT_EDGE_X =
   MIN_PRESSED_EDGE_X - pressedRollHingeGeometry().tiltDistance;
@@ -85,7 +87,11 @@ export function clampPageTurnTuning(tuning: PageTurnTuning): PageTurnTuning {
     liftToLeft: clamp(tuning.liftToLeft, 1.4, 2.6),
     curvatureRelaxation: clamp(tuning.curvatureRelaxation, 3.5, 14),
     pageWeight: clampPageWeight(tuning.pageWeight),
-    gestureCommitThreshold: clamp(tuning.gestureCommitThreshold, 0.4, 1.2),
+    gestureCommitThreshold: clamp(
+      tuning.gestureCommitThreshold,
+      MIN_GESTURE_COMMIT_THRESHOLD,
+      MAX_GESTURE_COMMIT_THRESHOLD,
+    ),
     gestureMinimumSpeedScale,
     gestureMaximumSpeedScale: clamp(
       tuning.gestureMaximumSpeedScale,

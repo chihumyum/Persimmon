@@ -29,6 +29,8 @@ export const DEFAULT_GESTURE_PAGE_TURN_TUNING: GesturePageTurnTuning = {
   idleDecaySeconds: 0.09,
 };
 
+const IOS_COMMIT_THRESHOLD_SCALE = 2 / 3;
+
 export function normalizeGesturePageTurnTuning(
   tuning: Partial<GesturePageTurnTuning> | undefined,
 ): GesturePageTurnTuning {
@@ -75,6 +77,20 @@ export function normalizeGesturePageTurnTuning(
     ),
   });
   return gestureTuningFromCore(core);
+}
+
+export function normalizeGesturePageTurnTuningForPlatform(
+  tuning: Partial<GesturePageTurnTuning> | undefined,
+  platform: string,
+): GesturePageTurnTuning {
+  const normalized = normalizeGesturePageTurnTuning(tuning);
+  if (platform !== "ios") {
+    return normalized;
+  }
+  return normalizeGesturePageTurnTuning({
+    ...normalized,
+    commitThreshold: normalized.commitThreshold * IOS_COMMIT_THRESHOLD_SCALE,
+  });
 }
 
 export function gestureTuningForCore(
