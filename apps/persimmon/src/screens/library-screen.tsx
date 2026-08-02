@@ -27,12 +27,14 @@ import { uiBackdropColor } from "../components/ui-shadow";
 import { UiEmptyState, UiInlineAlert } from "../components/ui-state-message";
 import { UiText as Text } from "../components/ui-text";
 import { uiRadius, uiSpace } from "../components/ui-tokens";
+import type { AppLanguagePreference } from "../i18n";
 import {
   dismissGoogleDrivePrompt,
   loadBookMetadataVisible,
   loadGoogleDrivePromptDismissed,
   saveBookMetadataVisible,
 } from "../library/library-ui-preferences";
+import { shouldUseIconOnlySort } from "../library/library-controls-layout";
 import {
   librarySyncBannerPlacement,
   shouldAnnounceSyncCompletion,
@@ -94,13 +96,17 @@ function FilterOption({
 }
 
 function SortControl({
+  iconOnly,
   sort,
   theme,
   onChange,
+  onExpandedWidthChange,
 }: {
+  readonly iconOnly: boolean;
   readonly sort: LibrarySort;
   readonly theme: ReaderTheme;
   readonly onChange: (sort: LibrarySort) => void;
+  readonly onExpandedWidthChange: (width: number) => void;
 }) {
   const { t } = useTranslation();
   const [visible, setVisible] = useState(false);
@@ -118,18 +124,47 @@ function SortControl({
 
   return (
     <>
-      <UiButton
-        accessibilityLabel={t("library.sort.currentAccessibility", { label })}
-        accessibilityState={{ expanded: visible }}
-        compact
-        label={label}
-        leadingIcon="sort"
-        onPress={() => setVisible(true)}
-        textTone="muted"
-        theme={theme}
-        trailingIcon="chevronDown"
-        variant="ghost"
-      />
+      <View style={styles.sortControl}>
+        <UiButton
+          accessibilityLabel={t("library.sort.currentAccessibility", {
+            label,
+          })}
+          accessibilityState={{ expanded: visible }}
+          compact
+          iconOnly={iconOnly}
+          label={label}
+          leadingIcon="sort"
+          onPress={() => setVisible(true)}
+          textTone="muted"
+          theme={theme}
+          trailingIcon={iconOnly ? undefined : "chevronDown"}
+          variant="ghost"
+        />
+      </View>
+      {/* Keep intrinsic measurement outside the icon-only wrapper. Otherwise
+          Yoga constrains this copy to the compact width and creates a
+          full-button/icon-only layout feedback loop. */}
+      <View
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        key={label}
+        onLayout={(event) =>
+          onExpandedWidthChange(event.nativeEvent.layout.width)
+        }
+        pointerEvents="none"
+        style={styles.sortControlMeasurement}
+      >
+        <UiButton
+          compact
+          label={label}
+          leadingIcon="sort"
+          onPress={() => undefined}
+          textTone="muted"
+          theme={theme}
+          trailingIcon="chevronDown"
+          variant="ghost"
+        />
+      </View>
       <Modal
         animationType="fade"
         onRequestClose={() => setVisible(false)}
@@ -415,6 +450,7 @@ export interface LibraryScreenProps {
   readonly readerThemeName: ReaderThemeName;
   readonly error: string | null;
   readonly importing: boolean;
+  readonly languagePreference: AppLanguagePreference;
   readonly openingBookId: string | null;
   readonly syncStatus: GoogleDriveSyncStatus;
   readonly theme: ReaderTheme;
@@ -424,6 +460,9 @@ export interface LibraryScreenProps {
   readonly onDisconnectGoogleDrive: () => void;
   readonly onDismissError: () => void;
   readonly onImport: () => void;
+  readonly onLanguagePreferenceChange: (
+    preference: AppLanguagePreference,
+  ) => void;
   readonly onOpen: (bookId: string) => void;
   readonly onSyncBook: (entry: LibraryBookSummary) => void;
   readonly onSyncNow: () => void;
@@ -436,6 +475,7 @@ export function LibraryScreen({
   readerThemeName,
   error,
   importing,
+  languagePreference,
   openingBookId,
   syncStatus,
   theme,
@@ -445,6 +485,7 @@ export function LibraryScreen({
   onDisconnectGoogleDrive,
   onDismissError,
   onImport,
+  onLanguagePreferenceChange,
   onOpen,
   onSyncBook,
   onSyncNow,
@@ -476,6 +517,9 @@ export function LibraryScreen({
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [bookMetadataVisible, setBookMetadataVisible] = useState(true);
   const [sort, setSort] = useState<LibrarySort>("recent");
+  const [controlsWidth, setControlsWidth] = useState(0);
+  const [filterContentWidth, setFilterContentWidth] = useState(0);
+  const [expandedSortWidth, setExpandedSortWidth] = useState(0);
   const filterOptions: readonly {
     readonly value: LibraryFilter;
     readonly label: string;
@@ -504,6 +548,12 @@ export function LibraryScreen({
   const floatingSyncBannerVisible =
     syncBannerPlacement === "floating" &&
     !(syncStatus.phase === "error" && syncErrorDismissed);
+  const sortIconOnly = shouldUseIconOnlySort({
+    controlsWidth,
+    expandedSortWidth,
+    filterContentWidth,
+    gap: uiSpace.md,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -714,14 +764,19 @@ export function LibraryScreen({
           />
         ) : null}
 
-        <View style={styles.controls}>
+        <View
+          onLayout={(event) => setControlsWidth(event.nativeEvent.layout.width)}
+          style={styles.controls}
+        >
           <ScrollView
             contentContainerStyle={[
               styles.filterGroup,
               { backgroundColor: theme.panelMuted },
             ]}
             horizontal
+            onContentSizeChange={(width) => setFilterContentWidth(width)}
             showsHorizontalScrollIndicator={false}
+            style={styles.filterScroller}
           >
             {filterOptions.map((option) => (
               <FilterOption
@@ -736,7 +791,13 @@ export function LibraryScreen({
               />
             ))}
           </ScrollView>
-          <SortControl sort={sort} theme={theme} onChange={setSort} />
+          <SortControl
+            iconOnly={sortIconOnly}
+            sort={sort}
+            theme={theme}
+            onChange={setSort}
+            onExpandedWidthChange={setExpandedSortWidth}
+          />
         </View>
 
         <View style={[styles.grid, { columnGap: gridGap, rowGap: 30 }]}>
@@ -803,6 +864,7 @@ export function LibraryScreen({
       <LibrarySettingsModal
         bookMetadataVisible={bookMetadataVisible}
         colorMode={colorMode}
+        languagePreference={languagePreference}
         readerThemeName={readerThemeName}
         syncStatus={syncStatus}
         theme={theme}
@@ -812,6 +874,7 @@ export function LibraryScreen({
         onColorModeChange={onColorModeChange}
         onConnectGoogleDrive={onConnectGoogleDrive}
         onDisconnectGoogleDrive={onDisconnectGoogleDrive}
+        onLanguagePreferenceChange={onLanguagePreferenceChange}
         onSyncNow={onSyncNow}
         onThemeChange={onThemeChange}
       />
@@ -852,6 +915,11 @@ const styles = StyleSheet.create({
     borderRadius: uiRadius.pill,
     flexGrow: 0,
     padding: 3,
+  },
+  filterScroller: {
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
   },
   filterOption: {
     alignItems: "center",
@@ -895,6 +963,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     width: 20,
+  },
+  sortControl: {
+    flexShrink: 0,
+    position: "relative",
+  },
+  sortControlMeasurement: {
+    opacity: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
   },
   sortMenu: {
     borderRadius: 19,

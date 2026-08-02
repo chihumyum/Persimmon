@@ -49,10 +49,11 @@ FileSystem。
 ### 平台与语言边界
 
 发布平台只有 iOS 和 Android。`expo-localization`
-读取系统或系统“按 App语言”的首选语言，`i18next` 管理 App 内置的 `zh-Hans` / `en`
-资源，并在应用回到前台时重新同步。系统语言只决定应用 UI；正文的 SkParagraph
-locale 使用 EPUB 的 `BookIR.language`，缺失时使用
-`und`，不会用界面语言覆盖书籍语言。
+默认读取系统或系统“按 App 语言”的首选语言，书架设置也可将本机 App 界面覆盖为
+`zh-Hans` 或
+`en`。覆盖值保存在 AsyncStorage；选择“跟随系统”时，应用回到前台会重新读取系统 locale。`i18next`
+管理 App 内置资源。界面语言只决定应用 UI；正文的 SkParagraph locale 使用 EPUB 的
+`BookIR.language`，缺失时使用 `und`，不会用界面语言覆盖书籍语言。
 
 仓库暂时保留少量默认 `.ts` Web
 adapter 和 CanvasKit 分支，供既有单测与跨平台核心代码校验；Expo 配置、开发命令、发布和验收门禁均不再包含 Web。

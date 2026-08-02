@@ -14,7 +14,7 @@ EPUB 阅读器。它不使用 WebView：EPUB 会先被编译成版本化、平�
 - 统一设置页，以及书卡长按原生菜单中的详情、下载 / 同步和删除操作；
 - Google Drive `appDataFolder` 在 iOS /
   Android 自动拉取原 EPUB、删除状态、稳定阅读位置和显示进度；
-- 跟随系统或系统“按 App 语言”的简体中文 / 英文界面；EPUB 的排版 locale 独立跟随书籍语言元数据；
+- 支持跟随系统、简体中文或 English 的 App 内语言覆盖；系统“按 App 语言”在重新构建原生客户端后同样可用；EPUB 的排版 locale 独立跟随书籍语言元数据；
 - 章节级懒分页、浮层目录跳转、字号重排、稳定位置续读和图片 LRU；
 - 从 `play-books-page-turning` 移植的连续曲率翻页，支持点按、拖拽、完成与回弹；
 - Android 系统返回键先关闭 Reader 浮层，再返回书架；

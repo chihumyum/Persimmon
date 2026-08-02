@@ -3,13 +3,15 @@ import { getLocales } from "expo-localization";
 import { activeLanguage, i18n } from ".";
 import {
   FALLBACK_LANGUAGE,
-  resolveSupportedLanguage,
+  resolveAppLanguage,
+  type AppLanguagePreference,
   type SupportedLanguage,
 } from "./locale";
 
 function systemLanguage(): SupportedLanguage {
   try {
-    return resolveSupportedLanguage(
+    return resolveAppLanguage(
+      "system",
       getLocales().map((locale) => locale.languageTag),
     );
   } catch {
@@ -17,8 +19,10 @@ function systemLanguage(): SupportedLanguage {
   }
 }
 
-export function syncSystemLanguage(): Promise<unknown> | undefined {
-  const next = systemLanguage();
+export function syncAppLanguage(
+  preference: AppLanguagePreference,
+): Promise<unknown> | undefined {
+  const next = preference === "system" ? systemLanguage() : preference;
   if (activeLanguage() === next) {
     return undefined;
   }

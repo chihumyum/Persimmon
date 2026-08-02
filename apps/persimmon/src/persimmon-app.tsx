@@ -24,8 +24,8 @@ import { downloadFontFamily } from "./fonts/download-font";
 import { DOWNLOADABLE_FONT_CATALOG } from "./fonts/downloadable-font-catalog";
 import { fontRepository } from "./fonts/font-repository";
 import { FontRepositoryError } from "./fonts/types";
-import { translate } from "./i18n";
-import { useSystemLanguage } from "./i18n/use-system-language";
+import { translate, type AppLanguagePreference } from "./i18n";
+import { useAppLanguage } from "./i18n/use-app-language";
 import { importEpubBatch, type FailedEpubImport } from "./import-epub-batch";
 import {
   libraryRepository,
@@ -127,7 +127,8 @@ function LoadingScreen({ theme }: { readonly theme: ReaderTheme }) {
 }
 
 export function PersimmonApp() {
-  useSystemLanguage();
+  const { languagePreference, languageReady, setLanguagePreference } =
+    useAppLanguage();
   const systemColorScheme = useSystemReaderColorScheme();
   const [readerUiFontLoaded, readerUiFontError] = useFonts({
     [READER_UI_FONT_FAMILY]: NotoSansSC_400Regular,
@@ -498,6 +499,14 @@ export function PersimmonApp() {
     },
     [updateAppearance],
   );
+  const updateLanguagePreference = useCallback(
+    (preference: AppLanguagePreference) => {
+      void setLanguagePreference(preference).catch(() =>
+        setError(translate("errors.languagePreferenceSaveFailed")),
+      );
+    },
+    [setLanguagePreference],
+  );
   const updateLayout = useCallback(
     (layout: ReaderSettings["layout"]) => {
       updateReaderSettings({ layout });
@@ -563,7 +572,11 @@ export function PersimmonApp() {
     }
   }, []);
 
-  if (!hydrated || (!readerUiFontLoaded && !readerUiFontError)) {
+  if (
+    !languageReady ||
+    !hydrated ||
+    (!readerUiFontLoaded && !readerUiFontError)
+  ) {
     return <LoadingScreen theme={appTheme} />;
   }
 
@@ -603,6 +616,7 @@ export function PersimmonApp() {
       readerThemeName={readerSettings.appearance.theme}
       error={error}
       importing={importing}
+      languagePreference={languagePreference}
       openingBookId={openingBookId}
       syncStatus={syncStatus}
       theme={appTheme}
@@ -616,6 +630,7 @@ export function PersimmonApp() {
       onDismissError={() => setError(null)}
       onColorModeChange={updateColorMode}
       onImport={importBook}
+      onLanguagePreferenceChange={updateLanguagePreference}
       onOpen={(bookId) => void openBook(bookId)}
       onSyncBook={(entry) => {
         void syncBook(entry);

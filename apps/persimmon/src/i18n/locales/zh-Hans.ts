@@ -40,6 +40,20 @@ export const zhHans = {
       coolAccessibility: "冷色纸张主题",
     },
   },
+  language: {
+    label: "应用语言",
+    groupAccessibility: "柿子阅读界面语言",
+    options: {
+      system: "跟随系统",
+      systemAccessibility: "跟随系统语言",
+      zhHans: "简体中文",
+      zhHansAccessibility: "使用简体中文",
+      english: "English",
+      englishAccessibility: "使用英文",
+    },
+    systemDescription: "使用设备语言，并在应用回到前台时重新同步。",
+    overrideDescription: "仅覆盖柿子阅读的界面语言，不会修改系统语言。",
+  },
   library: {
     title: "全部",
     filters: {
@@ -277,6 +291,7 @@ export const zhHans = {
   },
   errors: {
     unknown: "发生未知错误。",
+    languagePreferenceSaveFailed: "应用语言保存失败，已恢复之前的语言。",
     epub: {
       fixedLayout: "暂不支持固定版式 EPUB；第一版专注可重排小说。",
       archiveLimit: "这本书超过第一版的安全导入限制。",

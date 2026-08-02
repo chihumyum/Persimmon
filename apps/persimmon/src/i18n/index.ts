@@ -65,4 +65,4 @@ export function formatPercentage(percentage: number): string {
 }
 
 export { default as i18n } from "i18next";
-export type { SupportedLanguage } from "./locale";
+export type { AppLanguagePreference, SupportedLanguage } from "./locale";

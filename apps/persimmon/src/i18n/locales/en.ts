@@ -46,6 +46,21 @@ export const en = {
       coolAccessibility: "Cool paper theme",
     },
   },
+  language: {
+    label: "App language",
+    groupAccessibility: "Persimmon interface language",
+    options: {
+      system: "System",
+      systemAccessibility: "Follow the system language",
+      zhHans: "简体中文",
+      zhHansAccessibility: "Use Simplified Chinese",
+      english: "English",
+      englishAccessibility: "Use English",
+    },
+    systemDescription:
+      "Uses the device language and refreshes when the app returns to the foreground.",
+    overrideDescription: "Overrides the interface language for Persimmon only.",
+  },
   library: {
     title: "All Books",
     filters: {
@@ -292,6 +307,8 @@ export const en = {
   },
   errors: {
     unknown: "An unknown error occurred.",
+    languagePreferenceSaveFailed:
+      "The app language could not be saved. The previous language is still active.",
     epub: {
       fixedLayout:
         "Fixed-layout EPUB files are not supported yet; this version focuses on reflowable books.",

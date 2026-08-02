@@ -19,7 +19,7 @@ import { UiSegmentedControl } from "../components/ui-segmented-control";
 import { uiBackdropColor } from "../components/ui-shadow";
 import { UiText as Text } from "../components/ui-text";
 import { uiRadius, uiSpace } from "../components/ui-tokens";
-import { formatTime, translate } from "../i18n";
+import { formatTime, translate, type AppLanguagePreference } from "../i18n";
 import type { ReaderColorMode, ReaderThemeName } from "../library/types";
 import type { GoogleDriveSyncStatus } from "../sync/types";
 
@@ -54,6 +54,7 @@ export function syncDescription(status: GoogleDriveSyncStatus): string {
 export interface LibrarySettingsModalProps {
   readonly bookMetadataVisible: boolean;
   readonly colorMode: ReaderColorMode;
+  readonly languagePreference: AppLanguagePreference;
   readonly readerThemeName: ReaderThemeName;
   readonly syncStatus: GoogleDriveSyncStatus;
   readonly theme: ReaderTheme;
@@ -61,6 +62,9 @@ export interface LibrarySettingsModalProps {
   readonly onBookMetadataVisibleChange: (visible: boolean) => void;
   readonly onClose: () => void;
   readonly onColorModeChange: (mode: ReaderColorMode) => void;
+  readonly onLanguagePreferenceChange: (
+    preference: AppLanguagePreference,
+  ) => void;
   readonly onConnectGoogleDrive: () => void;
   readonly onDisconnectGoogleDrive: () => void;
   readonly onSyncNow: () => void;
@@ -70,6 +74,7 @@ export interface LibrarySettingsModalProps {
 export function LibrarySettingsModal({
   bookMetadataVisible,
   colorMode,
+  languagePreference,
   readerThemeName,
   syncStatus,
   theme,
@@ -77,6 +82,7 @@ export function LibrarySettingsModal({
   onBookMetadataVisibleChange,
   onClose,
   onColorModeChange,
+  onLanguagePreferenceChange,
   onConnectGoogleDrive,
   onDisconnectGoogleDrive,
   onSyncNow,
@@ -103,6 +109,27 @@ export function LibrarySettingsModal({
       value: "dark",
       label: t("appearance.colorModes.dark"),
       accessibilityLabel: t("appearance.colorModes.darkAccessibility"),
+    },
+  ];
+  const languageOptions: readonly {
+    readonly value: AppLanguagePreference;
+    readonly label: string;
+    readonly accessibilityLabel: string;
+  }[] = [
+    {
+      value: "system",
+      label: t("language.options.system"),
+      accessibilityLabel: t("language.options.systemAccessibility"),
+    },
+    {
+      value: "zh-Hans",
+      label: t("language.options.zhHans"),
+      accessibilityLabel: t("language.options.zhHansAccessibility"),
+    },
+    {
+      value: "en",
+      label: t("language.options.english"),
+      accessibilityLabel: t("language.options.englishAccessibility"),
     },
   ];
   const busy =
@@ -179,6 +206,32 @@ export function LibrarySettingsModal({
                   value={colorMode}
                   onChange={onColorModeChange}
                 />
+              </View>
+              <View style={styles.appearanceControl}>
+                <Text
+                  style={[styles.appearanceLabel, { color: theme.controlText }]}
+                >
+                  {t("language.label")}
+                </Text>
+                <UiSegmentedControl
+                  accessibilityLabel={t("language.groupAccessibility")}
+                  options={languageOptions}
+                  theme={theme}
+                  value={languagePreference}
+                  onChange={onLanguagePreferenceChange}
+                />
+                <Text
+                  style={[
+                    styles.preferenceHint,
+                    { color: theme.secondaryText },
+                  ]}
+                >
+                  {t(
+                    languagePreference === "system"
+                      ? "language.systemDescription"
+                      : "language.overrideDescription",
+                  )}
+                </Text>
               </View>
               <View style={styles.appearanceControl}>
                 <Text
@@ -336,6 +389,10 @@ const styles = StyleSheet.create({
   preferenceCopy: {
     flex: 1,
     paddingRight: 10,
+  },
+  preferenceHint: {
+    fontSize: 11,
+    lineHeight: 16,
   },
   preferenceRow: {
     alignItems: "center",
