@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   BOOK_IR_VERSION,
-  SAMPLE_BOOK,
   logicalLength,
   textOf,
   type ParagraphBlockIR,
 } from "./index";
+import { SAMPLE_BOOK } from "./test-fixtures/sample-book";
 
 describe("BookIR text coordinates", () => {
   it("uses JavaScript UTF-16 offsets", () => {

@@ -3,7 +3,6 @@ import { CryptoDigestAlgorithm, digest } from "expo-crypto";
 import {
   validateBookIR,
   type BookIR,
-  type BookLocator,
   type SectionIR,
 } from "@persimmon/book-core";
 import {
@@ -11,7 +10,6 @@ import {
   type EpubImportResult,
 } from "@persimmon/epub-import";
 
-import { DEMO_BOOK } from "../demo-book";
 import {
   LIBRARY_SCHEMA_VERSION,
   type LibraryBookSummary,
@@ -22,7 +20,6 @@ import {
 export { normalizeSettings } from "./reader-settings";
 
 export interface LegacyLibraryMigration {
-  readonly demoLocator?: BookLocator;
   readonly imported: readonly StoredBookManifest[];
 }
 
@@ -143,7 +140,6 @@ export function legacyLibraryFromSerialized(
     return { imported: [] };
   }
 
-  let demoLocator: BookLocator | undefined;
   const imported: StoredBookManifest[] = [];
   for (const value of parsed) {
     if (typeof value !== "object" || value === null || !("book" in value)) {
@@ -154,21 +150,10 @@ export function legacyLibraryFromSerialized(
       author?: unknown;
       sourceName?: unknown;
       addedAt?: unknown;
-      locator?: BookLocator;
     };
     if (!candidate.book || validateBookIR(candidate.book).length > 0) {
       continue;
     }
-    if (candidate.book.id === DEMO_BOOK.id) {
-      if (
-        candidate.locator?.bookId === DEMO_BOOK.id &&
-        candidate.locator.revisionId === DEMO_BOOK.revisionId
-      ) {
-        demoLocator = candidate.locator;
-      }
-      continue;
-    }
-
     imported.push({
       schemaVersion: LIBRARY_SCHEMA_VERSION,
       compilerVersion: 0,
@@ -195,8 +180,5 @@ export function legacyLibraryFromSerialized(
       originalByteLength: 0,
     });
   }
-  return {
-    ...(demoLocator ? { demoLocator } : {}),
-    imported,
-  };
+  return { imported };
 }

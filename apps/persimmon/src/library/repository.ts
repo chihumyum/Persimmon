@@ -3,8 +3,6 @@ import type { BookLocator, SectionIR } from "@persimmon/book-core";
 import { EPUB_COMPILER_VERSION } from "@persimmon/epub-import";
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 
-import { DEMO_BOOK } from "../demo-book";
-import { demoSummary, openDemoBook } from "./demo";
 import {
   bookFromManifest,
   legacyLibraryFromSerialized,
@@ -162,15 +160,7 @@ class IndexedDbLibraryRepository implements LibraryRepository {
         ),
       )
       .sort((left, right) => right.addedAt.localeCompare(left.addedAt));
-    return [
-      demoSummary(
-        readingProgressFromStored(
-          progressByBook.get(DEMO_BOOK.id),
-          DEMO_BOOK.sections.map((section) => section.id),
-        ),
-      ),
-      ...summaries.filter((summary) => summary.id !== DEMO_BOOK.id),
-    ];
+    return summaries;
   }
 
   async importBook(input: ImportBookInput): Promise<LibraryBookSummary> {
@@ -252,10 +242,6 @@ class IndexedDbLibraryRepository implements LibraryRepository {
   }
 
   async openBook(bookId: string): Promise<OpenedLibraryBook> {
-    if (bookId === DEMO_BOOK.id) {
-      return openDemoBook();
-    }
-
     const database = this.requireDatabase();
     let record = await database.get("books", bookId);
     if (!record) {
@@ -309,9 +295,7 @@ class IndexedDbLibraryRepository implements LibraryRepository {
   ): Promise<void> {
     const database = this.requireDatabase();
     const sectionIds =
-      locator.bookId === DEMO_BOOK.id
-        ? DEMO_BOOK.sections.map((section) => section.id)
-        : ((await database.get("books", locator.bookId))?.sectionIds ?? []);
+      (await database.get("books", locator.bookId))?.sectionIds ?? [];
     const existing = readingProgressFromStored(
       await database.get("progress", locator.bookId),
       sectionIds,
@@ -344,9 +328,6 @@ class IndexedDbLibraryRepository implements LibraryRepository {
   }
 
   async getOriginalEpub(bookId: string): Promise<Uint8Array | undefined> {
-    if (bookId === DEMO_BOOK.id) {
-      return undefined;
-    }
     return (await this.requireDatabase().get("books", bookId))?.originalEpub;
   }
 
@@ -354,17 +335,11 @@ class IndexedDbLibraryRepository implements LibraryRepository {
     bookId: string,
     assetId: string,
   ): Promise<Uint8Array | undefined> {
-    if (bookId === DEMO_BOOK.id) {
-      return undefined;
-    }
     return (await this.requireDatabase().get("resources", [bookId, assetId]))
       ?.bytes;
   }
 
   async removeBook(bookId: string): Promise<void> {
-    if (bookId === DEMO_BOOK.id) {
-      return;
-    }
     const database = this.requireDatabase();
     const transaction = database.transaction(
       ["books", "sections", "resources", "progress"],
@@ -423,9 +398,6 @@ class IndexedDbLibraryRepository implements LibraryRepository {
       if (!(await transaction.objectStore("books").get(record.id))) {
         await transaction.objectStore("books").put(record);
       }
-    }
-    if (legacy.demoLocator) {
-      await transaction.objectStore("progress").put(legacy.demoLocator);
     }
     await transaction.objectStore("settings").put({
       key: LEGACY_MIGRATION_KEY,

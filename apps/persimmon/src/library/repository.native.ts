@@ -3,8 +3,6 @@ import type { BookLocator, SectionIR } from "@persimmon/book-core";
 import { EPUB_COMPILER_VERSION, importEpub } from "@persimmon/epub-import";
 import { Directory, File, Paths } from "expo-file-system";
 
-import { DEMO_BOOK } from "../demo-book";
-import { demoSummary, openDemoBook } from "./demo";
 import {
   bookFromManifest,
   legacyLibraryFromSerialized,
@@ -185,10 +183,9 @@ class NativeLibraryRepository implements LibraryRepository {
   async listBooks(): Promise<readonly LibraryBookSummary[]> {
     this.assertInitialized();
     const manifests = [...this.manifests.values()];
-    const progressValues = await AsyncStorage.multiGet([
-      progressKey(DEMO_BOOK.id),
-      ...manifests.map((manifest) => progressKey(manifest.id)),
-    ]);
+    const progressValues = await AsyncStorage.multiGet(
+      manifests.map((manifest) => progressKey(manifest.id)),
+    );
     const progressByBook = new Map<string, unknown>();
     for (const [key, value] of progressValues) {
       if (!value) {
@@ -204,25 +201,17 @@ class NativeLibraryRepository implements LibraryRepository {
       }
     }
 
-    return [
-      demoSummary(
-        readingProgressFromStored(
-          progressByBook.get(DEMO_BOOK.id),
-          DEMO_BOOK.sections.map((section) => section.id),
-        ),
-      ),
-      ...manifests
-        .map((manifest) =>
-          summaryFromManifest(
-            manifest,
-            readingProgressFromStored(
-              progressByBook.get(manifest.id),
-              manifest.sectionIds,
-            ),
+    return manifests
+      .map((manifest) =>
+        summaryFromManifest(
+          manifest,
+          readingProgressFromStored(
+            progressByBook.get(manifest.id),
+            manifest.sectionIds,
           ),
-        )
-        .sort((left, right) => right.addedAt.localeCompare(left.addedAt)),
-    ];
+        ),
+      )
+      .sort((left, right) => right.addedAt.localeCompare(left.addedAt));
   }
 
   async importBook(input: ImportBookInput): Promise<LibraryBookSummary> {
@@ -299,10 +288,6 @@ class NativeLibraryRepository implements LibraryRepository {
 
   async openBook(bookId: string): Promise<OpenedLibraryBook> {
     this.assertInitialized();
-    if (bookId === DEMO_BOOK.id) {
-      return openDemoBook();
-    }
-
     let manifest = this.manifests.get(bookId);
     if (!manifest) {
       throw new LibraryError("book-not-found", "书籍不存在或已被删除。");
@@ -367,10 +352,7 @@ class NativeLibraryRepository implements LibraryRepository {
     options?: SaveProgressOptions,
   ): Promise<void> {
     this.assertInitialized();
-    const sectionIds =
-      locator.bookId === DEMO_BOOK.id
-        ? DEMO_BOOK.sections.map((section) => section.id)
-        : (this.manifests.get(locator.bookId)?.sectionIds ?? []);
+    const sectionIds = this.manifests.get(locator.bookId)?.sectionIds ?? [];
     const existingValue = await AsyncStorage.getItem(
       progressKey(locator.bookId),
     );
@@ -413,9 +395,6 @@ class NativeLibraryRepository implements LibraryRepository {
 
   async getOriginalEpub(bookId: string): Promise<Uint8Array | undefined> {
     this.assertInitialized();
-    if (bookId === DEMO_BOOK.id) {
-      return undefined;
-    }
     const file = new File(this.bookDirectory(bookId), "original.epub");
     return file.exists ? file.bytes() : undefined;
   }
@@ -425,9 +404,6 @@ class NativeLibraryRepository implements LibraryRepository {
     assetId: string,
   ): Promise<Uint8Array | undefined> {
     this.assertInitialized();
-    if (bookId === DEMO_BOOK.id) {
-      return undefined;
-    }
     const file = new File(
       this.bookDirectory(bookId),
       "resources",
@@ -438,9 +414,6 @@ class NativeLibraryRepository implements LibraryRepository {
 
   async removeBook(bookId: string): Promise<void> {
     this.assertInitialized();
-    if (bookId === DEMO_BOOK.id) {
-      return;
-    }
     const directory = this.bookDirectory(bookId);
     if (directory.exists) {
       directory.delete();
@@ -662,12 +635,6 @@ class NativeLibraryRepository implements LibraryRepository {
         directory.create();
         new File(directory, "manifest.json").write(JSON.stringify(manifest));
       }
-    }
-    if (migration.demoLocator) {
-      await AsyncStorage.setItem(
-        progressKey(DEMO_BOOK.id),
-        JSON.stringify(migration.demoLocator),
-      );
     }
     await AsyncStorage.setItem(LEGACY_MIGRATION_KEY, "true");
   }

@@ -108,6 +108,18 @@ async function waitForReaderReady(page: Page): Promise<void> {
   await expect(readerProgressStatus(page)).toBeVisible({ timeout: 60_000 });
 }
 
+async function importTestEpub(page: Page, fileName: string): Promise<void> {
+  const fileChooserPromise = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "导入 EPUB" }).click();
+  const fileChooser = await fileChooserPromise;
+  await fileChooser.setFiles({
+    name: fileName,
+    mimeType: "application/epub+zip",
+    buffer: createTestEpub(),
+  });
+  await waitForReaderReady(page);
+}
+
 async function clickPageTurnButton(
   page: Page,
   direction: "上一页" | "下一页",
@@ -152,14 +164,16 @@ test.beforeEach(async ({ page }) => {
 test("searches only title and author and keeps shelf controls in settings", async ({
   page,
 }) => {
+  await importTestEpub(page, "persimmon-search-e2e.epub");
+  await page.getByRole("button", { name: "返回书架" }).click();
   await page.getByRole("button", { name: "搜索书名或作者" }).click();
   const search = page.getByRole("textbox", { name: "搜索书名或作者" });
   await search.fill("Persimmon");
   await expect(
-    page.getByRole("button", { name: "打开 柿子熟了" }).last(),
+    page.getByRole("button", { name: "打开 E2E 柿子书" }).last(),
   ).toBeVisible();
 
-  await search.fill("深秋");
+  await search.fill("验证分页");
   await expect(page.getByText("没有匹配的书", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "取消" }).click();
 
@@ -168,30 +182,6 @@ test("searches only title and author and keeps shelf controls in settings", asyn
   await page.getByRole("radio", { name: "深色" }).click();
   await expect(page.getByRole("radio", { name: "深色" })).toBeChecked();
   await page.getByRole("button", { name: "完成" }).click();
-});
-
-test("ships footnote and endnote fixtures in the built-in demo book", async ({
-  page,
-}) => {
-  await page.getByRole("button", { name: "打开 柿子熟了" }).click();
-  await waitForReaderReady(page);
-
-  await expect(page.getByRole("link", { name: "打开脚注 1" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "打开脚注 2" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "打开尾注 3" })).toBeVisible();
-
-  await page.getByRole("link", { name: "打开脚注 2" }).click();
-  await expect(
-    page.getByRole("button", { name: "返回脚注引用位置 2" }),
-  ).toBeVisible();
-  await expect(page.getByRole("link", { name: "返回正文 2" })).toHaveCount(0);
-
-  await page
-    .getByRole("button", { name: "关闭返回脚注引用位置的按钮" })
-    .click();
-  await expect(
-    page.getByRole("button", { name: "返回脚注引用位置 2" }),
-  ).toHaveCount(0);
 });
 
 test("imports, reads, navigates, resumes, and deletes a local EPUB", async ({
@@ -437,7 +427,7 @@ test("opens a footnote and returns to its exact reference", async ({
 test("customizes typography and persists header progress placement", async ({
   page,
 }) => {
-  await page.getByRole("button", { name: "打开 柿子熟了" }).click();
+  await importTestEpub(page, "persimmon-typography-e2e.epub");
   await expect(page.getByLabel(/^全书 \d+%$/)).toBeVisible();
   await expect(readerPageStatus(page)).toHaveCount(0);
 
@@ -482,7 +472,7 @@ test("customizes typography and persists header progress placement", async ({
   await expect(page.getByLabel(/^目录层级：.+$/)).toBeVisible();
   await page.waitForTimeout(400);
   await page.getByRole("button", { name: "返回书架" }).click();
-  await page.getByRole("button", { name: "打开 柿子熟了" }).click();
+  await page.getByRole("button", { name: "打开 E2E 柿子书" }).click();
   await expect(page.getByLabel(/^目录层级：.+$/)).toBeVisible({
     timeout: 15_000,
   });

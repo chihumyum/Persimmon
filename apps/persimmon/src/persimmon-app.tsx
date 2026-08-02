@@ -20,7 +20,6 @@ import {
   View,
 } from "react-native";
 
-import { demoSummary } from "./library/demo";
 import { BUILTIN_FONT_FAMILIES } from "./fonts/builtin-fonts";
 import { downloadFontFamily } from "./fonts/download-font";
 import { DOWNLOADABLE_FONT_CATALOG } from "./fonts/downloadable-font-catalog";
@@ -90,9 +89,7 @@ export function PersimmonApp() {
   const [readerUiFontLoaded, readerUiFontError] = useFonts({
     [READER_UI_FONT_FAMILY]: NotoSansSC_400Regular,
   });
-  const [entries, setEntries] = useState<readonly LibraryBookSummary[]>([
-    demoSummary(),
-  ]);
+  const [entries, setEntries] = useState<readonly LibraryBookSummary[]>([]);
   const [fontFamilies, setFontFamilies] = useState<readonly FontFamilyRecord[]>(
     BUILTIN_FONT_FAMILIES,
   );

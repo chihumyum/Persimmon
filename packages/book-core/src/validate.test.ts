@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  SAMPLE_BOOK,
-  assertValidBookIR,
-  validateBookIR,
-  type BookIR,
-} from "./index";
+import { assertValidBookIR, validateBookIR, type BookIR } from "./index";
+import { SAMPLE_BOOK } from "./test-fixtures/sample-book";
 
 describe("BookIR validation", () => {
   it("accepts the sample fixture", () => {

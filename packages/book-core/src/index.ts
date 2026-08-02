@@ -33,4 +33,3 @@ export {
   type BookValidationIssue,
   type BookValidationIssueCode,
 } from "./validate";
-export { SAMPLE_BOOK } from "./fixtures/sample-book";
