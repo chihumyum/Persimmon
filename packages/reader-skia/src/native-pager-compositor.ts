@@ -29,6 +29,7 @@ export interface NativePagerMotionTuning {
 
 export interface NativePagerMotionConfig {
   readonly automatic: NativePagerMotionTuning;
+  readonly rapid: NativePagerMotionTuning;
   readonly gesture: NativePagerMotionTuning;
 }
 
@@ -78,6 +79,7 @@ export interface NativePagerStockPictureCommand {
   readonly spread: boolean;
   readonly contentRevision: number;
   readonly durationMs: number;
+  readonly rapidDurationMs: number;
   readonly launchIntervalMs: number;
   readonly paperColor: number;
 }
@@ -173,6 +175,13 @@ export function configureNativePagerMotion(
 }
 
 export function consumeNativePagerInputOnUI(
+  _nativeId: number,
+  _direction: 1 | -1,
+): boolean | undefined {
+  return undefined;
+}
+
+export function tryConsumeNativePagerInputOnUI(
   _nativeId: number,
   _direction: 1 | -1,
 ): boolean | undefined {

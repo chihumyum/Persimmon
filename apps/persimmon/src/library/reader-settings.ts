@@ -34,6 +34,11 @@ export function normalizeSettings(value: unknown): ReaderSettings {
       "pageTurnAnimation" in value && value.pageTurnAnimation === "none"
         ? "none"
         : "natural",
+    rapidPageTurnEnabled:
+      !("rapidPageTurnEnabled" in value) ||
+      typeof value.rapidPageTurnEnabled !== "boolean"
+        ? DEFAULT_READER_SETTINGS.rapidPageTurnEnabled
+        : value.rapidPageTurnEnabled,
     pageTurnTuning: normalizePageTurnTuning(
       "pageTurnTuning" in value ? value.pageTurnTuning : undefined,
     ),

@@ -11,7 +11,7 @@ import {
 } from "./page-turn-concurrency";
 
 describe("page turn concurrency", () => {
-  it("preserves the old direction-specific automatic lifetimes", () => {
+  it("accounts for the prepended incoming-page reveal lifetime", () => {
     expect(
       estimateAutomaticPageTurnDurationMs(
         DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
@@ -23,14 +23,26 @@ describe("page turn concurrency", () => {
         DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
         -1,
       ),
-    ).toBe(400);
+    ).toBe(556);
+    expect(
+      estimateAutomaticPageTurnDurationMs(
+        { ...DEFAULT_AUTOMATIC_PAGE_TURN_TUNING, releaseX: 1 },
+        1,
+        1,
+      ),
+    ).toBeGreaterThan(
+      estimateAutomaticPageTurnDurationMs(
+        { ...DEFAULT_AUTOMATIC_PAGE_TURN_TUNING, releaseX: 1 },
+        1,
+      ),
+    );
   });
 
   it("sizes the pool from the compressed burst duration", () => {
     expect(
       calculatePageTurnConcurrency(DEFAULT_AUTOMATIC_PAGE_TURN_TUNING, 150),
     ).toEqual({
-      estimatedTapDurationMs: 441,
+      estimatedTapDurationMs: 556,
       minimumTurnIntervalMs: 150,
       maximumConcurrentTapTurns: 10,
       maximumConcurrentTurns: 11,
@@ -44,7 +56,7 @@ describe("page turn concurrency", () => {
         150,
       ),
     ).toMatchObject({
-      estimatedTapDurationMs: 287,
+      estimatedTapDurationMs: 362,
       minimumTurnIntervalMs: 150,
       maximumConcurrentTapTurns: 10,
       maximumConcurrentTurns: 11,
@@ -55,7 +67,7 @@ describe("page turn concurrency", () => {
         150,
       ),
     ).toMatchObject({
-      estimatedTapDurationMs: 1147,
+      estimatedTapDurationMs: 1445,
       minimumTurnIntervalMs: 150,
       maximumConcurrentTapTurns: 10,
       maximumConcurrentTurns: 11,

@@ -34,8 +34,13 @@ export interface PageTurnConcurrency {
 export function calculatePageTurnConcurrency(
   tuning: AutomaticPageTurnTuning,
   startIntervalMs: number,
+  maximumReleaseX = 0.8,
 ): PageTurnConcurrency {
-  const estimatedTapDurationMs = estimateAutomaticPageTurnDurationMs(tuning);
+  const estimatedTapDurationMs = estimateAutomaticPageTurnDurationMs(
+    tuning,
+    undefined,
+    maximumReleaseX,
+  );
   const burstTapDurationMs = Math.min(
     estimatedTapDurationMs,
     PAGE_TURN_BURST_TARGET_DURATION_MS,
@@ -80,8 +85,13 @@ export function calculatePageTurnConcurrency(
 export function burstPageTurnPlaybackSpeed(
   tuning: AutomaticPageTurnTuning,
   _olderTurnDepth = 0,
+  maximumReleaseX = 0.8,
 ): number {
-  const estimatedDurationMs = estimateAutomaticPageTurnDurationMs(tuning);
+  const estimatedDurationMs = estimateAutomaticPageTurnDurationMs(
+    tuning,
+    undefined,
+    maximumReleaseX,
+  );
   if (estimatedDurationMs <= PAGE_TURN_BURST_TARGET_DURATION_MS) {
     return tuning.playbackSpeed;
   }
@@ -95,14 +105,16 @@ export function burstPageTurnPlaybackSpeed(
 export function estimateAutomaticPageTurnDurationMs(
   tuning: AutomaticPageTurnTuning,
   direction?: 1 | -1,
+  maximumReleaseX = 0.8,
 ): number {
   const coreTuning = automaticTuningForCore(tuning);
   const solverDurationSeconds =
     direction === undefined
-      ? automaticPageTurnSolverDurationSeconds(coreTuning)
+      ? automaticPageTurnSolverDurationSeconds(coreTuning, maximumReleaseX)
       : automaticPageTurnSolverDurationSecondsForDirection(
           coreTuning,
           direction,
+          maximumReleaseX,
         );
   return Math.ceil(
     (solverDurationSeconds / Math.max(0.01, tuning.playbackSpeed)) * 1000,

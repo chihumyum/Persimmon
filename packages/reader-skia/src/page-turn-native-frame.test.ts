@@ -1,4 +1,5 @@
 import {
+  INCOMING_PAGE_PRELUDE_PROGRESS,
   advancePageTurnWorklet,
   beginPageTurnWorkletDrag,
   createPageTurnWorkletState,
@@ -93,6 +94,48 @@ describe("native profile page-turn frame", () => {
     expect(shadow[2]).toBeGreaterThan(0);
   });
 
+  it("reveals the untouched old incoming first pose from zero", () => {
+    const state = createPageTurnWorkletState();
+    const frame = createPageTurnNativeFrame(402, 874, false);
+    beginPageTurnWorkletDrag(state, -1, 0.96, 0.5, 0, true);
+
+    updatePageTurnNativeFrame(state, frame);
+    const hiddenProfile = [...frame.paperUniforms.profile];
+    const hiddenShape = [...state.profile];
+    expect(maximumProjectedX(hiddenProfile)).toBeCloseTo(0, 8);
+    expect(frame.paperRect.width).toBe(0);
+
+    movePageTurnWorkletDrag(
+      state,
+      0.86,
+      0.5,
+      INCOMING_PAGE_PRELUDE_PROGRESS * 0.5,
+      0.1,
+    );
+    updatePageTurnNativeFrame(state, frame);
+    const halfProfile = [...frame.paperUniforms.profile];
+    expect(state.profile).toEqual(new Float32Array(hiddenShape));
+
+    movePageTurnWorkletDrag(
+      state,
+      0.76,
+      0.5,
+      INCOMING_PAGE_PRELUDE_PROGRESS,
+      0.2,
+    );
+    updatePageTurnNativeFrame(state, frame);
+    const joinedProfile = [...frame.paperUniforms.profile];
+    const joinedMaximumX = maximumProjectedX(joinedProfile);
+    expect(maximumProjectedX(halfProfile)).toBeCloseTo(joinedMaximumX * 0.5, 6);
+    expect(joinedMaximumX).toBeGreaterThan(0.25);
+    expect(state.profile).toEqual(new Float32Array(hiddenShape));
+
+    movePageTurnWorkletDrag(state, 0.96, 0.5, 0, 0.3);
+    updatePageTurnNativeFrame(state, frame);
+    expect(maximumProjectedX(frame.paperUniforms.profile)).toBeCloseTo(0, 8);
+    expect(frame.paperRect.width).toBe(0);
+  });
+
   it("clears the center-spine shadow after the sheet is fully turned", () => {
     const state = createPageTurnWorkletState();
     const frame = createPageTurnNativeFrame(402, 874, false);
@@ -185,3 +228,11 @@ describe("native profile page-turn frame", () => {
     expect(maximumRunCount).toBeLessThanOrEqual(NATIVE_PAGE_PROFILE_RUNS);
   });
 });
+
+function maximumProjectedX(profile: readonly number[]): number {
+  let maximum = Number.NEGATIVE_INFINITY;
+  for (let offset = 0; offset < profile.length; offset += 4) {
+    maximum = Math.max(maximum, profile[offset]!);
+  }
+  return maximum;
+}

@@ -249,6 +249,12 @@ export const zhHans = {
       none: "无动画",
       noneAccessibility: "关闭翻页动画",
     },
+    rapidPageTurn: {
+      section: "边缘翻页",
+      title: "按住极速翻页",
+      description: "反向短滑至边缘 15% 内并停留 0.25 秒，再连续快速翻页",
+      accessibility: "启用页边缘反向按住极速翻页",
+    },
     settings: {
       groupAccessibility: "阅读设置分类",
       closeAccessibility: "关闭阅读设置",
@@ -313,7 +319,7 @@ export const zhHans = {
       velocityGain: "甩动速度增益 · velocityGain",
       idleDecaySeconds: "松手衰减秒数 · idleDecaySeconds",
       propagationSpeed: "传播速度 {{value}}",
-      resetAccessibility: "恢复手势默认常量",
+      resetAccessibility: "恢复默认手势常量",
       reset: "恢复手势默认",
     },
     loading: {

@@ -11,6 +11,7 @@ import {
   markScheduledPageTurnsPresented,
   requestScheduledGesturePageTurn,
   requestScheduledPageTurn,
+  requestScheduledRapidPageTurn,
   resolveScheduledPageTurn,
   turnPageImmediately,
   scheduledPageAddress,
@@ -105,6 +106,26 @@ describe("page-turn scheduler", () => {
     ]);
   });
 
+  it("tags rapid turns independently while sharing programmatic cadence", () => {
+    const scheduler = createHarness();
+    let state = requestScheduledPageTurn(
+      createPageTurnSchedulerState(page(0)),
+      1,
+      scheduler,
+      0,
+    );
+    state = requestScheduledRapidPageTurn(state, 1, scheduler, 10);
+
+    expect(state.turns).toMatchObject([
+      { id: "turn:1", motion: "tap", startAtMs: 0 },
+      {
+        id: "turn:2",
+        motion: "rapid",
+        startAtMs: PAGE_TURN_START_INTERVAL_MS,
+      },
+    ]);
+  });
+
   it("waits for a programmatic lane to install its first frame", () => {
     const scheduler = createHarness();
     let state = requestScheduledPageTurn(
@@ -139,12 +160,12 @@ describe("page-turn scheduler", () => {
       true,
       false,
     ]);
-    expect(state.nextTapStartAtMs).toBe(380);
+    expect(state.nextTapStartAtMs).toBe(3 * PAGE_TURN_START_INTERVAL_MS + 80);
 
     state = markScheduledPageTurnsPresented(state, ["turn:3"], 350);
     expect(state.turns.map((turn) => turn.startAtMs)).toEqual([80, 180, 350]);
     expect(state.turns.every((turn) => turn.presentationReady)).toBe(true);
-    expect(state.nextTapStartAtMs).toBe(450);
+    expect(state.nextTapStartAtMs).toBe(3 * PAGE_TURN_START_INTERVAL_MS + 150);
   });
 
   it("does not reopen or reschedule an acknowledged presentation gate", () => {

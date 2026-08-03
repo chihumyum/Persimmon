@@ -193,7 +193,7 @@ function useNativeProgrammaticPageTurnLane(
         settlingIncomingPage: boolean,
         automaticTuning: PageTurnTuning,
         gestureTuning: PageTurnTuning,
-        motion: "tap" | "gesture",
+        motion: "tap" | "rapid" | "gesture",
         release: NativeProgrammaticPageTurnCommand["gestureRelease"],
       ) => {
         "worklet";

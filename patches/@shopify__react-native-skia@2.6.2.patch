@@ -7,7 +7,7 @@ index 3916c0d67a0c30637759fd260ac7f581e32f8ea3..14693b92711ff205e5fd7639de855175
 +++ b/android/cpp/rnskia-android/OpenGLWindowContext.cpp
 @@ -15,8 +15,10 @@
  namespace RNSkia {
-
+ 
  sk_sp<SkSurface> OpenGLWindowContext::getSurface() {
 +  if (!_glContext->makeCurrent(_glSurface.get())) {
 +    return nullptr;
@@ -16,10 +16,10 @@ index 3916c0d67a0c30637759fd260ac7f581e32f8ea3..14693b92711ff205e5fd7639de855175
 -    _glContext->makeCurrent(_glSurface.get());
      GLint stencil;
      glGetIntegerv(GL_STENCIL_BITS, &stencil);
-
+ 
 @@ -52,7 +54,9 @@ sk_sp<SkSurface> OpenGLWindowContext::getSurface() {
  }
-
+ 
  void OpenGLWindowContext::present() {
 -  _glContext->makeCurrent(_glSurface.get());
 +  if (!_glContext->makeCurrent(_glSurface.get())) {
@@ -33,7 +33,7 @@ index 14b228a32e5de513619f4c31f68e5fe5fec71ab7..df6d10e8e6a65e7723bf5be6075f2eaf
 --- a/android/cpp/rnskia-android/OpenGLWindowContext.h
 +++ b/android/cpp/rnskia-android/OpenGLWindowContext.h
 @@ -43,6 +43,9 @@ public:
-
+ 
    ~OpenGLWindowContext() override {
      _skSurface = nullptr;
 +    if (_glContext != nullptr && _glContext->isCurrent()) {
@@ -65,7 +65,7 @@ index e0533bf5d93051f50d3292b42a2d05c41d6c4ce8..119845ab8728401b3ace5ec422c1bd26
 -    RNSkView::redraw();
 +    RNSkView::requestRedraw();
    }
-
+ 
    void surfaceDestroyed() override {
 @@ -50,9 +50,9 @@ public:
                            bool opaque) override {
@@ -78,7 +78,7 @@ index e0533bf5d93051f50d3292b42a2d05c41d6c4ce8..119845ab8728401b3ace5ec422c1bd26
 +    // dispatch it to their dedicated render thread.
 +    RNSkView::requestRedraw();
    }
-
+ 
    float getPixelDensity() override {
 diff --git a/android/cpp/rnskia-android/RNSkOpenGLCanvasProvider.cpp b/android/cpp/rnskia-android/RNSkOpenGLCanvasProvider.cpp
 index e8e4c0314b7a11600827b5ccd4924c337fd59833..bc0d6f5ad0922f5bfba842a397bdd3245a1b39f2 100644
@@ -86,7 +86,7 @@ index e8e4c0314b7a11600827b5ccd4924c337fd59833..bc0d6f5ad0922f5bfba842a397bdd324
 +++ b/android/cpp/rnskia-android/RNSkOpenGLCanvasProvider.cpp
 @@ -1,9 +1,19 @@
  #include "RNSkOpenGLCanvasProvider.h"
-
+ 
 +#include <algorithm>
  #include <android/native_window_jni.h>
  #include <fbjni/fbjni.h>
@@ -101,13 +101,13 @@ index e8e4c0314b7a11600827b5ccd4924c337fd59833..bc0d6f5ad0922f5bfba842a397bdd324
 +#include <unistd.h>
 +#include <utility>
 +#include <vector>
-
+ 
  #include "RNSkLog.h"
-
+ 
 @@ -23,26 +33,154 @@
-
+ 
  namespace RNSkia {
-
+ 
 +namespace {
 +
 +void configurePagerRenderThread() {
@@ -158,7 +158,7 @@ index e8e4c0314b7a11600827b5ccd4924c337fd59833..bc0d6f5ad0922f5bfba842a397bdd324
      std::shared_ptr<RNSkia::RNSkPlatformContext> platformContext)
      : RNSkCanvasProvider(std::move(requestRedraw)),
        _platformContext(std::move(platformContext)) {}
-
+ 
 -RNSkOpenGLCanvasProvider::~RNSkOpenGLCanvasProvider() = default;
 +RNSkOpenGLCanvasProvider::~RNSkOpenGLCanvasProvider() {
 +  if (_dedicatedRendering.load()) {
@@ -180,7 +180,7 @@ index e8e4c0314b7a11600827b5ccd4924c337fd59833..bc0d6f5ad0922f5bfba842a397bdd324
 +int RNSkOpenGLCanvasProvider::getWidth() { return _width.load(); }
 +
 +int RNSkOpenGLCanvasProvider::getHeight() { return _height.load(); }
-
+ 
 -int RNSkOpenGLCanvasProvider::getWidth() {
 -  if (_surfaceHolder) {
 -    return _surfaceHolder->getWidth();
@@ -214,7 +214,7 @@ index e8e4c0314b7a11600827b5ccd4924c337fd59833..bc0d6f5ad0922f5bfba842a397bdd324
 +  _renderThreadRunning.store(true);
 +  _renderThread = std::thread([this]() { renderThreadLoop(); });
  }
-
+ 
 -int RNSkOpenGLCanvasProvider::getHeight() {
 -  if (_surfaceHolder) {
 -    return _surfaceHolder->getHeight();
@@ -266,7 +266,7 @@ index e8e4c0314b7a11600827b5ccd4924c337fd59833..bc0d6f5ad0922f5bfba842a397bdd324
    }
 -  return 0;
  }
-
+ 
  bool RNSkOpenGLCanvasProvider::renderToCanvas(
 @@ -79,13 +217,33 @@ bool RNSkOpenGLCanvasProvider::renderToCanvas(
  void RNSkOpenGLCanvasProvider::surfaceAvailable(jobject jSurfaceTexture,
@@ -277,7 +277,7 @@ index e8e4c0314b7a11600827b5ccd4924c337fd59833..bc0d6f5ad0922f5bfba842a397bdd324
 +  surfaceDestroyed();
 +  _width.store(width);
 +  _height.store(height);
-
+ 
    // Create renderer!
    ANativeWindow *window = nullptr;
    JNIEnv *env = facebook::jni::Environment::current();
@@ -318,7 +318,7 @@ index e8e4c0314b7a11600827b5ccd4924c337fd59833..bc0d6f5ad0922f5bfba842a397bdd324
    _surfaceHolder = OpenGLContext::getInstance().MakeWindow(window);
  #endif
 +  ANativeWindow_release(window);
-
+ 
    // Post redraw request to ensure we paint in the next draw cycle.
    _requestRedraw();
 @@ -119,7 +276,13 @@ void RNSkOpenGLCanvasProvider::surfaceAvailable(jobject jSurfaceTexture,
@@ -339,7 +339,7 @@ index e8e4c0314b7a11600827b5ccd4924c337fd59833..bc0d6f5ad0922f5bfba842a397bdd324
 @@ -135,8 +298,23 @@ void RNSkOpenGLCanvasProvider::surfaceSizeChanged(jobject jSurface, int width,
      return;
    }
-
+ 
 -  if (_surfaceHolder == nullptr) {
 -    _surfaceHolder = nullptr;
 +  _width.store(width);
@@ -368,34 +368,34 @@ index ca5768de24b8c3600e92d2684c959e8ec24c4f61..81275c13e08f520469bea17478bf751c
 +++ b/android/cpp/rnskia-android/RNSkOpenGLCanvasProvider.h
 @@ -1,8 +1,15 @@
  #pragma once
-
+ 
 +#include <atomic>
 +#include <chrono>
 +#include <condition_variable>
 +#include <deque>
  #include <fbjni/fbjni.h>
-
+ 
 +#include <functional>
  #include <memory>
 +#include <mutex>
 +#include <thread>
-
+ 
  #include "RNSkView.h"
  #include "RNWindowContext.h"
 @@ -27,6 +34,10 @@ public:
-
+ 
    bool renderToCanvas(const std::function<void(SkCanvas *)> &cb) override;
-
+ 
 +  bool usesDedicatedRenderThread() const override;
 +
 +  void runOnRenderThread(std::function<void()> task) override;
 +
    void surfaceAvailable(jobject surface, int width, int height, bool opaque);
-
+ 
    void surfaceDestroyed();
 @@ -34,9 +45,26 @@ public:
    void surfaceSizeChanged(jobject jSurface, int width, int height, bool opaque);
-
+ 
  private:
 +  void ensureRenderThread();
 +
@@ -425,17 +425,17 @@ index 724776a00be028a773cfbfb70ffb3c25a8e8840e..2a4224ef1bab9623f973b42d5c6f4407
 --- a/android/src/main/java/com/shopify/reactnative/skia/PlatformContext.java
 +++ b/android/src/main/java/com/shopify/reactnative/skia/PlatformContext.java
 @@ -2,6 +2,7 @@ package com.shopify.reactnative.skia;
-
+ 
  import android.os.Handler;
  import android.os.Looper;
 +import android.view.Choreographer;
-
+ 
  import com.facebook.jni.HybridData;
  import com.facebook.proguard.annotations.DoNotStrip;
 @@ -27,6 +28,13 @@ public class PlatformContext {
-
+ 
      private final Handler mainHandler = new Handler(Looper.getMainLooper());
-
+ 
 +    private boolean frameDispatchScheduled = false;
 +
 +    private final Choreographer.FrameCallback taskFrameCallback = frameTimeNanos -> {
@@ -464,45 +464,272 @@ index 724776a00be028a773cfbfb70ffb3c25a8e8840e..2a4224ef1bab9623f973b42d5c6f4407
 +            Choreographer.getInstance().postFrameCallback(taskFrameCallback);
          }
      }
-
+ 
+diff --git a/apple/MetalContext.h b/apple/MetalContext.h
+index 3fd4e908ca6baf5fd23c443edc2ac6b756eb28aa..2340b02069f146c1c8c737ebfb641438884d3915 100644
+--- a/apple/MetalContext.h
++++ b/apple/MetalContext.h
+@@ -97,11 +97,12 @@ public:
+ 
+   std::unique_ptr<RNSkia::WindowContext>
+   MakeWindow(CALayer *window, int width, int height,
+-             bool useP3ColorSpace = true) {
++             bool useP3ColorSpace = true, bool configureLayer = true) {
+     auto device = _device;
+     return std::make_unique<MetalWindowContext>(_directContext.get(), device,
+                                                 _commandQueue, window, width,
+-                                                height, useP3ColorSpace);
++                                                height, useP3ColorSpace,
++                                                configureLayer);
+   }
+ 
+   GrDirectContext *getDirectContext() { return _directContext.get(); }
+diff --git a/apple/MetalWindowContext.h b/apple/MetalWindowContext.h
+index 867f6db89bad9e5c5c153c0d8bec768ac70eb3db..724c7f6fdfdfe106442978b9d9133f7fa9f739bf 100644
+--- a/apple/MetalWindowContext.h
++++ b/apple/MetalWindowContext.h
+@@ -10,7 +10,8 @@ class MetalWindowContext : public RNSkia::WindowContext {
+ public:
+   MetalWindowContext(GrDirectContext *directContext, id<MTLDevice> device,
+                      id<MTLCommandQueue> commandQueue, CALayer *layer,
+-                     int width, int height, bool useP3ColorSpace = true);
++                     int width, int height, bool useP3ColorSpace = true,
++                     bool configureLayer = true);
+   ~MetalWindowContext() = default;
+ 
+   sk_sp<SkSurface> getSurface() override;
+diff --git a/apple/MetalWindowContext.mm b/apple/MetalWindowContext.mm
+index 4cbfafa69fd9c1d1e5f056b17ce8582b94b35325..9f3d5da7c66deba0befc5c5aeabafe22bc762c03 100644
+--- a/apple/MetalWindowContext.mm
++++ b/apple/MetalWindowContext.mm
+@@ -8,12 +8,17 @@
+                                        id<MTLDevice> device,
+                                        id<MTLCommandQueue> commandQueue,
+                                        CALayer *layer, int width, int height,
+-                                       bool useP3ColorSpace)
+-    : _directContext(directContext), _commandQueue(commandQueue) {
++                                       bool useP3ColorSpace,
++                                       bool configureLayer)
++    : _directContext(directContext), _commandQueue(commandQueue),
++      _useP3ColorSpace(useP3ColorSpace) {
+ #pragma clang diagnostic push
+ #pragma clang diagnostic ignored "-Wunguarded-availability-new"
+   _layer = (CAMetalLayer *)layer;
+ #pragma clang diagnostic pop
++  if (!configureLayer) {
++    return;
++  }
+   _layer.framebufferOnly = NO;
+   _layer.device = device;
+   _layer.opaque = false;
+@@ -48,6 +53,8 @@
+     _layer.colorspace = colorSpace;
+     CGColorSpaceRelease(colorSpace);
+     _useP3ColorSpace = true;
++  } else {
++    _useP3ColorSpace = false;
+   }
+ }
+ 
 diff --git a/apple/RNSkMetalCanvasProvider.h b/apple/RNSkMetalCanvasProvider.h
-index 205e7ad99d4bdfb89075f2fa28d6e4ad76285759..aa36d023db1b476bc788f101db240b18cdbf296a 100644
+index 205e7ad99d4bdfb89075f2fa28d6e4ad76285759..8f18acefeed81c2353a758447b9c634c8b237256 100644
 --- a/apple/RNSkMetalCanvasProvider.h
 +++ b/apple/RNSkMetalCanvasProvider.h
-@@ -13,6 +13,8 @@
-
+@@ -6,6 +6,9 @@
+ #import <MetalKit/MetalKit.h>
+ #import <QuartzCore/CAMetalLayer.h>
+ 
++#include <atomic>
++#include <cstdint>
++
+ #pragma clang diagnostic push
+ #pragma clang diagnostic ignored "-Wdocumentation"
+ 
+@@ -13,6 +16,9 @@
+ 
  #pragma clang diagnostic pop
-
+ 
 +class RNSkDisplayLinkScheduler;
++class RNSkMetalRenderThread;
 +
  class RNSkMetalCanvasProvider : public RNSkia::RNSkCanvasProvider {
  public:
    RNSkMetalCanvasProvider(std::function<void()> requestRedraw,
-@@ -26,12 +28,16 @@ public:
-
+@@ -26,16 +32,29 @@ public:
+ 
    bool renderToCanvas(const std::function<void(SkCanvas *)> &cb) override;
-
+ 
++  bool usesDedicatedRenderThread() const override;
++  void runOnRenderThread(std::function<void()> task) override;
 +  bool usesDisplayLinkScheduler() const override;
 +  void runOnDisplayLink(std::function<void()> task) override;
 +
    void setSize(int width, int height);
    void setUseP3ColorSpace(bool useP3ColorSpace);
    CALayer *getLayer();
-
+ 
  private:
    std::shared_ptr<RNSkia::RNSkPlatformContext> _context;
 +  std::unique_ptr<RNSkDisplayLinkScheduler> _displayLinkScheduler;
++  std::unique_ptr<RNSkMetalRenderThread> _renderThread;
    std::unique_ptr<RNSkia::WindowContext> _ctx = nullptr;
  #pragma clang diagnostic push
  #pragma clang diagnostic ignored "-Wunguarded-availability-new"
+   CAMetalLayer *_layer;
+ #pragma clang diagnostic pop
+-  bool _useP3ColorSpace = true;
++  std::atomic<int> _pixelWidth = {-1};
++  std::atomic<int> _pixelHeight = {-1};
++  std::atomic<int> _logicalWidth = {0};
++  std::atomic<int> _logicalHeight = {0};
++  std::atomic<uint64_t> _contextGeneration = {0};
++  std::atomic<bool> _applicationCanRender = {true};
++  std::atomic<bool> _useP3ColorSpace = {true};
+ };
 diff --git a/apple/RNSkMetalCanvasProvider.mm b/apple/RNSkMetalCanvasProvider.mm
-index cc5007733e92caaf643c1b18c8be2cef52b477dd..8e76ee5131eb9d3a79a6869c25ce7ce0a66a6450 100644
+index cc5007733e92caaf643c1b18c8be2cef52b477dd..3a7b47a9c6fbdccba8cead8f234d856c830d3281 100644
 --- a/apple/RNSkMetalCanvasProvider.mm
 +++ b/apple/RNSkMetalCanvasProvider.mm
-@@ -21,6 +21,105 @@
-
+@@ -19,8 +19,281 @@
+ #import <include/gpu/ganesh/GrDirectContext.h>
+ #import <include/gpu/ganesh/SkSurfaceGanesh.h>
+ 
++#include <condition_variable>
++#include <deque>
++#include <mutex>
++#include <thread>
++
  #pragma clang diagnostic pop
-
+ 
++#if !TARGET_OS_OSX && !defined(SK_GRAPHITE)
++class RNSkMetalRenderThread {
++public:
++  RNSkMetalRenderThread() : _state(std::make_shared<State>()) {
++    auto state = _state;
++    _thread = std::thread([state]() {
++      while (true) {
++        std::function<void()> task;
++        {
++          std::unique_lock<std::mutex> lock(state->mutex);
++          state->condition.wait(lock, [&state]() {
++            return state->stopping || !state->tasks.empty();
++          });
++          if (state->stopping && state->tasks.empty()) {
++            return;
++          }
++          task = std::move(state->tasks.front());
++          state->tasks.pop_front();
++        }
++        @autoreleasepool {
++          try {
++            if (task) {
++              task();
++            }
++          } catch (const std::exception &error) {
++            RNSkia::RNSkLogger::logToConsole(
++                std::string("Metal render thread failed: ") + error.what());
++          } catch (...) {
++            RNSkia::RNSkLogger::logToConsole(
++                "Metal render thread failed with an unknown exception");
++          }
++        }
++      }
++    });
++  }
++
++  ~RNSkMetalRenderThread() {
++    {
++      std::lock_guard<std::mutex> lock(_state->mutex);
++      _state->stopping = true;
++    }
++    _state->condition.notify_all();
++    if (!_thread.joinable()) {
++      return;
++    }
++    if (isCurrent()) {
++      // The final RNSkView reference can be released by its own render task.
++      // State is shared with the loop, so detaching here is safe: the loop
++      // exits immediately after the current task without touching this owner.
++      _thread.detach();
++    } else {
++      _thread.join();
++    }
++  }
++
++  bool isCurrent() const {
++    return _thread.joinable() &&
++           std::this_thread::get_id() == _thread.get_id();
++  }
++
++  bool schedule(std::function<void()> task) {
++    if (!task) {
++      return false;
++    }
++    {
++      std::lock_guard<std::mutex> lock(_state->mutex);
++      if (_state->stopping) {
++        return false;
++      }
++      _state->tasks.push_back(std::move(task));
++    }
++    _state->condition.notify_one();
++    return true;
++  }
++
++  void runSynchronously(std::function<void()> task) {
++    if (!task) {
++      return;
++    }
++    if (isCurrent()) {
++      task();
++      return;
++    }
++    auto completion = std::make_shared<Completion>();
++    if (!schedule([task = std::move(task), completion]() mutable {
++          try {
++            task();
++          } catch (...) {
++            {
++              std::lock_guard<std::mutex> lock(completion->mutex);
++              completion->finished = true;
++            }
++            completion->condition.notify_one();
++            throw;
++          }
++          {
++            std::lock_guard<std::mutex> lock(completion->mutex);
++            completion->finished = true;
++          }
++          completion->condition.notify_one();
++        })) {
++      return;
++    }
++    std::unique_lock<std::mutex> lock(completion->mutex);
++    completion->condition.wait(
++        lock, [&completion]() { return completion->finished; });
++  }
++
++private:
++  struct State {
++    std::mutex mutex;
++    std::condition_variable condition;
++    std::deque<std::function<void()>> tasks;
++    bool stopping = false;
++  };
++
++  struct Completion {
++    std::mutex mutex;
++    std::condition_variable condition;
++    bool finished = false;
++  };
++
++  std::shared_ptr<State> _state;
++  std::thread _thread;
++};
++#else
++class RNSkMetalRenderThread {};
++#endif
++
 +#if !TARGET_OS_OSX
 +@interface RNSkPagerDisplayLinkTarget : NSObject {
 +  CADisplayLink *_displayLink;
@@ -602,24 +829,128 @@ index cc5007733e92caaf643c1b18c8be2cef52b477dd..8e76ee5131eb9d3a79a6869c25ce7ce0
 +class RNSkDisplayLinkScheduler {};
 +#endif
 +
++static bool RNSkConfigureMetalLayer(CAMetalLayer *layer, int logicalWidth,
++                                    int logicalHeight, int pixelWidth,
++                                    int pixelHeight, float pixelDensity,
++                                    bool requestP3) {
++  layer.frame = CGRectMake(0, 0, logicalWidth, logicalHeight);
++  layer.framebufferOnly = NO;
++  layer.device = MTLCreateSystemDefaultDevice();
++  layer.opaque = false;
++  layer.contentsScale = pixelDensity;
++  layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
++  layer.contentsGravity = kCAGravityBottomLeft;
++  layer.drawableSize = CGSizeMake(pixelWidth, pixelHeight);
++
++  bool supportsWideColor = false;
++  if (requestP3) {
++#if !TARGET_OS_OSX
++    if (@available(iOS 10.0, tvOS 10.0, *)) {
++      supportsWideColor = UIScreen.mainScreen.traitCollection.displayGamut ==
++                          UIDisplayGamutP3;
++    }
++#else
++    if (@available(macOS 10.12, *)) {
++      NSScreen *screen = NSScreen.mainScreen;
++      NSColorSpace *displayP3 = NSColorSpace.displayP3ColorSpace;
++      supportsWideColor = screen.colorSpace != nil && displayP3 != nil &&
++                          [screen.colorSpace isEqual:displayP3];
++    }
++#endif
++  }
++  CGColorSpaceRef colorSpace =
++      supportsWideColor
++          ? CGColorSpaceCreateWithName(kCGColorSpaceDisplayP3)
++          : nullptr;
++  layer.colorspace = colorSpace;
++  if (colorSpace != nullptr) {
++    CGColorSpaceRelease(colorSpace);
++  }
++  return supportsWideColor;
++}
++
  RNSkMetalCanvasProvider::RNSkMetalCanvasProvider(
      std::function<void()> requestRedraw,
      std::shared_ptr<RNSkia::RNSkPlatformContext> context, bool useP3ColorSpace)
-@@ -30,10 +129,27 @@
+@@ -28,24 +301,101 @@
+       _useP3ColorSpace(useP3ColorSpace) {
+ #pragma clang diagnostic push
  #pragma clang diagnostic ignored "-Wunguarded-availability-new"
-   _layer = [CAMetalLayer layer];
+-  _layer = [CAMetalLayer layer];
++  if (NSThread.isMainThread) {
++    _layer = [CAMetalLayer layer];
++  } else {
++    dispatch_sync(dispatch_get_main_queue(), ^{
++      _layer = [CAMetalLayer layer];
++    });
++  }
  #pragma clang diagnostic pop
 +#if !TARGET_OS_OSX
 +  _displayLinkScheduler = std::make_unique<RNSkDisplayLinkScheduler>();
++#if !defined(SK_GRAPHITE)
++  _renderThread = std::make_unique<RNSkMetalRenderThread>();
 +#endif
- }
-
- RNSkMetalCanvasProvider::~RNSkMetalCanvasProvider() {}
-
-+bool RNSkMetalCanvasProvider::usesDisplayLinkScheduler() const {
-+  return _displayLinkScheduler != nullptr;
++#endif
 +}
 +
++RNSkMetalCanvasProvider::~RNSkMetalCanvasProvider() {
++  // Stop future display-link deliveries before releasing the context. The
++  // Metal window and its thread-local GrDirectContext are destroyed on the
++  // same fixed thread that created and used them.
++  _displayLinkScheduler.reset();
++#if !TARGET_OS_OSX && !defined(SK_GRAPHITE)
++  if (_renderThread != nullptr) {
++    _renderThread->runSynchronously([this]() { _ctx.reset(); });
++    _renderThread.reset();
++    return;
++  }
++#endif
++  _ctx.reset();
++}
++
++bool RNSkMetalCanvasProvider::usesDedicatedRenderThread() const {
++#if !TARGET_OS_OSX && !defined(SK_GRAPHITE)
++  return _renderThread != nullptr;
++#else
++  return false;
++#endif
++}
++
++void RNSkMetalCanvasProvider::runOnRenderThread(
++    std::function<void()> task) {
++#if !TARGET_OS_OSX && !defined(SK_GRAPHITE)
++  if (_renderThread == nullptr || !task) {
++    return;
++  }
++  auto enqueue = [this, task = std::move(task)]() mutable {
++    const auto state = UIApplication.sharedApplication.applicationState;
++    _applicationCanRender.store(state == UIApplicationStateActive);
++    _renderThread->schedule(std::move(task));
++  };
++  if (_displayLinkScheduler != nullptr) {
++    _displayLinkScheduler->schedule(std::move(enqueue));
++  } else if (NSThread.isMainThread) {
++    enqueue();
++  } else {
++    auto pending =
++        std::make_shared<std::function<void()>>(std::move(enqueue));
++    dispatch_async(dispatch_get_main_queue(), ^{
++      (*pending)();
++    });
++  }
++#else
++  if (task) {
++    task();
++  }
++#endif
++}
++
++bool RNSkMetalCanvasProvider::usesDisplayLinkScheduler() const {
++  return _displayLinkScheduler != nullptr &&
++         !usesDedicatedRenderThread();
+ }
+ 
+-RNSkMetalCanvasProvider::~RNSkMetalCanvasProvider() {}
 +void RNSkMetalCanvasProvider::runOnDisplayLink(std::function<void()> task) {
 +#if !TARGET_OS_OSX
 +  _displayLinkScheduler->schedule(std::move(task));
@@ -629,10 +960,148 @@ index cc5007733e92caaf643c1b18c8be2cef52b477dd..8e76ee5131eb9d3a79a6869c25ce7ce0
 +  }
 +#endif
 +}
-+
+ 
  /**
   Returns the scaled width of the view
   */
+ int RNSkMetalCanvasProvider::getWidth() {
+-  return _ctx ? _ctx->getWidth() : -1;
++  return _pixelWidth.load();
+ };
+ 
+ /**
+  Returns the scaled height of the view
+  */
+ int RNSkMetalCanvasProvider::getHeight() {
+-  return _ctx ? _ctx->getHeight() : -1;
++  return _pixelHeight.load();
+ };
+ 
+ /**
+@@ -53,6 +403,11 @@
+  */
+ bool RNSkMetalCanvasProvider::renderToCanvas(
+     const std::function<void(SkCanvas *)> &cb) {
++#if !TARGET_OS_OSX && !defined(SK_GRAPHITE)
++  if (_renderThread == nullptr || !_renderThread->isCurrent()) {
++    return false;
++  }
++#endif
+   if (!_ctx) {
+     return false;
+   }
+@@ -61,50 +416,81 @@
+   // background or inactive. This will cause an error that might clear the
+   // CAMetalLayer so that the canvas is empty when the app receives focus again.
+   // Reference: https://github.com/Shopify/react-native-skia/issues/1257
+-  // NOTE: UIApplication.sharedApplication.applicationState can only be
+-  // accessed from the main thread so we need to check here.
+-  if ([[NSThread currentThread] isMainThread]) {
+ #if !TARGET_OS_OSX
+-    auto state = UIApplication.sharedApplication.applicationState;
+-    bool appIsBackgrounded = (state == UIApplicationStateBackground);
++  // The display-link callback sampled UIApplication state on the main thread.
++  const bool appIsBackgrounded = !_applicationCanRender.load();
+ #else
+-    bool appIsBackgrounded = NSApplication.sharedApplication.isHidden;
++  const bool appIsBackgrounded = NSApplication.sharedApplication.isHidden;
+ #endif // !TARGET_OS_OSX
+-    if (appIsBackgrounded) {
+-      // Request a redraw in the next run loop callback
+-      _requestRedraw();
+-      // and don't draw now since it might cause errors in the metal renderer if
+-      // we try to render while in the background. (see above issue)
+-      return false;
+-    }
++  if (appIsBackgrounded) {
++    _requestRedraw();
++    return false;
++  }
+ 
+-    auto surface = _ctx->getSurface();
+-    if (!surface) {
+-      return false;
+-    }
+-    auto canvas = surface->getCanvas();
+-    cb(canvas);
+-    _ctx->present();
+-    return true;
++  auto surface = _ctx->getSurface();
++  if (!surface) {
++    return false;
+   }
+-  return false;
++  auto canvas = surface->getCanvas();
++  cb(canvas);
++  _ctx->present();
++  return true;
+ };
+ 
+ void RNSkMetalCanvasProvider::setSize(int width, int height) {
+-  _layer.frame = CGRectMake(0, 0, width, height);
+-  auto w = width * _context->getPixelDensity();
+-  auto h = height * _context->getPixelDensity();
++  if (!NSThread.isMainThread) {
++    dispatch_sync(dispatch_get_main_queue(), ^{
++      this->setSize(width, height);
++    });
++    return;
++  }
++  const float pixelDensity = _context->getPixelDensity();
++  const int pixelWidth = static_cast<int>(width * pixelDensity);
++  const int pixelHeight = static_cast<int>(height * pixelDensity);
++  _logicalWidth.store(width);
++  _logicalHeight.store(height);
++  _pixelWidth.store(pixelWidth);
++  _pixelHeight.store(pixelHeight);
++  const bool effectiveUseP3 = RNSkConfigureMetalLayer(
++      _layer, width, height, pixelWidth, pixelHeight, pixelDensity,
++      _useP3ColorSpace.load());
++  const uint64_t generation = _contextGeneration.fetch_add(1) + 1;
++  auto makeContext = [this, generation, pixelWidth, pixelHeight,
++                      effectiveUseP3]() {
++    if (_contextGeneration.load() != generation) {
++      return;
++    }
++    if (pixelWidth <= 0 || pixelHeight <= 0) {
++      _ctx.reset();
++      return;
++    }
+ #if defined(SK_GRAPHITE)
+-  _ctx = RNSkia::DawnContext::getInstance().MakeWindow((__bridge void *)_layer,
+-                                                       w, h);
++    auto context = RNSkia::DawnContext::getInstance().MakeWindow(
++        (__bridge void *)_layer, pixelWidth, pixelHeight);
+ #else
+-  _ctx = MetalContext::getInstance().MakeWindow(_layer, w, h, _useP3ColorSpace);
++    auto context = MetalContext::getInstance().MakeWindow(
++        _layer, pixelWidth, pixelHeight, effectiveUseP3, false);
++#endif
++    if (_contextGeneration.load() != generation) {
++      return;
++    }
++    _ctx = std::move(context);
++    _requestRedraw();
++  };
++#if !TARGET_OS_OSX && !defined(SK_GRAPHITE)
++  _renderThread->schedule(std::move(makeContext));
++#else
++  makeContext();
+ #endif
+-  _requestRedraw();
+ }
+ 
+ CALayer *RNSkMetalCanvasProvider::getLayer() { return _layer; }
+ 
+ void RNSkMetalCanvasProvider::setUseP3ColorSpace(bool useP3ColorSpace) {
+-  _useP3ColorSpace = useP3ColorSpace;
++  _useP3ColorSpace.store(useP3ColorSpace);
++  const int width = _logicalWidth.load();
++  const int height = _logicalHeight.load();
++  if (width > 0 && height > 0) {
++    setSize(width, height);
++  }
+ }
 diff --git a/cpp/api/JsiSkParagraph.h b/cpp/api/JsiSkParagraph.h
 index 319410930843c33a850755508d788cac71ee4be2..9b76f4d8e0483d01a0722e002754a15e0946426d 100644
 --- a/cpp/api/JsiSkParagraph.h
@@ -640,7 +1109,7 @@ index 319410930843c33a850755508d788cac71ee4be2..9b76f4d8e0483d01a0722e002754a15e
 @@ -171,7 +171,14 @@ public:
                         JSI_EXPORT_FUNC(JsiSkParagraph, getLineMetrics),
                         JSI_EXPORT_FUNC(JsiSkParagraph, dispose))
-
+ 
 -  size_t getMemoryPressure() const override { return 1024 * 1024; }
 +  size_t getMemoryPressure() const override {
 +    // Reflowable EPUBs commonly create thousands of short Paragraph objects.
@@ -650,9 +1119,9 @@ index 319410930843c33a850755508d788cac71ee4be2..9b76f4d8e0483d01a0722e002754a15e
 +    // bounds materialized paragraphs independently.
 +    return 64 * 1024;
 +  }
-
+ 
    std::string getObjectType() const override { return "JsiSkParagraph"; }
-
+ 
 diff --git a/cpp/api/JsiSkParagraphBuilder.h b/cpp/api/JsiSkParagraphBuilder.h
 index d7e0956b1ec15435a718f28c96ea8f55376d2f36..dccded4753b787d1d03252fdcbf63ae26d264d68 100644
 --- a/cpp/api/JsiSkParagraphBuilder.h
@@ -660,26 +1129,26 @@ index d7e0956b1ec15435a718f28c96ea8f55376d2f36..dccded4753b787d1d03252fdcbf63ae2
 @@ -116,7 +116,11 @@ public:
                         JSI_EXPORT_FUNC(JsiSkParagraphBuilder, pushStyle),
                         JSI_EXPORT_FUNC(JsiSkParagraphBuilder, pop))
-
+ 
 -  size_t getMemoryPressure() const override { return 1024 * 1024; }
 +  size_t getMemoryPressure() const override {
 +    // Builders are short-lived measurement helpers and are explicitly
 +    // disposed after build(); charging 1 MiB each causes needless GC churn.
 +    return 64 * 1024;
 +  }
-
+ 
    std::string getObjectType() const override { return "JsiSkParagraphBuilder"; }
-
+ 
 diff --git a/cpp/api/JsiSkPicture.h b/cpp/api/JsiSkPicture.h
 index b58d412a258b2a0430189a2bd1c1811f672d4cf8..3880acd861faee2d1e98b8bf88783136f54768a5 100644
 --- a/cpp/api/JsiSkPicture.h
 +++ b/cpp/api/JsiSkPicture.h
 @@ -1,5 +1,6 @@
  #pragma once
-
+ 
 +#include <algorithm>
  #include <memory>
-
+ 
  #include "JsiSkData.h"
 @@ -104,9 +105,14 @@ public:
      if (!picture) {
@@ -697,7 +1166,7 @@ index b58d412a258b2a0430189a2bd1c1811f672d4cf8..3880acd861faee2d1e98b8bf88783136
 +    return std::min(picture->approximateBytesUsed(),
 +                    kMaximumPictureMemoryPressure);
    }
-
+ 
    std::string getObjectType() const override { return "JsiSkPicture"; }
 diff --git a/cpp/api/JsiSkSurfaceFactory.h b/cpp/api/JsiSkSurfaceFactory.h
 index aad94429344434bd0b4c3a78e3bcff15fb0d27ce..f796c0afcac504055f1f8946c9a9a8ed31e4ec3b 100644
@@ -705,16 +1174,16 @@ index aad94429344434bd0b4c3a78e3bcff15fb0d27ce..f796c0afcac504055f1f8946c9a9a8ed
 +++ b/cpp/api/JsiSkSurfaceFactory.h
 @@ -1,10 +1,20 @@
  #pragma once
-
+ 
 +#include <algorithm>
 +#include <fstream>
  #include <memory>
 +#include <string>
  #include <utility>
 +#include <vector>
-
+ 
  #include <jsi/jsi.h>
-
+ 
 +#if defined(__ANDROID__)
 +#include <sched.h>
 +#include <sys/resource.h>
@@ -722,12 +1191,12 @@ index aad94429344434bd0b4c3a78e3bcff15fb0d27ce..f796c0afcac504055f1f8946c9a9a8ed
 +#endif
 +
  #include "JsiSkHostObjects.h"
-
+ 
  #include "JsiSkSurface.h"
 @@ -62,8 +72,81 @@ public:
          runtime, hostObjectInstance, getContext());
    }
-
+ 
 +  JSI_HOST_FUNCTION(configureCurrentThreadForRaster) {
 +#if defined(__ANDROID__)
 +    const int workerIndex =
@@ -804,25 +1273,25 @@ index aad94429344434bd0b4c3a78e3bcff15fb0d27ce..f796c0afcac504055f1f8946c9a9a8ed
 +                       JSI_EXPORT_FUNC(JsiSkSurfaceFactory, MakeOffscreen),
 +                       JSI_EXPORT_FUNC(JsiSkSurfaceFactory,
 +                                       configureCurrentThreadForRaster))
-
+ 
    size_t getMemoryPressure() const override { return 2048; }
-
+ 
 diff --git a/cpp/rnskia/RNSkJsiViewApi.h b/cpp/rnskia/RNSkJsiViewApi.h
-index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..cf1500165c7ca72cefd3540ac3c5e6a0bc2e8a47 100644
+index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..56dda7c8dbdfa2cfaf37f7b6e58fe1f7c70e7847 100644
 --- a/cpp/rnskia/RNSkJsiViewApi.h
 +++ b/cpp/rnskia/RNSkJsiViewApi.h
 @@ -10,6 +10,7 @@
  #include <vector>
-
+ 
  #include "JsiHostObject.h"
 +#include "JsiSkPicture.h"
  #include "RNSkPictureView.h"
  #include "RNSkPlatformContext.h"
  #include "RNSkView.h"
-@@ -268,11 +269,525 @@ public:
+@@ -268,11 +269,549 @@ public:
      return sizeObj;
    }
-
+ 
 +  JSI_HOST_FUNCTION(pagerPreload) {
 +    if (count != 2 || !arguments[0].isNumber() ||
 +        !arguments[1].isObject()) {
@@ -997,9 +1466,9 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..cf1500165c7ca72cefd3540ac3c5e6a0
 +  }
 +
 +  JSI_HOST_FUNCTION(pagerStockPicture) {
-+    if (count != 20) {
++    if (count != 21) {
 +      _platformContext->raiseError(
-+          std::string("pagerStockPicture: Expected 20 arguments, got " +
++          std::string("pagerStockPicture: Expected 21 arguments, got " +
 +                      std::to_string(count) + "."));
 +      return jsi::Value::undefined();
 +    }
@@ -1018,7 +1487,8 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..cf1500165c7ca72cefd3540ac3c5e6a0
 +        !arguments[12].isNumber() || !arguments[13].isNumber() ||
 +        !arguments[14].isNumber() || !arguments[15].isBool() ||
 +        !arguments[16].isNumber() || !arguments[17].isNumber() ||
-+        !arguments[18].isNumber() || !arguments[19].isNumber()) {
++        !arguments[18].isNumber() || !arguments[19].isNumber() ||
++        !arguments[20].isNumber()) {
 +      _platformContext->raiseError(
 +          "pagerStockPicture: Invalid native pager stock arguments.");
 +      return jsi::Value::undefined();
@@ -1055,8 +1525,8 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..cf1500165c7ca72cefd3540ac3c5e6a0
 +        arguments[12].asNumber(), arguments[13].asNumber(),
 +        arguments[14].asNumber(), arguments[15].getBool(),
 +        arguments[16].asNumber(), arguments[17].asNumber(),
-+        arguments[18].asNumber(),
-+        static_cast<SkColor>(arguments[19].asNumber()));
++        arguments[18].asNumber(), arguments[19].asNumber(),
++        static_cast<SkColor>(arguments[20].asNumber()));
 +    return jsi::Value::undefined();
 +  }
 +
@@ -1079,10 +1549,10 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..cf1500165c7ca72cefd3540ac3c5e6a0
 +  }
 +
 +  JSI_HOST_FUNCTION(pagerConfigureMotion) {
-+    if (count != 9) {
++    if (count != 13) {
 +      _platformContext->raiseError(
 +          std::string(
-+              "pagerConfigureMotion: Expected 9 numeric arguments, got " +
++              "pagerConfigureMotion: Expected 13 numeric arguments, got " +
 +              std::to_string(count) + "."));
 +      return jsi::Value::undefined();
 +    }
@@ -1103,7 +1573,9 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..cf1500165c7ca72cefd3540ac3c5e6a0
 +          arguments[1].asNumber(), arguments[2].asNumber(),
 +          arguments[3].asNumber(), arguments[4].asNumber(),
 +          arguments[5].asNumber(), arguments[6].asNumber(),
-+          arguments[7].asNumber(), arguments[8].asNumber());
++          arguments[7].asNumber(), arguments[8].asNumber(),
++          arguments[9].asNumber(), arguments[10].asNumber(),
++          arguments[11].asNumber(), arguments[12].asNumber());
 +    }
 +    return jsi::Value::undefined();
 +  }
@@ -1125,6 +1597,25 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..cf1500165c7ca72cefd3540ac3c5e6a0
 +    }
 +    return jsi::Value(
 +        pictureView->consumePagerInput(arguments[1].asNumber()));
++  }
++
++  JSI_HOST_FUNCTION(pagerTryConsumeInput) {
++    if (count != 2 || !arguments[0].isNumber() ||
++        !arguments[1].isNumber()) {
++      _platformContext->raiseError(
++          "pagerTryConsumeInput: Expected native id and direction.");
++      return jsi::Value(false);
++    }
++    const int nativeId = arguments[0].asNumber();
++    auto view = ViewRegistry::getInstance().withViewInfo(
++        nativeId,
++        [](std::shared_ptr<RNSkViewInfo> info) { return info->view; });
++    auto pictureView = std::dynamic_pointer_cast<RNSkPictureView>(view);
++    if (pictureView == nullptr) {
++      return jsi::Value(false);
++    }
++    return jsi::Value(
++        pictureView->tryConsumePagerInput(arguments[1].asNumber()));
 +  }
 +
 +  JSI_HOST_FUNCTION(pagerBeginGesture) {
@@ -1291,7 +1782,7 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..cf1500165c7ca72cefd3540ac3c5e6a0
 +          "pagerProtocolVersion: Expected no arguments.");
 +      return jsi::Value::undefined();
 +    }
-+    return jsi::Value(5);
++    return jsi::Value(7);
 +  }
 +
 +  JSI_HOST_FUNCTION(pagerReady) {
@@ -1332,6 +1823,8 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..cf1500165c7ca72cefd3540ac3c5e6a0
 +                       JSI_EXPORT_FUNC(RNSkJsiViewApi,
 +                                       pagerConsumeInput),
 +                       JSI_EXPORT_FUNC(RNSkJsiViewApi,
++                                       pagerTryConsumeInput),
++                       JSI_EXPORT_FUNC(RNSkJsiViewApi,
 +                                       pagerBeginGesture),
 +                       JSI_EXPORT_FUNC(RNSkJsiViewApi,
 +                                       pagerUpdateGesture),
@@ -1343,15 +1836,15 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..cf1500165c7ca72cefd3540ac3c5e6a0
 +                                       pagerRunBenchmark),
 +                       JSI_EXPORT_FUNC(RNSkJsiViewApi, pagerTakeEvents),
 +                       JSI_EXPORT_FUNC(RNSkJsiViewApi, pagerReset))
-
+ 
    /**
     * Constructor
 diff --git a/cpp/rnskia/RNSkPagerCompositor.h b/cpp/rnskia/RNSkPagerCompositor.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc75ecfceaf
+index 0000000000000000000000000000000000000000..e7355182c38e4d92fce0b22b441b9a6997f91677
 --- /dev/null
 +++ b/cpp/rnskia/RNSkPagerCompositor.h
-@@ -0,0 +1,2758 @@
+@@ -0,0 +1,2879 @@
 +#pragma once
 +
 +#include <algorithm>
@@ -1426,9 +1919,11 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +  explicit RNSkPagerCompositor(std::function<void()> requestRedraw)
 +      : _requestRedraw(std::move(requestRedraw)) {}
 +
-+  void configureMotion(MotionTuning automatic, MotionTuning gesture) {
++  void configureMotion(MotionTuning automatic, MotionTuning rapid,
++                       MotionTuning gesture) {
 +    std::lock_guard<std::mutex> lock(_mutex);
 +    _automaticTuning = clampMotionTuning(automatic);
++    _rapidTuning = clampMotionTuning(rapid, 1.0f);
 +    _gestureTuning = clampMotionTuning(gesture);
 +  }
 +
@@ -1539,6 +2034,7 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +    {
 +      std::lock_guard<std::mutex> lock(_mutex);
 +      _turns.clear();
++      _pendingPresentedTurnIds.clear();
 +      _presentationHandoff.reset();
 +      _acknowledgedPresentationTurnIds.clear();
 +      _events.clear();
@@ -1589,7 +2085,7 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +      sk_sp<SkPicture> backgroundLeftPicture,
 +      sk_sp<SkPicture> backgroundRightPicture, int pixelWidth,
 +      int pixelHeight, int direction, bool spread,
-+      uint64_t contentRevision, double durationMs,
++      uint64_t contentRevision, double durationMs, double rapidDurationMs,
 +      double launchIntervalMs, SkColor paperColor) {
 +    if (id.empty() || fromPageKey.empty() || toPageKey.empty() ||
 +        frontPageKey.empty() || frontPicture == nullptr ||
@@ -1633,6 +2129,8 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +          existing->lastUsed = ++_stockUsageCounter;
 +          existing->durationMs =
 +              std::clamp(durationMs, kMinimumDurationMs, kMaximumDurationMs);
++          existing->rapidDurationMs = std::clamp(
++              rapidDurationMs, kMinimumDurationMs, kMaximumDurationMs);
 +          existing->launchIntervalMs =
 +              std::clamp(launchIntervalMs, 1.0, 1000.0);
 +          existing->paperColor = paperColor;
@@ -1667,6 +2165,8 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +           std::move(backgroundRightTextureKey), pixelWidth, pixelHeight,
 +           normalizedDirection, spread,
 +           std::clamp(durationMs, kMinimumDurationMs, kMaximumDurationMs),
++           std::clamp(rapidDurationMs, kMinimumDurationMs,
++                      kMaximumDurationMs),
 +           std::clamp(launchIntervalMs, 1.0, 1000.0), paperColor,
 +           ++_stockUsageCounter});
 +      drainPendingDirectInputsLocked(steadyNowMs(), epochNowMs());
@@ -1695,17 +2195,36 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +      // it for playback after the gesture releases.
 +      if (activeGestureLocked() != _turns.end()) {
 +        accepted = true;
-+      } else if (_pendingDirectInputs.empty() &&
-+                 stockAvailableLocked(normalizedDirection)) {
++      } else {
++        // A physical tap is never deferred. Claim it only when every image
++        // needed by its first frame is already texture-backed; otherwise the
++        // UI-thread driver immediately falls back to the declarative lane.
 +        accepted = consumeStockLocked(
 +            normalizedDirection, nowSteadyMs, nowEpochMs, true);
-+      } else if (_pendingDirectInputs.size() <
-+                 kMaximumPendingDirectInputCount) {
-+        _pendingDirectInputs.push_back({normalizedDirection});
-+        accepted = true;
-+      } else {
-+        emitStockMissLocked(normalizedDirection, nowEpochMs);
 +      }
++    }
++    if (accepted) {
++      _requestRedraw();
++    }
++    return accepted;
++  }
++
++  // A held riffle is live input, not deferred intent. Consume a stocked page
++  // now or drop this cadence tick so releasing the finger is an exact stop.
++  bool tryConsumeInput(int direction) {
++    bool accepted = false;
++    {
++      std::lock_guard<std::mutex> lock(_mutex);
++      if (!_inputEnabled || _currentPageKey.empty() ||
++          activeGestureLocked() != _turns.end() ||
++          !_pendingDirectInputs.empty()) {
++        return false;
++      }
++      const int normalizedDirection = direction < 0 ? -1 : 1;
++      const double nowSteadyMs = steadyNowMs();
++      const double nowEpochMs = epochNowMs();
++      accepted = consumeStockLocked(
++          normalizedDirection, nowSteadyMs, nowEpochMs, true, true, true);
 +    }
 +    if (accepted) {
 +      _requestRedraw();
@@ -1740,49 +2259,18 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +      }
 +      stock->lastUsed = ++_stockUsageCounter;
 +
++      if (!stockTexturesReadyLocked(*stock)) {
++        emitStockMissLocked(normalizedDirection, epochNowMs(),
++                            "gesture-texture-miss");
++        return false;
++      }
++
 +      auto frontImage = preparedPageImageLocked(stock->frontTextureKey);
 +      auto backImage = preparedPageImageLocked(stock->backTextureKey);
 +      auto backgroundLeftImage =
 +          preparedPageImageLocked(stock->backgroundLeftTextureKey);
 +      auto backgroundRightImage =
 +          preparedPageImageLocked(stock->backgroundRightTextureKey);
-+      auto frontPicture =
-+          frontImage == nullptr
-+              ? retainedPagePictureLocked(stock->frontTextureKey)
-+              : nullptr;
-+      auto backPicture =
-+          backImage == nullptr
-+              ? retainedPagePictureLocked(stock->backTextureKey)
-+              : nullptr;
-+      auto backgroundLeftPicture =
-+          backgroundLeftImage == nullptr
-+              ? retainedPagePictureLocked(
-+                    stock->backgroundLeftTextureKey)
-+              : nullptr;
-+      auto backgroundRightPicture =
-+          backgroundRightImage == nullptr
-+              ? retainedPagePictureLocked(
-+                    stock->backgroundRightTextureKey)
-+              : nullptr;
-+      // Keep the gesture in the native lane when only its GPU upload is cold.
-+      // The render thread promotes retained pictures one face per frame while
-+      // Gesture Handler continues updating the native physical state. Falling
-+      // back to RN here makes one cold reversal disable every following native
-+      // gesture until the asynchronous scheduler drains.
-+      if ((frontImage == nullptr && frontPicture == nullptr) ||
-+          (stock->spread && backImage == nullptr &&
-+           backPicture == nullptr) ||
-+          (!stock->backgroundLeftTextureKey.empty() &&
-+           backgroundLeftImage == nullptr &&
-+           backgroundLeftPicture == nullptr) ||
-+          (!stock->backgroundRightTextureKey.empty() &&
-+           backgroundRightImage == nullptr &&
-+           backgroundRightPicture == nullptr)) {
-+        emitStockMissLocked(normalizedDirection, epochNowMs(),
-+                            "gesture-picture-miss");
-+        return false;
-+      }
-+
 +      const double nowSteadyMs = steadyNowMs();
 +      const double nowEpochMs = epochNowMs();
 +      _turns.erase(
@@ -1801,26 +2289,18 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +        turn.frontImageId = frontImage->uniqueID();
 +      }
 +      turn.frontImage = std::move(frontImage);
-+      turn.frontPicture = std::move(frontPicture);
 +      turn.backImage = std::move(backImage);
 +      if (turn.backImage != nullptr) {
 +        turn.backImageId = turn.backImage->uniqueID();
 +      }
-+      turn.backPicture = std::move(backPicture);
 +      turn.backgroundLeftImage = std::move(backgroundLeftImage);
-+      turn.backgroundLeftPicture =
-+          std::move(backgroundLeftPicture);
 +      turn.backgroundRightImage = std::move(backgroundRightImage);
-+      turn.backgroundRightPicture =
-+          std::move(backgroundRightPicture);
 +      turn.ownsBackground = true;
 +      turn.pixelWidth = stock->pixelWidth;
 +      turn.pixelHeight = stock->pixelHeight;
 +      turn.direction = normalizedDirection;
 +      turn.spread = stock->spread;
-+      turn.started =
-+          turn.frontImage != nullptr &&
-+          (!turn.spread || turn.backImage != nullptr);
++      turn.started = true;
 +      turn.interactive = true;
 +      turn.motionPhase = MotionPhase::GestureDrag;
 +      turn.tuning = _gestureTuning;
@@ -1874,8 +2354,13 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +      updateGestureStateLocked(*turn, fingerX, turn->gestureProgress);
 +      const float safeCommitEdge =
 +          std::clamp(slowCommitEdgeX, -0.5f, 0.95f);
++      const bool incomingPage = turn->direction < 0 && !turn->spread;
++      const float commitFingerX =
++          incomingPage
++              ? 1.0f - turn->gestureProgress * (1.0f - safeCommitEdge)
++              : std::clamp(fingerX, -1.0f, 1.0f);
 +      const float distance = std::clamp(
-+          (1.0f - std::clamp(fingerX, -1.0f, 1.0f)) /
++          (1.0f - commitFingerX) /
 +              std::max(0.05f, 1.0f - safeCommitEdge),
 +          0.0f, 1.2f);
 +      const float velocity =
@@ -1886,9 +2371,8 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +          (distance + velocity + acceleration) /
 +          std::clamp(pageWeight, 0.5f, 1.8f);
 +      const bool commit =
-+          (turn->direction < 0 && !turn->spread) ||
-+          (!turn->weakGrip &&
-+           score >= std::clamp(commitThreshold, 0.4f, 1.2f) - 1e-6f);
++          (incomingPage || !turn->weakGrip) &&
++          score >= std::clamp(commitThreshold, 0.4f, 1.2f) - 1e-6f;
 +      releaseGestureLocked(
 +          *turn, commit, throwVelocity, minimumSpeedScale,
 +          maximumSpeedScale, velocityGain, steadyNowMs(), epochNowMs());
@@ -1939,6 +2423,7 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +    {
 +      std::lock_guard<std::mutex> lock(_mutex);
 +      turns.swap(_turns);
++      _pendingPresentedTurnIds.clear();
 +      _presentationHandoff.reset();
 +      _acknowledgedPresentationTurnIds.clear();
 +      _events.clear();
@@ -1964,6 +2449,34 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +    return events;
 +  }
 +
++  // A direct turn is not visible merely because draw() built its geometry.
++  // Publish `started` only after the display-backed provider successfully
++  // submits that frame, so React cannot replace the page underneath it early.
++  void commitPresentedFrame() {
++    std::lock_guard<std::mutex> lock(_mutex);
++    if (_pendingPresentedTurnIds.empty()) {
++      return;
++    }
++    const double nowSteadyMs = steadyNowMs();
++    const double nowEpochMs = epochNowMs();
++    for (const auto &turnId : _pendingPresentedTurnIds) {
++      const auto turn = std::find_if(
++          _turns.begin(), _turns.end(),
++          [&turnId](const Turn &entry) { return entry.id == turnId; });
++      if (turn == _turns.end() || turn->interactive ||
++          turn->firstFramePresented) {
++        continue;
++      }
++      turn->firstFramePresented = true;
++      turn->firstFrameQueued = false;
++      // A temporarily unavailable drawable must not consume animation time.
++      turn->startedAtSteadyMs = nowSteadyMs;
++      _events.push_back(
++          {turn->id, "started", nowEpochMs, turn->direction});
++    }
++    _pendingPresentedTurnIds.clear();
++  }
++
 +  bool hasActiveTurns() const {
 +    std::lock_guard<std::mutex> lock(_mutex);
 +    // A presentation handoff is a static final frame. Its acknowledgement
@@ -1975,7 +2488,7 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +  }
 +
 +  void draw(SkCanvas *canvas, float viewportWidth, float viewportHeight,
-+            GrDirectContext *directContext) {
++            GrDirectContext *directContext, bool displayPresentation) {
 +    if (canvas == nullptr || viewportWidth <= 0 || viewportHeight <= 0) {
 +      return;
 +    }
@@ -2026,10 +2539,6 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +            nowSteadyMs >= turn.notBeforeSteadyMs) {
 +          turn.started = true;
 +          turn.startedAtSteadyMs = nowSteadyMs;
-+          if (!turn.interactive) {
-+            _events.push_back(
-+                {turn.id, "started", nowEpochMs, turn.direction});
-+          }
 +        }
 +        if (!turn.started) {
 +          continue;
@@ -2038,8 +2547,10 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +          continue;
 +        }
 +
-+        const MotionSample sample =
-+            sampleMotion(turn, nowSteadyMs);
++        const MotionSample sample = sampleMotion(
++            turn, !turn.interactive && !turn.firstFramePresented
++                      ? turn.startedAtSteadyMs
++                      : nowSteadyMs);
 +        if (sample.completed) {
 +          _events.push_back(
 +              {turn.id, turn.commitOnComplete ? "completed" : "cancelled",
@@ -2071,8 +2582,14 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +            0,
 +        };
 +        buildRenderProfileLocked(
-+            turn, sample.shape, nowSteadyMs, renderTurn);
++            turn, sample.shape, sample.lifecycleProgress,
++            nowSteadyMs, renderTurn);
 +        renderTurns.push_back(std::move(renderTurn));
++        if (displayPresentation && !turn.interactive &&
++            !turn.firstFramePresented && !turn.firstFrameQueued) {
++          turn.firstFrameQueued = true;
++          _pendingPresentedTurnIds.push_back(turn.id);
++        }
 +      }
 +
 +      // A later, faster turn can finish in the same draw pass after an older
@@ -2176,6 +2693,7 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +  static constexpr size_t kMaximumPendingDirectInputCount = 64;
 +  static constexpr size_t kMaximumPresentationAcknowledgmentCount = 64;
 +  static constexpr uint8_t kMaximumPageTextureUploadFailureCount = 3;
++  static constexpr uint8_t kMaximumTurnPictureUploadFailureCount = 3;
 +  // A radius-ten graph needs at most 42 physical page identities in spread
 +  // mode. Leave a small handoff margin without retaining old graphs after the
 +  // anchor advances; GPU textures remain governed by the byte cap below.
@@ -2215,7 +2733,8 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +  static constexpr float kAutomaticPressDurationSeconds = 0.12f;
 +  static constexpr float kIncomingSettleDurationSeconds = 0.52f;
 +  static constexpr float kPropagationSpeedScale = 1.15f;
-+  static constexpr float kSettlingPageStartProgress = 0.3f;
++  static constexpr float kIncomingPageLandingStartProgress = 0.3f;
++  static constexpr float kIncomingPagePreludeProgress = 0.28f;
 +  static constexpr float kMinimumRevertInitialSpeed = 0.65f;
 +  static constexpr float kMaximumRevertInitialSpeed = 6.3f;
 +  static constexpr float kRevertEaseOutInitialSlope = 3.0f;
@@ -2266,9 +2785,12 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +    int pixelWidth = 0;
 +    int pixelHeight = 0;
 +    bool pictureUploadPending = false;
++    uint8_t pictureUploadFailureCount = 0;
 +    int direction = 1;
 +    bool spread = false;
 +    bool started = false;
++    bool firstFrameQueued = false;
++    bool firstFramePresented = false;
 +    bool completed = false;
 +    bool interactive = false;
 +    bool settling = false;
@@ -2369,6 +2891,7 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +    int direction;
 +    bool spread;
 +    double durationMs;
++    double rapidDurationMs;
 +    double launchIntervalMs;
 +    SkColor paperColor;
 +    uint64_t lastUsed;
@@ -2421,9 +2944,10 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +    return std::to_string(contentRevision) + "@" + pageKey;
 +  }
 +
-+  static MotionTuning clampMotionTuning(MotionTuning tuning) {
++  static MotionTuning clampMotionTuning(MotionTuning tuning,
++                                        float maximumReleaseX = 0.8f) {
 +    return {
-+        std::clamp(tuning.releaseX, 0.58f, 0.8f),
++        std::clamp(tuning.releaseX, 0.58f, maximumReleaseX),
 +        std::clamp(tuning.liftVelocity, 0.7f, 1.8f),
 +        std::clamp(tuning.liftToLeft, 1.4f, 2.6f),
 +        std::clamp(tuning.curvatureRelaxation, 3.5f, 14.0f),
@@ -2612,6 +3136,48 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +                              turn.tuning.curvatureRelaxation);
 +  }
 +
++  static float incomingPageShapeProgress(float progress) {
++    const float safeProgress = std::clamp(progress, 0.0f, 1.0f);
++    if (safeProgress <= kIncomingPagePreludeProgress) {
++      return kIncomingPageLandingStartProgress;
++    }
++    const float landingProgress =
++        (safeProgress - kIncomingPagePreludeProgress) /
++        (1.0f - kIncomingPagePreludeProgress);
++    return kIncomingPageLandingStartProgress +
++           (1.0f - kIncomingPageLandingStartProgress) * landingProgress;
++  }
++
++  static float incomingPageRemainingDurationMs(float progress) {
++    return 1000.0f * kIncomingSettleDurationSeconds *
++           (1.0f - std::clamp(progress, 0.0f, 1.0f)) /
++           (1.0f - kIncomingPagePreludeProgress);
++  }
++
++  static float incomingPageDrivenProgress(float startProgress,
++                                          float segmentProgress) {
++    const float safeStart = std::clamp(startProgress, 0.0f, 1.0f);
++    const float safeSegment = std::clamp(segmentProgress, 0.0f, 1.0f);
++    if (safeStart < kIncomingPagePreludeProgress) {
++      const float preludeFraction =
++          (kIncomingPagePreludeProgress - safeStart) /
++          std::max(0.000001f, 1.0f - safeStart);
++      if (safeSegment < preludeFraction) {
++        return safeStart + (1.0f - safeStart) * safeSegment;
++      }
++      const float landingSegment =
++          (safeSegment - preludeFraction) /
++          std::max(0.000001f, 1.0f - preludeFraction);
++      const float eased =
++          1.0f - (1.0f - landingSegment) * (1.0f - landingSegment);
++      return kIncomingPagePreludeProgress +
++             (1.0f - kIncomingPagePreludeProgress) * eased;
++    }
++    const float eased =
++        1.0f - (1.0f - safeSegment) * (1.0f - safeSegment);
++    return safeStart + (1.0f - safeStart) * eased;
++  }
++
 +  static float automaticProgressForTurn(const Turn &turn,
 +                                        double nowSteadyMs) {
 +    const double elapsed =
@@ -2629,15 +3195,12 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +      const float timeline =
 +          automaticProgressForTurn(turn, nowSteadyMs);
 +      if (turn.direction < 0 && !turn.spread) {
-+        const float eased =
-+            1.0f - (1.0f - timeline) * (1.0f - timeline);
-+        const float progress =
-+            kSettlingPageStartProgress +
-+            (1.0f - kSettlingPageStartProgress) * eased;
++        const float progress = incomingPageDrivenProgress(0, timeline);
 +        return {
-+            turnShape(progress, turn.tuning.releaseX, 0,
++            turnShape(incomingPageShapeProgress(progress),
++                      turn.tuning.releaseX, 0,
 +                      turn.tuning.curvatureRelaxation),
-+            timeline,
++            progress,
 +            timeline >= 1.0f,
 +        };
 +      }
@@ -2671,14 +3234,12 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +
 +    if (turn.motionPhase == MotionPhase::GestureDrag) {
 +      if (turn.direction < 0 && !turn.spread) {
-+        const float progress =
-+            kSettlingPageStartProgress +
-+            (1.0f - kSettlingPageStartProgress) *
-+                turn.gestureProgress;
++        const float progress = turn.gestureProgress;
 +        return {
-+            turnShape(progress, turn.tuning.releaseX, 0,
++            turnShape(incomingPageShapeProgress(progress),
++                      turn.tuning.releaseX, 0,
 +                      turn.tuning.curvatureRelaxation),
-+            turn.gestureProgress,
++            progress,
 +            false,
 +        };
 +      }
@@ -2716,14 +3277,12 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +      };
 +    }
 +    if (turn.motionPhase == MotionPhase::GestureSettle) {
-+      const float eased =
-+          1.0f - (1.0f - segmentProgress) *
-+                      (1.0f - segmentProgress);
 +      const float progress =
-+          turn.driveStartProgress +
-+          (1.0f - turn.driveStartProgress) * eased;
++          incomingPageDrivenProgress(turn.driveStartProgress,
++                                     segmentProgress);
 +      return {
-+          turnShape(progress, turn.tuning.releaseX, 0,
++          turnShape(incomingPageShapeProgress(progress),
++                    turn.tuning.releaseX, 0,
 +                    turn.tuning.curvatureRelaxation),
 +          progress,
 +          segmentProgress >= 1.0f,
@@ -2731,6 +3290,17 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +    }
 +    const float eased =
 +        1.0f - std::pow(1.0f - segmentProgress, 3.0f);
++    if (turn.direction < 0 && !turn.spread) {
++      const float progress =
++          turn.driveStartProgress * (1.0f - eased);
++      return {
++          turnShape(incomingPageShapeProgress(progress),
++                    turn.tuning.releaseX, 0,
++                    turn.tuning.curvatureRelaxation),
++          progress,
++          segmentProgress >= 1.0f,
++      };
++    }
 +    const float edgeX =
 +        turn.driveStartX + (1.0f - turn.driveStartX) * eased;
 +    const float rotation =
@@ -2775,20 +3345,21 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +    turn.commitOnComplete = commit;
 +    turn.settleStartedAtSteadyMs = nowSteadyMs;
 +    if (turn.direction < 0 && !turn.spread) {
-+      turn.motionPhase = MotionPhase::GestureSettle;
-+      turn.commitOnComplete = true;
-+      turn.driveStartProgress =
-+          kSettlingPageStartProgress +
-+          (1.0f - kSettlingPageStartProgress) *
-+              turn.gestureProgress;
-+      const float remainingRatio =
-+          (1.0f - turn.driveStartProgress) /
-+          (1.0f - kSettlingPageStartProgress);
-+      turn.settleDurationMs =
-+          std::max(1000.0 / 60.0,
-+                   1000.0 * kIncomingSettleDurationSeconds *
-+                       remainingRatio);
-+      consumeGestureLocked(turn, nowEpochMs);
++      turn.driveStartProgress = turn.gestureProgress;
++      if (commit) {
++        turn.motionPhase = MotionPhase::GestureSettle;
++        turn.settleDurationMs = std::max(
++            1000.0 / 60.0,
++            static_cast<double>(incomingPageRemainingDurationMs(
++                turn.driveStartProgress)));
++        consumeGestureLocked(turn, nowEpochMs);
++      } else {
++        turn.motionPhase = MotionPhase::GestureRevert;
++        turn.settleDurationMs = std::max(
++            1000.0 / 60.0,
++            static_cast<double>(incomingPageRemainingDurationMs(0) *
++                                turn.driveStartProgress));
++      }
 +    } else if (commit) {
 +      turn.motionPhase = MotionPhase::GestureTurn;
 +      turn.driveStartX = turn.pressedEdgeX;
@@ -2913,8 +3484,8 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +  }
 +
 +  static void buildRenderProfileLocked(
-+      Turn &turn, const ProfileShape &shape, double nowSteadyMs,
-+      RenderTurn &renderTurn) {
++      Turn &turn, const ProfileShape &shape, float lifecycleProgress,
++      double nowSteadyMs, RenderTurn &renderTurn) {
 +    std::array<PhysicalPoint, kProfilePointCount> physicalProfile;
 +    float maximumLift = 0;
 +    buildPhysicalProfile(shape, physicalProfile, maximumLift);
@@ -2977,6 +3548,23 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +          std::max(renderTurn.maximumX, projectedX);
 +    }
 +
++    float incomingReveal = 1.0f;
++    if (turn.direction < 0 && !turn.spread) {
++      incomingReveal = std::clamp(
++          lifecycleProgress / kIncomingPagePreludeProgress,
++          0.0f, 1.0f);
++      if (incomingReveal < 1.0f) {
++        const float projectedOffset =
++            -std::max(0.0f, renderTurn.maximumX) *
++            (1.0f - incomingReveal);
++        for (auto &point : renderTurn.profile) {
++          point.x += projectedOffset;
++        }
++        renderTurn.minimumX += projectedOffset;
++        renderTurn.maximumX += projectedOffset;
++      }
++    }
++
 +    const float directedEdgeX =
 +        physicalProfile.back().x * turn.direction;
 +    const float directedEdgeVelocityX =
@@ -3016,6 +3604,9 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +        baseStrength * edgePresence * leftwardFade,
 +        0.0f, 0.34f);
 +    if (renderTurn.shadowStrength < 0.0005f) {
++      renderTurn.shadowStrength = 0;
++    }
++    if (incomingReveal <= 0) {
 +      renderTurn.shadowStrength = 0;
 +    }
 +
@@ -3259,12 +3850,31 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +           (page->image != nullptr || page->picture != nullptr);
 +  }
 +
++  bool pageTextureReadyLocked(const std::string &pageKey) const {
++    if (pageKey.empty()) {
++      return true;
++    }
++    const auto page = std::find_if(
++        _pageTextures.begin(), _pageTextures.end(),
++        [&pageKey](const PageTexture &entry) {
++          return entry.pageKey == pageKey;
++        });
++    return page != _pageTextures.end() && page->image != nullptr;
++  }
++
 +  bool stockMaterialAvailableLocked(const StockEntry &entry) const {
 +    return pageMaterialAvailableLocked(entry.frontTextureKey) &&
 +           (!entry.spread ||
 +            pageMaterialAvailableLocked(entry.backTextureKey)) &&
 +           pageMaterialAvailableLocked(entry.backgroundLeftTextureKey) &&
 +           pageMaterialAvailableLocked(entry.backgroundRightTextureKey);
++  }
++
++  bool stockTexturesReadyLocked(const StockEntry &entry) const {
++    return pageTextureReadyLocked(entry.frontTextureKey) &&
++           (!entry.spread || pageTextureReadyLocked(entry.backTextureKey)) &&
++           pageTextureReadyLocked(entry.backgroundLeftTextureKey) &&
++           pageTextureReadyLocked(entry.backgroundRightTextureKey);
 +  }
 +
 +  static size_t estimatedPageTextureBytes(const PageTexture &page) {
@@ -3293,15 +3903,18 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +         "stock-miss", nowEpochMs, direction < 0 ? -1 : 1});
 +  }
 +
-+  std::string nextStockTurnIdLocked(const std::string &stockId) {
++  std::string nextStockTurnIdLocked(const std::string &stockId,
++                                    bool rapidInput = false) {
 +    return stockId + "#turn:" +
-+           std::to_string(++_stockTurnCounter);
++           std::to_string(++_stockTurnCounter) +
++           (rapidInput ? ":rapid" : "");
 +  }
 +
 +  bool consumeStockLocked(int direction, double nowSteadyMs,
 +                          double nowEpochMs,
 +                          bool directInput = false,
-+                          bool emitStockMiss = true) {
++                          bool emitStockMiss = true,
++                          bool rapidInput = false) {
 +    const int normalizedDirection = direction < 0 ? -1 : 1;
 +    const auto stock = std::find_if(
 +        _stock.begin(), _stock.end(),
@@ -3315,14 +3928,14 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +      }
 +      return false;
 +    }
-+    // A stock edge and its page material are one atomic consumable. Advancing
-+    // `_currentPageKey` with a missing picture creates an unstartable turn that
-+    // keeps the render loop alive forever and blocks later input. Reject it so
-+    // the UI-thread input driver can use its existing RN fallback instead.
-+    if (!stockMaterialAvailableLocked(*stock)) {
++    // Native input may advance the logical anchor only when its complete first
++    // frame is already drawable. A retained SkPicture is stock material, but
++    // promoting it here can miss indefinitely; reject cold images so the
++    // caller can use the existing RN fallback without swallowing the input.
++    if (!stockTexturesReadyLocked(*stock)) {
 +      if (emitStockMiss) {
 +        emitStockMissLocked(normalizedDirection, nowEpochMs,
-+                            "stock-picture-miss");
++                            "stock-texture-miss");
 +      }
 +      return false;
 +    }
@@ -3339,39 +3952,25 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +      }
 +    }
 +    Turn turn;
-+    turn.id = nextStockTurnIdLocked(stock->id);
++    turn.id = nextStockTurnIdLocked(stock->id, rapidInput);
 +    turn.frontImage = preparedPageImageLocked(stock->frontTextureKey);
 +    if (turn.frontImage != nullptr) {
 +      turn.frontImageId = turn.frontImage->uniqueID();
-+    } else {
-+      turn.frontPicture =
-+          retainedPagePictureLocked(stock->frontTextureKey);
 +    }
 +    turn.backImage = preparedPageImageLocked(stock->backTextureKey);
 +    if (turn.backImage != nullptr) {
 +      turn.backImageId = turn.backImage->uniqueID();
-+    } else {
-+      turn.backPicture =
-+          retainedPagePictureLocked(stock->backTextureKey);
 +    }
 +    turn.backgroundLeftImage =
 +        preparedPageImageLocked(stock->backgroundLeftTextureKey);
-+    if (turn.backgroundLeftImage == nullptr) {
-+      turn.backgroundLeftPicture =
-+          retainedPagePictureLocked(stock->backgroundLeftTextureKey);
-+    }
 +    turn.backgroundRightImage =
 +        preparedPageImageLocked(stock->backgroundRightTextureKey);
-+    if (turn.backgroundRightImage == nullptr) {
-+      turn.backgroundRightPicture =
-+          retainedPagePictureLocked(stock->backgroundRightTextureKey);
-+    }
 +    turn.ownsBackground = true;
 +    turn.pixelWidth = stock->pixelWidth;
 +    turn.pixelHeight = stock->pixelHeight;
 +    turn.direction = normalizedDirection;
 +    turn.spread = stock->spread;
-+    turn.tuning = _automaticTuning;
++    turn.tuning = rapidInput ? _rapidTuning : _automaticTuning;
 +    turn.directInput = directInput;
 +    if (directInput) {
 +      turn.notBeforeSteadyMs = nowSteadyMs;
@@ -3385,7 +3984,8 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +      _nextLaunchSteadyMs =
 +          turn.notBeforeSteadyMs + stock->launchIntervalMs;
 +    }
-+    turn.durationMs = stock->durationMs;
++    turn.durationMs =
++        rapidInput ? stock->rapidDurationMs : stock->durationMs;
 +    turn.paperColor = stock->paperColor;
 +    _preferredDirection = normalizedDirection;
 +    advanceCurrentPageLocked(stock->toPageKey);
@@ -3700,6 +4300,7 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +    }
 +    turn->pictureUploadPending = false;
 +    if (image != nullptr) {
++      turn->pictureUploadFailureCount = 0;
 +      switch (candidate.role) {
 +      case PendingPicture::Role::Front:
 +        turn->frontImage = std::move(image);
@@ -3719,6 +4320,17 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +        turn->backgroundRightImage = std::move(image);
 +        turn->backgroundRightPicture = nullptr;
 +        break;
++      }
++    } else {
++      turn->pictureUploadFailureCount += 1;
++      if (turn->pictureUploadFailureCount >=
++          kMaximumTurnPictureUploadFailureCount) {
++        // A failed full-page promotion used to keep hasActiveTurns() true
++        // forever, forcing a permanent display-link redraw loop. Cancel the
++        // scheduled turn after a bounded retry budget and let JS release it.
++        turn->completed = true;
++        _events.push_back(
++            {turn->id, "cancelled", epochNowMs(), turn->direction});
 +      }
 +    }
 +#endif
@@ -4083,6 +4695,7 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +  std::function<void()> _requestRedraw;
 +  mutable std::mutex _mutex;
 +  std::vector<Turn> _turns;
++  std::vector<std::string> _pendingPresentedTurnIds;
 +  std::unique_ptr<PresentationHandoff> _presentationHandoff;
 +  std::vector<std::string> _acknowledgedPresentationTurnIds;
 +  std::vector<Event> _events;
@@ -4106,21 +4719,22 @@ index 0000000000000000000000000000000000000000..3ea975c6de8645fab107805fdbe31bc7
 +  double _benchmarkNextSteadyMs = 0;
 +  bool _inputEnabled = false;
 +  MotionTuning _automaticTuning = {0.72f, 1.5f, 2.2f, 6.75f};
++  MotionTuning _rapidTuning = {0.72f, 1.5f, 2.2f, 6.75f};
 +  MotionTuning _gestureTuning = {0.72f, 1.35f, 2.0f, 7.0f};
 +};
 +
 +} // namespace RNSkia
 diff --git a/cpp/rnskia/RNSkPictureView.h b/cpp/rnskia/RNSkPictureView.h
-index 0059ea1c7ed47adb189095bc9f1110525668d11a..0fc0331e0a550d068d0d1d758c6f98dcaec84729 100644
+index 0059ea1c7ed47adb189095bc9f1110525668d11a..aa8095afd5e4cab596a0a7105e7830925740dade 100644
 --- a/cpp/rnskia/RNSkPictureView.h
 +++ b/cpp/rnskia/RNSkPictureView.h
 @@ -11,6 +11,7 @@
  #include <jsi/jsi.h>
-
+ 
  #include "RNSkView.h"
 +#include "RNSkPagerCompositor.h"
  #include "ViewProperty.h"
-
+ 
  #include "JsiSkPicture.h"
 @@ -42,7 +43,8 @@ public:
    RNSkPictureRenderer(std::function<void()> requestRedraw,
@@ -4129,12 +4743,12 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..0fc0331e0a550d068d0d1d758c6f98dc
 -        _platformContext(std::move(context)) {}
 +        _platformContext(std::move(context)),
 +        _pagerCompositor(_requestRedraw) {}
-
+ 
    virtual ~RNSkPictureRenderer() = default;
-
-@@ -52,31 +54,164 @@ public:
+ 
+@@ -52,31 +54,182 @@ public:
    }
-
+ 
    void setPicture(sk_sp<SkPicture> picture) {
 -    _picture = picture;
 +    {
@@ -4143,7 +4757,7 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..0fc0331e0a550d068d0d1d758c6f98dc
 +    }
      _requestRedraw();
    }
-
+ 
 -  sk_sp<SkPicture> getPicture() const { return _picture; }
 +  sk_sp<SkPicture> getPicture() const {
 +    std::lock_guard<std::mutex> lock(_pictureMutex);
@@ -4186,7 +4800,7 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..0fc0331e0a550d068d0d1d758c6f98dc
 +      sk_sp<SkPicture> backgroundLeftPicture,
 +      sk_sp<SkPicture> backgroundRightPicture, int pixelWidth,
 +      int pixelHeight, int direction, bool spread,
-+      uint64_t contentRevision, double durationMs,
++      uint64_t contentRevision, double durationMs, double rapidDurationMs,
 +      double launchIntervalMs, SkColor paperColor) {
 +    _pagerCompositor.stockPicture(
 +        std::move(id), std::move(fromPageKey), std::move(toPageKey),
@@ -4195,7 +4809,8 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..0fc0331e0a550d068d0d1d758c6f98dc
 +        std::move(backgroundRightPageKey), std::move(frontPicture),
 +        std::move(backPicture), std::move(backgroundLeftPicture),
 +        std::move(backgroundRightPicture), pixelWidth, pixelHeight, direction,
-+        spread, contentRevision, durationMs, launchIntervalMs, paperColor);
++        spread, contentRevision, durationMs, rapidDurationMs,
++        launchIntervalMs, paperColor);
 +  }
 +
 +  void setPagerAnchor(std::string pageKey) {
@@ -4213,17 +4828,25 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..0fc0331e0a550d068d0d1d758c6f98dc
 +  void configurePagerMotion(
 +      float automaticReleaseX, float automaticLiftVelocity,
 +      float automaticLiftToLeft, float automaticCurvatureRelaxation,
++      float rapidReleaseX, float rapidLiftVelocity,
++      float rapidLiftToLeft, float rapidCurvatureRelaxation,
 +      float gestureReleaseX, float gestureLiftVelocity,
 +      float gestureLiftToLeft, float gestureCurvatureRelaxation) {
 +    _pagerCompositor.configureMotion(
 +        {automaticReleaseX, automaticLiftVelocity, automaticLiftToLeft,
 +         automaticCurvatureRelaxation},
++        {rapidReleaseX, rapidLiftVelocity, rapidLiftToLeft,
++         rapidCurvatureRelaxation},
 +        {gestureReleaseX, gestureLiftVelocity, gestureLiftToLeft,
 +         gestureCurvatureRelaxation});
 +  }
 +
 +  bool consumePagerInput(int direction) {
 +    return _pagerCompositor.consumeInput(direction);
++  }
++
++  bool tryConsumePagerInput(int direction) {
++    return _pagerCompositor.tryConsumeInput(direction);
 +  }
 +
 +  bool beginPagerGesture(int direction, float startBookX, float fingerX,
@@ -4264,7 +4887,7 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..0fc0331e0a550d068d0d1d758c6f98dc
 +  }
 +
 +  void resetPager() { _pagerCompositor.reset(); }
-
+ 
  private:
    bool performDraw(std::shared_ptr<RNSkCanvasProvider> canvasProvider) {
      // Capture picture pointer to ensure thread safety - _picture can be
@@ -4277,31 +4900,40 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..0fc0331e0a550d068d0d1d758c6f98dc
 +    }
      auto pd = _platformContext->getPixelDensity();
 -    return canvasProvider->renderToCanvas([=](SkCanvas *canvas) {
-+    return canvasProvider->renderToCanvas([=, this](SkCanvas *canvas) {
++    const bool displayPresentation = canvasProvider->presentsToDisplay();
++    const bool rendered =
++        canvasProvider->renderToCanvas([=, this](SkCanvas *canvas) {
        canvas->clear(SK_ColorTRANSPARENT);
        canvas->save();
        canvas->scale(pd, pd);
        if (picture != nullptr) {
          canvas->drawPicture(picture);
        }
-+      GrDirectContext *directContext = nullptr;
++      if (displayPresentation) {
++        GrDirectContext *directContext = nullptr;
 +#if !defined(SK_GRAPHITE)
-+      directContext = _platformContext->getDirectContext();
++        directContext = _platformContext->getDirectContext();
 +#endif
-+      _pagerCompositor.draw(canvas, canvasProvider->getWidth() / pd,
-+                            canvasProvider->getHeight() / pd, directContext);
++        _pagerCompositor.draw(canvas, canvasProvider->getWidth() / pd,
++                              canvasProvider->getHeight() / pd,
++                              directContext, true);
++      }
        canvas->restore();
      });
++    if (rendered && displayPresentation) {
++      _pagerCompositor.commitPresentedFrame();
++    }
++    return rendered;
    }
-
+ 
    std::shared_ptr<RNSkPlatformContext> _platformContext;
 +  mutable std::mutex _pictureMutex;
    sk_sp<SkPicture> _picture;
 +  RNSkPagerCompositor _pagerCompositor;
  };
-
+ 
  class RNSkPictureView : public RNSkView {
-@@ -108,5 +243,136 @@ public:
+@@ -108,5 +261,145 @@ public:
        }
      }
    }
@@ -4342,7 +4974,7 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..0fc0331e0a550d068d0d1d758c6f98dc
 +      sk_sp<SkPicture> backgroundLeftPicture,
 +      sk_sp<SkPicture> backgroundRightPicture, int pixelWidth,
 +      int pixelHeight, int direction, bool spread,
-+      uint64_t contentRevision, double durationMs,
++      uint64_t contentRevision, double durationMs, double rapidDurationMs,
 +      double launchIntervalMs, SkColor paperColor) {
 +    std::static_pointer_cast<RNSkPictureRenderer>(getRenderer())
 +        ->stockPagerPicture(
@@ -4352,7 +4984,7 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..0fc0331e0a550d068d0d1d758c6f98dc
 +            std::move(backgroundRightPageKey), std::move(frontPicture),
 +            std::move(backPicture), std::move(backgroundLeftPicture),
 +            std::move(backgroundRightPicture), pixelWidth, pixelHeight,
-+            direction, spread, contentRevision, durationMs,
++            direction, spread, contentRevision, durationMs, rapidDurationMs,
 +            launchIntervalMs, paperColor);
 +  }
 +
@@ -4374,12 +5006,16 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..0fc0331e0a550d068d0d1d758c6f98dc
 +  void configurePagerMotion(
 +      float automaticReleaseX, float automaticLiftVelocity,
 +      float automaticLiftToLeft, float automaticCurvatureRelaxation,
++      float rapidReleaseX, float rapidLiftVelocity,
++      float rapidLiftToLeft, float rapidCurvatureRelaxation,
 +      float gestureReleaseX, float gestureLiftVelocity,
 +      float gestureLiftToLeft, float gestureCurvatureRelaxation) {
 +    std::static_pointer_cast<RNSkPictureRenderer>(getRenderer())
 +        ->configurePagerMotion(
 +            automaticReleaseX, automaticLiftVelocity,
 +            automaticLiftToLeft, automaticCurvatureRelaxation,
++            rapidReleaseX, rapidLiftVelocity, rapidLiftToLeft,
++            rapidCurvatureRelaxation,
 +            gestureReleaseX, gestureLiftVelocity, gestureLiftToLeft,
 +            gestureCurvatureRelaxation);
 +  }
@@ -4387,6 +5023,11 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..0fc0331e0a550d068d0d1d758c6f98dc
 +  bool consumePagerInput(int direction) {
 +    return std::static_pointer_cast<RNSkPictureRenderer>(getRenderer())
 +        ->consumePagerInput(direction);
++  }
++
++  bool tryConsumePagerInput(int direction) {
++    return std::static_pointer_cast<RNSkPictureRenderer>(getRenderer())
++        ->tryConsumePagerInput(direction);
 +  }
 +
 +  bool beginPagerGesture(int direction, float startBookX, float fingerX,
@@ -4439,22 +5080,28 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..0fc0331e0a550d068d0d1d758c6f98dc
  };
  } // namespace RNSkia
 diff --git a/cpp/rnskia/RNSkView.h b/cpp/rnskia/RNSkView.h
-index 5181c713c7415a48544b95fbb826c56a81bc0787..408d37fcf0f4744c1914516f80a6715dd7f3002c 100644
+index 5181c713c7415a48544b95fbb826c56a81bc0787..f7efc11e31b0c86f042fe3604abbf15e98dcaf9a 100644
 --- a/cpp/rnskia/RNSkView.h
 +++ b/cpp/rnskia/RNSkView.h
 @@ -1,6 +1,8 @@
-
+ 
  #pragma once
-
+ 
 +#include <atomic>
 +#include <functional>
  #include <memory>
  #include <string>
  #include <unordered_map>
-@@ -45,6 +47,30 @@ public:
+@@ -45,6 +47,36 @@ public:
     */
    virtual bool renderToCanvas(const std::function<void(SkCanvas *)> &) = 0;
-
+ 
++  /**
++   True only when a successful render submits a frame to a display surface.
++   Offscreen snapshots must not acknowledge a pager frame as presented.
++   */
++  virtual bool presentsToDisplay() const { return true; }
++
 +  /**
 +   Opaque Android SurfaceViews can own their EGL context on a dedicated
 +   thread. Other providers keep the upstream main-thread behavior.
@@ -4482,18 +5129,27 @@ index 5181c713c7415a48544b95fbb826c56a81bc0787..408d37fcf0f4744c1914516f80a6715d
  protected:
    std::function<void()> _requestRedraw;
  };
-@@ -57,6 +83,8 @@ public:
+@@ -57,6 +89,8 @@ public:
    virtual void
    renderImmediate(std::shared_ptr<RNSkCanvasProvider> canvasProvider) = 0;
-
+ 
 +  virtual bool needsContinuousRedraw() const { return false; }
 +
    void setShowDebugOverlays(bool showDebugOverlays) {
      _showDebugOverlays = showDebugOverlays;
    }
-@@ -149,27 +177,51 @@ public:
+@@ -121,6 +155,8 @@ public:
+     return true;
+   };
+ 
++  bool presentsToDisplay() const override { return false; }
++
+ private:
+   int _width;
+   int _height;
+@@ -149,27 +185,51 @@ public:
        std::unordered_map<std::string, RNJsi::ViewProperty> &props) = 0;
-
+ 
    void requestRedraw() {
 -    if (!_redrawRequested) {
 -      _redrawRequested = true;
@@ -4502,7 +5158,7 @@ index 5181c713c7415a48544b95fbb826c56a81bc0787..408d37fcf0f4744c1914516f80a6715d
 +    if (_redrawScheduled.compare_exchange_strong(expected, true)) {
        // Capture a weak pointer to this
        auto weakThis = std::weak_ptr<RNSkView>(shared_from_this());
-
+ 
 -      _platformContext->runOnMainThread([weakThis]() {
 +      auto render = [weakThis]() {
          // Try to lock the weak pointer
@@ -4535,7 +5191,7 @@ index 5181c713c7415a48544b95fbb826c56a81bc0787..408d37fcf0f4744c1914516f80a6715d
 +      }
      }
    }
-
+ 
    void redraw() {
 +    if (_canvasProvider->usesDedicatedRenderThread()) {
 +      requestRedraw();
@@ -4549,15 +5205,15 @@ index 5181c713c7415a48544b95fbb826c56a81bc0787..408d37fcf0f4744c1914516f80a6715d
 +      requestRedraw();
 +    }
    }
-
+ 
    /**
-@@ -231,6 +283,7 @@ private:
+@@ -231,6 +291,7 @@ private:
    size_t _nativeId;
-
+ 
    std::atomic<bool> _redrawRequested = {false};
 +  std::atomic<bool> _redrawScheduled = {false};
  };
-
+ 
  } // namespace RNSkia
 diff --git a/cpp/skia/include/private/base/README.md b/cpp/skia/include/private/base/README.md
 deleted file mode 100644

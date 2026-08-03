@@ -11,6 +11,7 @@ import {
   pageTurnPerspectiveProgressDerivative,
   projectPageTurnBookX,
 } from "./page-turn-perspective";
+import { incomingPageProjectedOffset } from "./page-turn-incoming-reveal";
 
 const PROFILE_FLOATS_PER_POINT = 4;
 const PROFILE_Z_OFFSET = 1;
@@ -46,6 +47,7 @@ export function buildPageTurnLookup(
   minimumBookX = 0,
   maximumBookX = 1,
   direction: PageTurnDirection = 1,
+  incomingPageProgress?: number,
 ): number[] {
   const safeSampleCount = Math.max(
     PAGE_TURN_SEGMENT_COUNT,
@@ -55,6 +57,12 @@ export function buildPageTurnLookup(
   const bookXSpan = Math.max(0.000001, maximumBookX - minimumBookX);
   const halfCellBookX = (0.5 * bookXSpan) / safeSampleCount;
   const cameraBookX = pageTurnCameraBookX(minimumBookX, maximumBookX);
+  const projectedOffset = incomingPageProjectedOffset(
+    profile,
+    cameraBookX,
+    1,
+    incomingPageProgress,
+  );
 
   for (let sample = 0; sample < safeSampleCount; sample += 1) {
     const bookX = minimumBookX + ((sample + 0.5) / safeSampleCount) * bookXSpan;
@@ -71,16 +79,15 @@ export function buildPageTurnLookup(
       const startDepth = profile[offset + PROFILE_Z_OFFSET]!;
       const endDepth =
         profile[offset + PROFILE_FLOATS_PER_POINT + PROFILE_Z_OFFSET]!;
-      const startX = projectPageTurnBookX(
-        profile[offset]!,
-        startDepth,
-        cameraBookX,
-      );
-      const endX = projectPageTurnBookX(
-        profile[offset + PROFILE_FLOATS_PER_POINT]!,
-        endDepth,
-        cameraBookX,
-      );
+      const startX =
+        projectPageTurnBookX(profile[offset]!, startDepth, cameraBookX) +
+        projectedOffset;
+      const endX =
+        projectPageTurnBookX(
+          profile[offset + PROFILE_FLOATS_PER_POINT]!,
+          endDepth,
+          cameraBookX,
+        ) + projectedOffset;
       const deltaX = endX - startX;
       if (
         Math.abs(deltaX) < 0.000001 ||
@@ -116,16 +123,15 @@ export function buildPageTurnLookup(
     const startDepth = profile[profileOffset + PROFILE_Z_OFFSET]!;
     const endDepth =
       profile[profileOffset + PROFILE_FLOATS_PER_POINT + PROFILE_Z_OFFSET]!;
-    const startX = projectPageTurnBookX(
-      profile[profileOffset]!,
-      startDepth,
-      cameraBookX,
-    );
-    const endX = projectPageTurnBookX(
-      profile[profileOffset + PROFILE_FLOATS_PER_POINT]!,
-      endDepth,
-      cameraBookX,
-    );
+    const startX =
+      projectPageTurnBookX(profile[profileOffset]!, startDepth, cameraBookX) +
+      projectedOffset;
+    const endX =
+      projectPageTurnBookX(
+        profile[profileOffset + PROFILE_FLOATS_PER_POINT]!,
+        endDepth,
+        cameraBookX,
+      ) + projectedOffset;
     const deltaX = endX - startX;
     const frontFacing = deltaX > 0;
     lookup[lookupOffset] =

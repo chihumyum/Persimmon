@@ -5,6 +5,7 @@ import {
   NATIVE_PAGER_STOCK_RADIUS,
   nativePagerPageKey,
   nativePagerStockEntryIdFromTurnId,
+  nativePagerStockTurnIsRapid,
   nativePagerTransitionPictures,
   trimNativePagerReconciliationEntries,
 } from "./native-pager-stock";
@@ -27,6 +28,17 @@ describe("native pager picture stock", () => {
     expect(nativePagerStockEntryIdFromTurnId("native-stock:unchanged")).toBe(
       "native-stock:unchanged",
     );
+    expect(
+      nativePagerStockEntryIdFromTurnId(
+        "native-stock:7:0:12:1:0:13#turn:43:rapid",
+      ),
+    ).toBe("native-stock:7:0:12:1:0:13");
+    expect(
+      nativePagerStockTurnIsRapid("native-stock:7:0:12:1:0:13#turn:43:rapid"),
+    ).toBe(true);
+    expect(
+      nativePagerStockTurnIsRapid("native-stock:7:0:12:1:0:13#turn:42"),
+    ).toBe(false);
   });
 
   it("maps all four physical page roles for a forward spread", () => {
@@ -128,7 +140,7 @@ describe("native pager picture stock", () => {
     expect(plan).toHaveLength(8);
   });
 
-  it("keeps a one-second runway in each direction by default", () => {
+  it("keeps a ten-turn runway in each direction by default", () => {
     const plan = buildNativePagerStockPlan(
       page(20),
       adjacentFor(41),

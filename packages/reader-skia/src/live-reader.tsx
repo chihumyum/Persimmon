@@ -92,7 +92,19 @@ import {
   PAGE_TURN_MAX_PERSPECTIVE_SCALE,
   pageTurnCameraBookXForLayout,
 } from "./page-turn-perspective";
-import { bookXForGestureTravel } from "./page-turn-gesture-direction";
+import {
+  bookXForGestureTravel,
+  normalPageTurnDirectionForTouch,
+  pageTurnStartBookXForTouch,
+} from "./page-turn-gesture-direction";
+import {
+  PAGE_RIFFLE_ARMED,
+  PAGE_RIFFLE_INWARD,
+  PAGE_RIFFLE_INTERVAL_MS,
+  PAGE_RIFFLE_MINIMUM_HOLD_MS,
+  pageRiffleCandidateForTouch,
+  pageRiffleGestureDisposition,
+} from "./page-turn-riffle";
 import {
   PAGE_TURN_LANE_HARD_LIMIT,
   burstPageTurnPlaybackSpeed,
@@ -158,6 +170,7 @@ import {
   type PageGestureReleaseInput,
 } from "./native-page-turn-driver";
 import {
+  AUTOMATIC_PAGE_TURN_MAXIMUM_RELEASE_X,
   automaticTuningForCore,
   DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
   normalizeAutomaticPageTurnTuning,
@@ -187,7 +200,10 @@ import {
   takeNativePagerEvents,
   type NativePagerEvent,
 } from "./native-pager-compositor";
-import { NativePagerPresentationGate } from "./native-pager-presentation";
+import {
+  NativePagerFirstFrameGate,
+  NativePagerPresentationGate,
+} from "./native-pager-presentation";
 import {
   bindNativePagerInput,
   resolveNativePagerGestureInputPolicy,
@@ -208,7 +224,9 @@ import {
   hasRunningPageTurns,
   markScheduledPageTurnLaneReady,
   markScheduledPageTurnsPresented,
+  isProgrammaticPageTurnMotion,
   requestScheduledPageTurn,
+  requestScheduledRapidPageTurn,
   requestScheduledGesturePageTurn,
   resolveScheduledPageTurn,
   scheduledPageAddress,
@@ -318,6 +336,7 @@ export interface LiveReaderProps {
   fontSize?: number;
   layout?: ReaderLayoutMode;
   pageTurnAnimation?: ReaderPageTurnAnimation;
+  rapidPageTurnEnabled?: boolean;
   theme?: ReaderTheme;
   topInset?: number;
   bottomInset?: number;
@@ -515,6 +534,7 @@ function LazyReaderEngine({
   appearance,
   layout = "single",
   pageTurnAnimation = "natural",
+  rapidPageTurnEnabled = true,
   theme = DEFAULT_READER_THEME,
   topInset,
   bottomInset,
@@ -538,6 +558,7 @@ function LazyReaderEngine({
       calculatePageTurnConcurrency(
         automaticPageTurnTuning,
         PAGE_TURN_START_INTERVAL_MS,
+        AUTOMATIC_PAGE_TURN_MAXIMUM_RELEASE_X,
       ),
     [automaticPageTurnTuning],
   );
@@ -681,6 +702,7 @@ function LazyReaderEngine({
   );
   const nativePagerDirectTurnIdsRef = useRef(new Set<string>());
   const nativePagerGestureTurnIdsRef = useRef(new Set<string>());
+  const nativePagerFirstFrameGateRef = useRef(new NativePagerFirstFrameGate());
   const nativePagerPresentationGateRef = useRef(
     new NativePagerPresentationGate(),
   );
@@ -1221,6 +1243,7 @@ function LazyReaderEngine({
     nativePagerStockEntriesRef.current.clear();
     nativePagerDirectTurnIdsRef.current.clear();
     nativePagerGestureTurnIdsRef.current.clear();
+    nativePagerFirstFrameGateRef.current.reset();
     nativePagerPresentationGateRef.current.reset();
     nativePagerAcknowledgedPageKeyRef.current = undefined;
     nativePagerReconciliationEpochsRef.current.clear();
@@ -1289,6 +1312,13 @@ function LazyReaderEngine({
   );
   const runningTurnRef = useRef<RunningPageTurn | undefined>(undefined);
   const pendingGestureRef = useRef<PendingPageGesture | undefined>(undefined);
+  const rapidPageTurnDirectionRef = useRef<1 | -1 | 0>(0);
+  const rapidPageTurnTimerRef = useRef<
+    ReturnType<typeof setInterval> | undefined
+  >(undefined);
+  const rapidPageTurnHoldTimerRef = useRef<
+    ReturnType<typeof setTimeout> | undefined
+  >(undefined);
   const queuedGestureMoveRef = useRef<QueuedPageGestureMove | undefined>(
     undefined,
   );
@@ -1453,15 +1483,19 @@ function LazyReaderEngine({
       turnId: string,
       controller: NaturalPageTurnController,
       turnDirection: 1 | -1,
-      _settlingIncomingPage = false,
+      settlingIncomingPage = false,
     ) => {
       const xScale = pageTurnXScale(turnDirection);
+      const incomingPageProgress = settlingIncomingPage
+        ? controller.getIncomingPageProgress()
+        : undefined;
       const packed = packPageTurnProfile(controller.getPoints(), xScale);
       const summary = summarizePageTurnShadow(
         controller.getPoints(),
         controller.getMetrics(),
         xScale,
         pageTurnCameraBookXForLayout(layout === "spread"),
+        incomingPageProgress,
       );
       const frame = buildWebPageTurnRenderFrame(
         packed,
@@ -1469,6 +1503,7 @@ function LazyReaderEngine({
         width,
         layout === "spread",
         turnDirection,
+        incomingPageProgress,
       );
       webPageTurnFrames.current.set(turnId, frame);
       const handles = webPageTurnMeshRefs.current.get(turnId);
@@ -1534,8 +1569,12 @@ function LazyReaderEngine({
 
   useEffect(() => stopRunningTurn, [stopRunningTurn]);
 
-  const requestTurn = useCallback(
-    (requestedDirection: 1 | -1, requestedAtMs = Date.now()) => {
+  const requestProgrammaticTurn = useCallback(
+    (
+      requestedDirection: 1 | -1,
+      requestedAtMs: number,
+      motion: "tap" | "rapid",
+    ) => {
       if (!readerGenerationIsCurrent()) {
         return;
       }
@@ -1561,16 +1600,24 @@ function LazyReaderEngine({
       requestedTurnStartsRef.current.push(requestedAtMs);
       let accepted = false;
       mutateReaderState((current) => {
-        const next = requestScheduledPageTurn(
-          current,
-          requestedDirection,
-          scheduledTurnScheduler,
-          requestedAtMs,
-        );
+        const next =
+          motion === "rapid"
+            ? requestScheduledRapidPageTurn(
+                current,
+                requestedDirection,
+                scheduledTurnScheduler,
+                requestedAtMs,
+              )
+            : requestScheduledPageTurn(
+                current,
+                requestedDirection,
+                scheduledTurnScheduler,
+                requestedAtMs,
+              );
         if (next.turns.length <= current.turns.length) {
           const lastTurn = current.turns.at(-1);
-          const activeTapTurns = current.turns.filter(
-            (turn) => turn.motion === "tap",
+          const activeTapTurns = current.turns.filter((turn) =>
+            isProgrammaticPageTurnMotion(turn.motion),
           ).length;
           if (
             current.turns.length >=
@@ -1621,6 +1668,54 @@ function LazyReaderEngine({
       scheduledTurnScheduler,
     ],
   );
+  const requestTurn = useCallback(
+    (direction: 1 | -1, requestedAtMs = Date.now()) =>
+      requestProgrammaticTurn(direction, requestedAtMs, "tap"),
+    [requestProgrammaticTurn],
+  );
+  const requestRapidTurn = useCallback(
+    (direction: 1 | -1, requestedAtMs = Date.now()) =>
+      requestProgrammaticTurn(direction, requestedAtMs, "rapid"),
+    [requestProgrammaticTurn],
+  );
+  const stopRapidPageTurn = useCallback(() => {
+    rapidPageTurnDirectionRef.current = 0;
+    if (rapidPageTurnHoldTimerRef.current !== undefined) {
+      clearTimeout(rapidPageTurnHoldTimerRef.current);
+      rapidPageTurnHoldTimerRef.current = undefined;
+    }
+    if (rapidPageTurnTimerRef.current !== undefined) {
+      clearInterval(rapidPageTurnTimerRef.current);
+      rapidPageTurnTimerRef.current = undefined;
+    }
+  }, []);
+  const startRapidPageTurn = useCallback(
+    (direction: 1 | -1) => {
+      if (
+        rapidPageTurnDirectionRef.current === direction &&
+        (rapidPageTurnHoldTimerRef.current !== undefined ||
+          rapidPageTurnTimerRef.current !== undefined)
+      ) {
+        return;
+      }
+      stopRapidPageTurn();
+      rapidPageTurnDirectionRef.current = direction;
+      rapidPageTurnHoldTimerRef.current = setTimeout(() => {
+        rapidPageTurnHoldTimerRef.current = undefined;
+        if (rapidPageTurnDirectionRef.current !== direction) {
+          return;
+        }
+        requestRapidTurn(direction, Date.now());
+        rapidPageTurnTimerRef.current = setInterval(() => {
+          if (rapidPageTurnDirectionRef.current === direction) {
+            requestRapidTurn(direction, Date.now());
+          }
+        }, PAGE_RIFFLE_INTERVAL_MS);
+      }, PAGE_RIFFLE_MINIMUM_HOLD_MS);
+    },
+    [requestRapidTurn, stopRapidPageTurn],
+  );
+  useEffect(() => stopRapidPageTurn, [stopRapidPageTurn]);
   useEffect(() => {
     if (!__DEV__ || Platform.OS === "web") {
       return;
@@ -1733,10 +1828,10 @@ function LazyReaderEngine({
               : 0;
           const rejected = rejectedTurnCountsRef.current;
           console.info(
-            `[Persimmon][10pps-summary] requested=${requestedTurnStartsRef.current.length}/${turnCount} delivered=${deliveredTurnStartsRef.current.length}/${turnCount} accepted=${acceptedTurnStartsRef.current.length}/${turnCount} presented=${presentationAckCountRef.current}/${turnCount} animations=${laneStarts.length}/${turnCount} premature=${prematureLaneStartCountRef.current} rejected=capacity:${rejected.capacity},boundary:${rejected.boundary},direction:${rejected.direction},capture:${rejected.capture},other:${rejected.other} durationAvg=${durationStats.averageMs.toFixed(1)}ms durationP95=${durationStats.p95Ms.toFixed(1)}ms speedMin=${minimumPlaybackSpeed.toFixed(2)}x speedAvg=${playbackSpeedStats.averageMs.toFixed(2)}x rnTailAvg=${outcomeDispatchLagStats.averageMs.toFixed(1)}ms rnTailP95=${outcomeDispatchLagStats.p95Ms.toFixed(1)}ms laneGapP95=${laneGapStats.p95Ms.toFixed(1)}ms laneGapMax=${maximumLaneGapMs.toFixed(1)}ms laneSpan=${laneSpanMs.toFixed(1)}ms`,
+            `[Persimmon][page-turn-burst-summary] requested=${requestedTurnStartsRef.current.length}/${turnCount} delivered=${deliveredTurnStartsRef.current.length}/${turnCount} accepted=${acceptedTurnStartsRef.current.length}/${turnCount} presented=${presentationAckCountRef.current}/${turnCount} animations=${laneStarts.length}/${turnCount} premature=${prematureLaneStartCountRef.current} rejected=capacity:${rejected.capacity},boundary:${rejected.boundary},direction:${rejected.direction},capture:${rejected.capture},other:${rejected.other} durationAvg=${durationStats.averageMs.toFixed(1)}ms durationP95=${durationStats.p95Ms.toFixed(1)}ms speedMin=${minimumPlaybackSpeed.toFixed(2)}x speedAvg=${playbackSpeedStats.averageMs.toFixed(2)}x rnTailAvg=${outcomeDispatchLagStats.averageMs.toFixed(1)}ms rnTailP95=${outcomeDispatchLagStats.p95Ms.toFixed(1)}ms laneGapP95=${laneGapStats.p95Ms.toFixed(1)}ms laneGapMax=${maximumLaneGapMs.toFixed(1)}ms laneSpan=${laneSpanMs.toFixed(1)}ms`,
           );
           console.info(
-            `[Persimmon][10pps-gaps] delivered=${deliveryGaps.map((gap) => gap.toFixed(1)).join(",")} native=${laneGaps.map((gap) => gap.toFixed(1)).join(",")}`,
+            `[Persimmon][page-turn-burst-gaps] delivered=${deliveryGaps.map((gap) => gap.toFixed(1)).join(",")} native=${laneGaps.map((gap) => gap.toFixed(1)).join(",")}`,
           );
           nativeBenchmarkActiveRef.current = false;
           // Keep physical gestures disabled until the measurement snapshot is
@@ -1977,11 +2072,12 @@ function LazyReaderEngine({
       if (!running || !pending) {
         return;
       }
-      const startBookX = materialXForTouch(
+      const startBookX = pageTurnStartBookXForTouch(
         pending.startLocalX,
         running.direction,
-        layout,
+        layout === "spread",
         physicalPageWidth,
+        width,
       );
       // The reference surface is a two-page spread, so one physical page is
       // half of its interaction width. Preserve that hand travel in this
@@ -2060,7 +2156,7 @@ function LazyReaderEngine({
         return;
       }
       if (running.settlingIncomingPage) {
-        running.controller.endSettlingPageDrag();
+        running.controller.endSettlingPageDrag(eventTime);
       } else {
         running.controller.endDrag(eventTime);
       }
@@ -2130,6 +2226,33 @@ function LazyReaderEngine({
             physicalPageWidth,
           );
         }
+        if (rapidPageTurnTimerRef.current !== undefined) {
+          return;
+        }
+        const riffleCandidate = pending
+          ? pageRiffleCandidateForTouch(pending.startLocalX, width)
+          : undefined;
+        if (rapidPageTurnEnabled && pending && riffleCandidate !== undefined) {
+          const disposition = pageRiffleGestureDisposition({
+            direction: riffleCandidate.direction,
+            startEdgeDistance: riffleCandidate.startEdgeDistance,
+            translationX: gesture.dx,
+            translationY: gesture.dy,
+            interactionWidth: width,
+            minimumHorizontalTravel: 8,
+          });
+          if (disposition !== PAGE_RIFFLE_INWARD) {
+            if (disposition === PAGE_RIFFLE_ARMED) {
+              startRapidPageTurn(riffleCandidate.direction);
+            } else if (rapidPageTurnHoldTimerRef.current !== undefined) {
+              stopRapidPageTurn();
+            }
+            return;
+          }
+          if (rapidPageTurnHoldTimerRef.current !== undefined) {
+            stopRapidPageTurn();
+          }
+        }
         if (
           pageTurnAnimation === "natural" &&
           !runningTurnRef.current &&
@@ -2137,12 +2260,21 @@ function LazyReaderEngine({
           Math.abs(gesture.dx) > 6 &&
           Math.abs(gesture.dx) > Math.abs(gesture.dy)
         ) {
-          const requestedDirection: 1 | -1 = gesture.dx < 0 ? 1 : -1;
-          const startBookX = materialXForTouch(
+          const requestedDirection = normalPageTurnDirectionForTouch(
+            pending.startLocalX,
+            gesture.dx,
+            layout === "spread",
+            width,
+          );
+          if (requestedDirection === undefined) {
+            return;
+          }
+          const startBookX = pageTurnStartBookXForTouch(
             pending.startLocalX,
             requestedDirection,
-            layout,
+            layout === "spread",
             physicalPageWidth,
+            width,
           );
           beginInteractiveTurn(
             requestedDirection,
@@ -2166,13 +2298,32 @@ function LazyReaderEngine({
         const running = runningTurnRef.current;
         const pending = pendingGestureRef.current;
         pendingGestureRef.current = undefined;
+        const riffleCandidate = pending
+          ? pageRiffleCandidateForTouch(pending.startLocalX, width)
+          : undefined;
+        const reservedRapidPageTurnGesture =
+          rapidPageTurnEnabled &&
+          riffleCandidate !== undefined &&
+          pageRiffleGestureDisposition({
+            direction: riffleCandidate.direction,
+            startEdgeDistance: riffleCandidate.startEdgeDistance,
+            translationX: gesture.dx,
+            translationY: gesture.dy,
+            interactionWidth: width,
+            minimumHorizontalTravel: 8,
+          }) !== PAGE_RIFFLE_INWARD;
+        stopRapidPageTurn();
+        if (reservedRapidPageTurnGesture) {
+          return;
+        }
         if (running?.controller.getPhase() === "drag") {
           const startBookX = pending
-            ? materialXForTouch(
+            ? pageTurnStartBookXForTouch(
                 pending.startLocalX,
                 running.direction,
-                layout,
+                layout === "spread",
                 physicalPageWidth,
+                width,
               )
             : undefined;
           const handedOff =
@@ -2205,12 +2356,21 @@ function LazyReaderEngine({
           Math.abs(gesture.dx) > 1 &&
           Math.abs(gesture.dx) > Math.abs(gesture.dy)
         ) {
-          const direction: 1 | -1 = gesture.dx < 0 ? 1 : -1;
-          const startBookX = materialXForTouch(
+          const direction = normalPageTurnDirectionForTouch(
+            pending.startLocalX,
+            gesture.dx,
+            layout === "spread",
+            width,
+          );
+          if (direction === undefined) {
+            return;
+          }
+          const startBookX = pageTurnStartBookXForTouch(
             pending.startLocalX,
             direction,
-            layout,
+            layout === "spread",
             physicalPageWidth,
+            width,
           );
           requestGestureTurn({
             direction,
@@ -2249,6 +2409,7 @@ function LazyReaderEngine({
       },
       onPanResponderTerminate: () => {
         pendingGestureRef.current = undefined;
+        stopRapidPageTurn();
         cancelGestureTurn();
       },
     });
@@ -2262,8 +2423,11 @@ function LazyReaderEngine({
     pageTurnAnimation,
     physicalPageWidth,
     queueInteractiveTurnMove,
+    rapidPageTurnEnabled,
     requestGestureTurn,
     requestTurn,
+    startRapidPageTurn,
+    stopRapidPageTurn,
     width,
   ]);
 
@@ -3038,7 +3202,7 @@ function LazyReaderEngine({
       const laneRate = eventRatePerSecond(laneTurnStartsRef.current, now);
       const cache = pageCaptureCache.getStats();
       console.info(
-        `[Persimmon][10pps] input=${requestedRate.toFixed(1)}/s delivered=${deliveredRate.toFixed(1)}/s accepted=${acceptedRate.toFixed(1)}/s presented=${presentationAckCountRef.current} lanes=${laneRate.toFixed(1)}/s premature=${prematureLaneStartCountRef.current} active=${active} interval=${turnConcurrency.minimumTurnIntervalMs}ms captureP95=${feeder.p95JobMs.toFixed(1)}ms captureAvg=${feeder.averageJobMs.toFixed(1)}ms queue=${feeder.queued} workers=${feeder.inFlight}/${PAGE_CAPTURE_RASTER_WORKER_COUNT} cache=${(cache.residentBytes / 1_048_576).toFixed(1)}MB pinned=${(cache.pinnedBytes / 1_048_576).toFixed(1)}MB`,
+        `[Persimmon][page-turn-burst] input=${requestedRate.toFixed(1)}/s delivered=${deliveredRate.toFixed(1)}/s accepted=${acceptedRate.toFixed(1)}/s presented=${presentationAckCountRef.current} lanes=${laneRate.toFixed(1)}/s premature=${prematureLaneStartCountRef.current} active=${active} interval=${turnConcurrency.minimumTurnIntervalMs}ms captureP95=${feeder.p95JobMs.toFixed(1)}ms captureAvg=${feeder.averageJobMs.toFixed(1)}ms queue=${feeder.queued} workers=${feeder.inFlight}/${PAGE_CAPTURE_RASTER_WORKER_COUNT} cache=${(cache.residentBytes / 1_048_576).toFixed(1)}MB pinned=${(cache.pinnedBytes / 1_048_576).toFixed(1)}MB`,
       );
     }, 1_000);
     return () => clearInterval(interval);
@@ -3097,8 +3261,8 @@ function LazyReaderEngine({
         (turn) =>
           !turn.completed &&
           !turn.interactive &&
-          turn.motion === "tap" &&
-          !nativePagerCompositorEnabled &&
+          isProgrammaticPageTurnMotion(turn.motion) &&
+          (!nativePagerCompositorEnabled || turn.motion === "rapid") &&
           turn.laneReady &&
           !turn.presentationReady &&
           !pendingPresentationTurnIdsRef.current.has(turn.id),
@@ -3124,7 +3288,7 @@ function LazyReaderEngine({
           .filter(
             (turn) =>
               !turn.completed &&
-              turn.motion === "tap" &&
+              isProgrammaticPageTurnMotion(turn.motion) &&
               turn.laneReady &&
               !turn.presentationReady,
           )
@@ -3193,6 +3357,16 @@ function LazyReaderEngine({
     },
     [clearTextSelection, requestTurn],
   );
+  const handleNativeRapidPageTurn = useCallback(
+    (direction: 1 | -1, requestedAtMs: number) => {
+      if (textSelectionRef.current) {
+        clearTextSelection();
+        return;
+      }
+      requestRapidTurn(direction, requestedAtMs);
+    },
+    [clearTextSelection, requestRapidTurn],
+  );
   const nativeCommand = useMemo(
     () =>
       driverTurn
@@ -3224,6 +3398,7 @@ function LazyReaderEngine({
   });
   const nativePageTurn = useNativePageTurnDriver({
     gesturesEnabled: nativePagerGestureInputPolicy.recognizerEnabled,
+    rapidPageTurnEnabled,
     nativePagerTapInputEnabled,
     nativePagerGestureInputEnabled:
       nativePagerGestureInputPolicy.nativeGestureInputEnabled,
@@ -3249,6 +3424,7 @@ function LazyReaderEngine({
     onGestureBegin: beginNativeInteractiveTurn,
     onGestureRelease: requestGestureTurn,
     onTapTurn: handleNativePageTap,
+    onRapidTurn: handleNativeRapidPageTurn,
     onOutcome: completeNativeTurn,
   });
   const selectionLongPressGesture = useMemo(
@@ -3350,28 +3526,39 @@ function LazyReaderEngine({
       ),
     [nativePageTurn.gesture, selectionLongPressGesture, selectionTapGesture],
   );
-  const automaticTapPlaybackSpeeds = useMemo(() => {
-    const tapTurns = activeTurns.filter(
-      (turn) => !turn.completed && turn.motion === "tap",
+  const programmaticPlaybackSpeeds = useMemo(() => {
+    const programmaticTurns = activeTurns.filter(
+      (turn) => !turn.completed && isProgrammaticPageTurnMotion(turn.motion),
     );
-    const retainedTurnIds = new Set(tapTurns.map((turn) => turn.id));
+    const retainedTurnIds = new Set(programmaticTurns.map((turn) => turn.id));
     for (const turnId of burstCompressedTurnIdsRef.current) {
       if (!retainedTurnIds.has(turnId)) {
         burstCompressedTurnIdsRef.current.delete(turnId);
       }
     }
-    if (tapTurns.length >= 2) {
-      for (const turn of tapTurns) {
-        burstCompressedTurnIdsRef.current.add(turn.id);
+    for (const motion of ["tap", "rapid"] as const) {
+      const turnsForMotion = programmaticTurns.filter(
+        (turn) => turn.motion === motion,
+      );
+      if (turnsForMotion.length >= 2) {
+        for (const turn of turnsForMotion) {
+          burstCompressedTurnIdsRef.current.add(turn.id);
+        }
       }
     }
     return new Map(
-      tapTurns.map((turn) => [
-        turn.id,
-        burstCompressedTurnIdsRef.current.has(turn.id)
-          ? burstPageTurnPlaybackSpeed(automaticPageTurnTuning)
-          : automaticPageTurnTuning.playbackSpeed,
-      ]),
+      programmaticTurns.map((turn) => {
+        return [
+          turn.id,
+          burstCompressedTurnIdsRef.current.has(turn.id)
+            ? burstPageTurnPlaybackSpeed(
+                automaticPageTurnTuning,
+                0,
+                AUTOMATIC_PAGE_TURN_MAXIMUM_RELEASE_X,
+              )
+            : automaticPageTurnTuning.playbackSpeed,
+        ];
+      }),
     );
   }, [activeTurns, automaticPageTurnTuning]);
   const nativePagerStockPlan = useMemo(
@@ -3401,6 +3588,7 @@ function LazyReaderEngine({
       }
       const stockEntryId = nativePagerStockEntryIdFromTurnId(turnId);
       const directEntry = nativePagerStockEntriesRef.current.get(stockEntryId);
+      const directPlaybackSpeed = directEntry?.playbackSpeed;
       if (event === "gesture-started") {
         requestedTurnStartsRef.current.push(eventAtMs);
         deliveredTurnStartsRef.current.push(Date.now());
@@ -3420,16 +3608,9 @@ function LazyReaderEngine({
         );
         presentationRequiredTurnIdsRef.current.add(turnId);
         presentedTurnIdsRef.current.add(turnId);
-        nativePagerPlaybackSpeedsRef.current.set(
-          turnId,
-          directEntry.playbackSpeed,
-        );
+        nativePagerPlaybackSpeedsRef.current.set(turnId, directPlaybackSpeed!);
         presentationAckCountRef.current += 1;
-        recordScheduledTurnLaneStarted(
-          turnId,
-          eventAtMs,
-          directEntry.playbackSpeed,
-        );
+        recordScheduledTurnLaneStarted(turnId, eventAtMs, directPlaybackSpeed!);
         return;
       }
       if (event === "gesture-released") {
@@ -3450,6 +3631,14 @@ function LazyReaderEngine({
           acceptedTurnStartsRef.current.push(eventAtMs);
         }
         captureFeedDirectionRef.current = directEntry.direction;
+        nativePagerPlaybackSpeedsRef.current.set(turnId, directPlaybackSpeed!);
+        if (!gestureTurnActive) {
+          // Native has reserved the logical edge, but React must keep the
+          // source page underneath it until `started` confirms that the first
+          // display-backed frame was actually submitted.
+          nativePagerFirstFrameGateRef.current.reserve(turnId);
+          return;
+        }
         const acknowledgedEpoch = `${readerGeneration}:${nativePagerPageKey(directEntry.to)}`;
         nativePagerPresentationGateRef.current.schedule(
           turnId,
@@ -3463,18 +3652,37 @@ function LazyReaderEngine({
         );
         presentationRequiredTurnIdsRef.current.add(turnId);
         presentedTurnIdsRef.current.add(turnId);
-        nativePagerPlaybackSpeedsRef.current.set(
-          turnId,
-          directEntry.playbackSpeed,
-        );
         mutateReaderState(() => createPageTurnSchedulerState(directEntry.to));
         setNoteReturnAnchor((current) =>
           reduceNoteReturnAnchor(current, { type: "page-turned" }),
         );
         return;
       }
-      const directTurnActive = nativePagerDirectTurnIdsRef.current.has(turnId);
       if (event === "started") {
+        if (nativePagerFirstFrameGateRef.current.confirmPresented(turnId)) {
+          if (!directEntry || !readerGenerationIsCurrent()) {
+            nativePagerPlaybackSpeedsRef.current.delete(turnId);
+            rejectedTurnCountsRef.current.other += 1;
+            return;
+          }
+          const acknowledgedEpoch = `${readerGeneration}:${nativePagerPageKey(directEntry.to)}`;
+          nativePagerPresentationGateRef.current.schedule(
+            turnId,
+            acknowledgedEpoch,
+          );
+          nativePagerAcknowledgedPageKeyRef.current = acknowledgedEpoch;
+          nativePagerReconciliationEpochsRef.current.add(acknowledgedEpoch);
+          nativePagerDirectTurnIdsRef.current.add(turnId);
+          setNativePagerDirectActiveCount(
+            nativePagerDirectTurnIdsRef.current.size,
+          );
+          presentationRequiredTurnIdsRef.current.add(turnId);
+          presentedTurnIdsRef.current.add(turnId);
+          mutateReaderState(() => createPageTurnSchedulerState(directEntry.to));
+          setNoteReturnAnchor((current) =>
+            reduceNoteReturnAnchor(current, { type: "page-turned" }),
+          );
+        }
         presentationAckCountRef.current += 1;
         recordScheduledTurnLaneStarted(
           turnId,
@@ -3484,6 +3692,8 @@ function LazyReaderEngine({
         );
         return;
       }
+      const directTurnActive = nativePagerDirectTurnIdsRef.current.has(turnId);
+      nativePagerFirstFrameGateRef.current.discard(turnId);
       if (directTurnActive) {
         const startedAtMs = laneTurnStartedAtRef.current.get(turnId);
         laneTurnStartedAtRef.current.delete(turnId);
@@ -3513,7 +3723,7 @@ function LazyReaderEngine({
       // turn from activeTurns. Dropping it before the state update commits
       // opens a render/effect window in which the same retained texture can be
       // enqueued a second time.
-      completeScheduledTurn(turnId, 1, eventAtMs);
+      completeScheduledTurn(turnId, event === "completed" ? 1 : 0, eventAtMs);
     },
   );
   useEffect(() => {
@@ -3575,6 +3785,7 @@ function LazyReaderEngine({
       nativePagerStockEntriesRef.current.clear();
       nativePagerDirectTurnIdsRef.current.clear();
       nativePagerGestureTurnIdsRef.current.clear();
+      nativePagerFirstFrameGateRef.current.reset();
       nativePagerPresentationGateRef.current.reset();
       nativePagerAcknowledgedPageKeyRef.current = undefined;
       nativePagerReconciliationEpochsRef.current.clear();
@@ -3598,6 +3809,7 @@ function LazyReaderEngine({
     nativePagerStockEntriesRef.current.clear();
     nativePagerDirectTurnIdsRef.current.clear();
     nativePagerGestureTurnIdsRef.current.clear();
+    nativePagerFirstFrameGateRef.current.reset();
     nativePagerReconciliationEpochsRef.current.clear();
     setNativePagerDirectActiveCount(0);
     setNativePagerGestureActiveCount(0);
@@ -3666,12 +3878,19 @@ function LazyReaderEngine({
         ? processedPaperColor >>> 0
         : 0xffffffff;
     const playbackSpeed = automaticPageTurnTuning.playbackSpeed;
+    const stockTuningKey = [
+      automaticPageTurnTuning.releaseX,
+      automaticPageTurnTuning.liftVelocity,
+      automaticPageTurnTuning.liftToLeft,
+      automaticPageTurnTuning.curvatureRelaxation,
+      automaticPageTurnTuning.playbackSpeed,
+    ].join(",");
     const entryIdFor = (
       from: PageAddress,
       to: PageAddress,
       direction: 1 | -1,
     ) =>
-      `native-stock:${readerGeneration}:${imageVersion}:${nativePagerPageKey(from)}:${direction}:${nativePagerPageKey(to)}`;
+      `native-stock:${readerGeneration}:${imageVersion}:${stockTuningKey}:${nativePagerPageKey(from)}:${direction}:${nativePagerPageKey(to)}`;
     const retainedEntryIds = new Set(
       nativePagerStockPlan.map((edge) =>
         entryIdFor(edge.from, edge.to, edge.direction),
@@ -3796,6 +4015,10 @@ function LazyReaderEngine({
             automaticPageTurnTuning,
             edge.direction,
           ),
+          rapidDurationMs: estimateAutomaticPageTurnDurationMs(
+            automaticPageTurnTuning,
+            edge.direction,
+          ),
           launchIntervalMs: turnConcurrency.minimumTurnIntervalMs,
           paperColor,
         });
@@ -3851,6 +4074,7 @@ function LazyReaderEngine({
     }
     configureNativePagerMotion(readerCanvasRef.current, {
       automatic: automaticTuningForCore(automaticPageTurnTuning),
+      rapid: automaticTuningForCore(automaticPageTurnTuning),
       gesture: gestureTuningForCore(gesturePageTurnTuning),
     });
   }, [
@@ -3945,7 +4169,7 @@ function LazyReaderEngine({
         continue;
       }
       const playbackSpeed =
-        automaticTapPlaybackSpeeds.get(turn.id) ??
+        programmaticPlaybackSpeeds.get(turn.id) ??
         automaticPageTurnTuning.playbackSpeed;
       const durationMs =
         estimateAutomaticPageTurnDurationMs(
@@ -3990,7 +4214,7 @@ function LazyReaderEngine({
   }, [
     activeTurns,
     automaticPageTurnTuning,
-    automaticTapPlaybackSpeeds,
+    programmaticPlaybackSpeeds,
     captureSlotsForView,
     createRecordedPageCapture,
     crispTapCaptureQuality.desiredScale,
@@ -4037,8 +4261,8 @@ function LazyReaderEngine({
     for (const turn of texturePreparedTurns) {
       if (
         !turn.completed &&
-        turn.motion === "tap" &&
-        !nativePagerCompositorEnabled
+        isProgrammaticPageTurnMotion(turn.motion) &&
+        (!nativePagerCompositorEnabled || turn.motion === "rapid")
       ) {
         presentationRequiredTurnIdsRef.current.add(turn.id);
       }
@@ -4063,18 +4287,17 @@ function LazyReaderEngine({
         readyToStart: turn.motion === "gesture" || turn.presentationReady,
         settlingIncomingPage: layout === "single" && turn.direction === -1,
         motion: turn.motion,
-        playbackSpeed:
-          turn.motion === "tap"
-            ? (automaticTapPlaybackSpeeds.get(turn.id) ??
-              automaticPageTurnTuning.playbackSpeed)
-            : undefined,
+        playbackSpeed: isProgrammaticPageTurnMotion(turn.motion)
+          ? (programmaticPlaybackSpeeds.get(turn.id) ??
+            automaticPageTurnTuning.playbackSpeed)
+          : undefined,
         gestureRelease: turn.gestureRelease,
       };
     }
     return commands;
   }, [
     automaticPageTurnTuning.playbackSpeed,
-    automaticTapPlaybackSpeeds,
+    programmaticPlaybackSpeeds,
     layout,
     nativePagerCompositorEnabled,
     texturePreparedTurns,
@@ -4340,7 +4563,7 @@ function LazyReaderEngine({
                       onComplete={settleTurn}
                       onFrame={publishTurnFrame}
                       playbackSpeed={
-                        automaticTapPlaybackSpeeds.get(turn.id) ??
+                        programmaticPlaybackSpeeds.get(turn.id) ??
                         automaticPageTurnTuning.playbackSpeed
                       }
                       spread={layout === "spread"}
@@ -4708,6 +4931,12 @@ function WebPageTurnFaceMesh({
       ),
     [automaticPageTurnTuning, gesturePageTurnTuning, spread, turn],
   );
+  const initialIncomingPageProgress =
+    !spread && turn.direction === -1
+      ? turn.motion === "gesture"
+        ? (turn.gestureRelease?.settlingProgress ?? 0)
+        : 0
+      : undefined;
 
   return (
     <PageTurnMesh
@@ -4717,6 +4946,7 @@ function WebPageTurnFaceMesh({
       face={face}
       height={height}
       initialProfile={initialProfile}
+      incomingPageProgress={initialIncomingPageProgress}
       paperColor={paperColor}
       paperImage={paperImage}
       direction={turn.direction}
@@ -4764,6 +4994,7 @@ function AutomaticWebPageTurnDriver({
       gestureRelease
         ? gestureTuningForCore(gesturePageTurnTuning)
         : automaticTuningForCore(automaticPageTurnTuning),
+      AUTOMATIC_PAGE_TURN_MAXIMUM_RELEASE_X,
     );
     const settlingIncomingPage = !spread && turn.direction === -1;
     const publish = () =>
@@ -4862,6 +5093,7 @@ export function LiveReader({
   fontSize,
   layout = "single",
   pageTurnAnimation = "natural",
+  rapidPageTurnEnabled = true,
   theme = DEFAULT_READER_THEME,
   topInset = 0,
   bottomInset = 0,
@@ -4944,6 +5176,7 @@ export function LiveReader({
       appearance={resolvedAppearance}
       layout={layout}
       pageTurnAnimation={pageTurnAnimation}
+      rapidPageTurnEnabled={rapidPageTurnEnabled}
       theme={theme}
       topInset={topInset}
       bottomInset={bottomInset}
@@ -5068,23 +5301,6 @@ function clampUnit(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
-function materialXForTouch(
-  localX: number,
-  direction: 1 | -1,
-  layout: ReaderLayoutMode,
-  physicalPageWidth: number,
-): number {
-  if (layout === "spread") {
-    const spineX = physicalPageWidth;
-    return direction === 1
-      ? clampUnit((localX - spineX) / physicalPageWidth)
-      : clampUnit((spineX - localX) / physicalPageWidth);
-  }
-  return direction === 1
-    ? clampUnit(localX / physicalPageWidth)
-    : clampUnit(1 - localX / physicalPageWidth);
-}
-
 function updatePendingGestureKinematics(
   pending: PendingPageGesture,
   dx: number,
@@ -5118,23 +5334,33 @@ function initialPageTurnProfile(
   tuning: AutomaticPageTurnTuning,
 ): number[] {
   return layout === "single" && turn.direction === -1
-    ? incomingPageRaisedProfile(tuning)
-    : pageTurnProfileAtRest(turn.direction, tuning);
+    ? incomingPageRaisedProfile(tuning, AUTOMATIC_PAGE_TURN_MAXIMUM_RELEASE_X)
+    : pageTurnProfileAtRest(
+        turn.direction,
+        tuning,
+        AUTOMATIC_PAGE_TURN_MAXIMUM_RELEASE_X,
+      );
 }
 
 function pageTurnProfileAtRest(
   direction: 1 | -1,
   tuning: AutomaticPageTurnTuning,
+  maximumReleaseX: number,
 ): number[] {
   const controller = new NaturalPageTurnController(
     automaticTuningForCore(tuning),
+    maximumReleaseX,
   );
   return packPageTurnProfile(controller.getPoints(), direction);
 }
 
-function incomingPageRaisedProfile(tuning: AutomaticPageTurnTuning): number[] {
+function incomingPageRaisedProfile(
+  tuning: AutomaticPageTurnTuning,
+  maximumReleaseX: number,
+): number[] {
   const controller = new NaturalPageTurnController(
     automaticTuningForCore(tuning),
+    maximumReleaseX,
   );
   controller.playSettlingPage();
   return packPageTurnProfile(controller.getPoints(), -1);

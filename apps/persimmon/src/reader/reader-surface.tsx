@@ -32,6 +32,7 @@ export interface ReaderSurfaceProps {
   appearance: ReaderAppearanceSettings;
   layout: ReaderLayoutMode;
   pageTurnAnimation: ReaderPageTurnAnimation;
+  rapidPageTurnEnabled: boolean;
   theme: ReaderTheme;
   topInset: number;
   bottomInset: number;
@@ -90,6 +91,7 @@ function FontBackedReaderSurface({
   appearance,
   layout,
   pageTurnAnimation,
+  rapidPageTurnEnabled,
   theme,
   topInset,
   bottomInset,
@@ -183,6 +185,7 @@ function FontBackedReaderSurface({
       appearance={liveAppearance}
       layout={layout}
       pageTurnAnimation={pageTurnAnimation}
+      rapidPageTurnEnabled={rapidPageTurnEnabled}
       theme={theme}
       topInset={topInset}
       bottomInset={bottomInset}

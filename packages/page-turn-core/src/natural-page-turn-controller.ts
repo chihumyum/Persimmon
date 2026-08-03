@@ -10,6 +10,7 @@ import {
   DEFAULT_PAGE_TURN_TUNING,
   GESTURE_HINGE_CHORD_X,
   GESTURE_HINGE_ROTATION,
+  SLOW_COMMIT_EDGE_X,
   anchoredGestureFingerX,
   clampPageTurnTuning,
   gestureLiftRotationForFingerX,
@@ -31,8 +32,10 @@ import {
 } from "./revert-kinematics";
 import {
   AUTOMATIC_PAGE_TURN_PRESS_DURATION_SECONDS,
-  INCOMING_PAGE_SETTLE_DURATION_SECONDS,
   PAGE_TURN_PROPAGATION_SPEED_SCALE,
+  incomingPageDrivenProgress,
+  incomingPageRemainingDurationSeconds,
+  incomingPageShapeProgress,
 } from "./page-turn-timing";
 
 export type NaturalPageTurnPhase =
@@ -62,7 +65,7 @@ interface NaturalPageTurnDrag {
 }
 
 interface NaturalPageTurnDrive {
-  phase: "press" | "turn" | "settle" | "revert";
+  phase: "press" | "turn" | "settle" | "revert" | "incoming-revert";
   elapsed: number;
   startX: number;
   tuning: PageTurnTuning;
@@ -74,11 +77,13 @@ interface NaturalPageTurnDrive {
   revertStartRotation: number;
 }
 
-/**
- * Where an incoming page joins a turn: the top of its arc, just as it crosses
- * the spine and before it starts laying itself down on the page below.
- */
-const SETTLING_PAGE_START_PROGRESS = 0.3;
+interface IncomingPageDrag {
+  lastTime: number;
+  progress: number;
+  velocity: number;
+  acceleration: number;
+}
+
 const GESTURE_VELOCITY_TIME_CONSTANT = 0.045;
 const GESTURE_ACCELERATION_TIME_CONSTANT = 0.06;
 const MAX_TRACKED_GESTURE_VELOCITY = 6;
@@ -94,17 +99,27 @@ const MAX_TRACKED_GESTURE_ACCELERATION = 20;
 export class NaturalPageTurnController {
   private readonly sheet = new RolledPageStrip();
   private drag: NaturalPageTurnDrag | null = null;
-  private settlingDrag: { lastTime: number; progress: number } | null = null;
+  private settlingDrag: IncomingPageDrag | null = null;
   private drive: NaturalPageTurnDrive | null = null;
   private completed = false;
+  private incomingPageProgress = 0;
   private tuning: PageTurnTuning;
+  private maximumReleaseX: number;
 
-  constructor(tuning: PageTurnTuning = DEFAULT_PAGE_TURN_TUNING) {
-    this.tuning = clampPageTurnTuning(tuning);
+  constructor(
+    tuning: PageTurnTuning = DEFAULT_PAGE_TURN_TUNING,
+    maximumReleaseX = 0.8,
+  ) {
+    this.maximumReleaseX = maximumReleaseX;
+    this.tuning = clampPageTurnTuning(tuning, maximumReleaseX);
   }
 
-  setTuning(tuning: PageTurnTuning): void {
-    this.tuning = clampPageTurnTuning(tuning);
+  setTuning(
+    tuning: PageTurnTuning,
+    maximumReleaseX = this.maximumReleaseX,
+  ): void {
+    this.maximumReleaseX = maximumReleaseX;
+    this.tuning = clampPageTurnTuning(tuning, maximumReleaseX);
     if (this.drive || this.settlingDrag || this.completed) {
       this.reset();
     }
@@ -137,13 +152,13 @@ export class NaturalPageTurnController {
   playSettlingPage(): void {
     this.reset();
     this.sheet.setTurnProgress(
-      SETTLING_PAGE_START_PROGRESS,
+      incomingPageShapeProgress(0),
       this.tuning.releaseX,
       0,
       0,
       this.tuning.curvatureRelaxation,
     );
-    this.beginSettlingDrive(SETTLING_PAGE_START_PROGRESS);
+    this.beginSettlingDrive(0);
   }
 
   /**
@@ -157,9 +172,10 @@ export class NaturalPageTurnController {
   ): void {
     this.reset();
     if (settlingIncomingPage) {
-      const startProgress = landingTurnProgress(release.settlingProgress);
+      const startProgress = clamp(release.settlingProgress, 0, 1);
+      this.incomingPageProgress = startProgress;
       this.sheet.setTurnProgress(
-        startProgress,
+        incomingPageShapeProgress(startProgress),
         this.tuning.releaseX,
         0,
         0,
@@ -200,7 +216,7 @@ export class NaturalPageTurnController {
       this.reset();
     }
     this.sheet.setTurnProgress(
-      SETTLING_PAGE_START_PROGRESS,
+      incomingPageShapeProgress(0),
       this.tuning.releaseX,
       0,
       0,
@@ -209,6 +225,8 @@ export class NaturalPageTurnController {
     this.settlingDrag = {
       lastTime: safeTime(time),
       progress: 0,
+      velocity: 0,
+      acceleration: 0,
     };
     return true;
   }
@@ -219,11 +237,31 @@ export class NaturalPageTurnController {
       return false;
     }
     const currentTime = safeTime(time);
-    const deltaTime = Math.max(0, currentTime - drag.lastTime);
+    const deltaTime = Math.max(0.001, currentTime - drag.lastTime);
+    const nextProgress = clamp(progress, 0, 1);
+    const previousVelocity = drag.velocity;
+    const instantaneousVelocity = clamp(
+      ((nextProgress - drag.progress) * (1 - SLOW_COMMIT_EDGE_X)) / deltaTime,
+      -MAX_TRACKED_GESTURE_VELOCITY,
+      MAX_TRACKED_GESTURE_VELOCITY,
+    );
+    const velocityBlend =
+      1 - Math.exp(-deltaTime / GESTURE_VELOCITY_TIME_CONSTANT);
+    drag.velocity += (instantaneousVelocity - drag.velocity) * velocityBlend;
+    const instantaneousAcceleration = clamp(
+      (drag.velocity - previousVelocity) / deltaTime,
+      -MAX_TRACKED_GESTURE_ACCELERATION,
+      MAX_TRACKED_GESTURE_ACCELERATION,
+    );
+    const accelerationBlend =
+      1 - Math.exp(-deltaTime / GESTURE_ACCELERATION_TIME_CONSTANT);
+    drag.acceleration +=
+      (instantaneousAcceleration - drag.acceleration) * accelerationBlend;
     drag.lastTime = currentTime;
-    drag.progress = clamp(progress, 0, 1);
+    drag.progress = nextProgress;
+    this.incomingPageProgress = nextProgress;
     this.sheet.setTurnProgress(
-      landingTurnProgress(drag.progress),
+      incomingPageShapeProgress(nextProgress),
       this.tuning.releaseX,
       deltaTime,
       0,
@@ -232,14 +270,36 @@ export class NaturalPageTurnController {
     return true;
   }
 
-  endSettlingPageDrag(): NaturalPageTurnRelease {
+  endSettlingPageDrag(time?: number): NaturalPageTurnRelease {
     const drag = this.settlingDrag;
     if (!drag) {
       return "ignored";
     }
     this.settlingDrag = null;
-    this.beginSettlingDrive(landingTurnProgress(drag.progress));
-    return "turn";
+    const idleTime = Math.max(
+      0,
+      safeTime(time ?? drag.lastTime) - drag.lastTime,
+    );
+    const idleDecay = Math.exp(-idleTime / this.tuning.gestureIdleDecaySeconds);
+    const throwVelocity = Math.max(0, drag.velocity) * idleDecay;
+    const throwAcceleration = drag.acceleration * idleDecay;
+    const fingerX = 1 - drag.progress * (1 - SLOW_COMMIT_EDGE_X);
+    if (
+      shouldCommitTurn(
+        {
+          fingerX,
+          throwVelocity,
+          throwAcceleration,
+          pageWeight: this.tuning.pageWeight,
+        },
+        this.tuning,
+      )
+    ) {
+      this.beginSettlingDrive(drag.progress);
+      return "turn";
+    }
+    this.beginIncomingRevert(drag.progress);
+    return "revert";
   }
 
   reset(): void {
@@ -247,6 +307,7 @@ export class NaturalPageTurnController {
     this.drag = null;
     this.settlingDrag = null;
     this.completed = false;
+    this.incomingPageProgress = 0;
     this.sheet.reset();
   }
 
@@ -388,6 +449,10 @@ export class NaturalPageTurnController {
       this.updateRevertDrive(drive, safeDelta);
       return true;
     }
+    if (drive.phase === "incoming-revert") {
+      this.updateIncomingRevertDrive(drive, safeDelta);
+      return true;
+    }
     if (drive.phase === "settle") {
       this.updateSettlingDrive(drive, safeDelta);
       return true;
@@ -422,7 +487,9 @@ export class NaturalPageTurnController {
     if (this.settlingDrag) {
       return "drag";
     }
-    return this.drive?.phase ?? "idle";
+    return this.drive?.phase === "incoming-revert"
+      ? "revert"
+      : (this.drive?.phase ?? "idle");
   }
 
   needsAnimationFrame(): boolean {
@@ -435,6 +502,10 @@ export class NaturalPageTurnController {
 
   getMetrics(): RolledPageMetrics {
     return this.sheet.getMetrics();
+  }
+
+  getIncomingPageProgress(): number {
+    return this.incomingPageProgress;
   }
 
   private beginTurn(
@@ -483,7 +554,23 @@ export class NaturalPageTurnController {
       startX: this.tuning.releaseX,
       tuning: { ...this.tuning },
       speedScale: 1,
-      startProgress: clamp(startProgress, SETTLING_PAGE_START_PROGRESS, 1),
+      startProgress: clamp(startProgress, 0, 1),
+      startRotation: 0,
+      revertPressedStartX: this.tuning.releaseX,
+      revertCompleteness: 0,
+      revertStartRotation: 0,
+    };
+  }
+
+  private beginIncomingRevert(startProgress: number): void {
+    this.completed = false;
+    this.drive = {
+      phase: "incoming-revert",
+      elapsed: 0,
+      startX: this.tuning.releaseX,
+      tuning: { ...this.tuning },
+      speedScale: 1,
+      startProgress: clamp(startProgress, 0, 1),
       startRotation: 0,
       revertPressedStartX: this.tuning.releaseX,
       revertCompleteness: 0,
@@ -495,17 +582,14 @@ export class NaturalPageTurnController {
     drive: NaturalPageTurnDrive,
     deltaTime: number,
   ): void {
-    const remainingRatio =
-      (1 - drive.startProgress) / (1 - SETTLING_PAGE_START_PROGRESS);
-    const duration = Math.max(
-      1 / 60,
-      INCOMING_PAGE_SETTLE_DURATION_SECONDS * remainingRatio,
+    const duration = incomingPageRemainingDurationSeconds(drive.startProgress);
+    const progress = incomingPageDrivenProgress(
+      drive.startProgress,
+      drive.elapsed,
     );
-    const easedProgress = settleEasedProgress(drive.elapsed, duration);
-    const progress =
-      drive.startProgress + (1 - drive.startProgress) * easedProgress;
+    this.incomingPageProgress = progress;
     this.sheet.setTurnProgress(
-      progress,
+      incomingPageShapeProgress(progress),
       drive.startX,
       deltaTime,
       0,
@@ -513,8 +597,9 @@ export class NaturalPageTurnController {
     );
     if (drive.elapsed >= duration) {
       this.drive = null;
+      this.incomingPageProgress = 1;
       this.sheet.setTurnProgress(
-        1,
+        incomingPageShapeProgress(1),
         drive.startX,
         deltaTime,
         0,
@@ -522,6 +607,39 @@ export class NaturalPageTurnController {
       );
       this.sheet.stop();
       this.completed = true;
+    }
+  }
+
+  private updateIncomingRevertDrive(
+    drive: NaturalPageTurnDrive,
+    deltaTime: number,
+  ): void {
+    const duration = Math.max(
+      1 / 60,
+      incomingPageRemainingDurationSeconds(0) * drive.startProgress,
+    );
+    const easedProgress = revertEasedProgress(drive.elapsed, duration);
+    const progress = drive.startProgress * (1 - easedProgress);
+    this.incomingPageProgress = progress;
+    this.sheet.setTurnProgress(
+      incomingPageShapeProgress(progress),
+      drive.startX,
+      deltaTime,
+      0,
+      drive.tuning.curvatureRelaxation,
+    );
+    if (drive.elapsed >= duration) {
+      this.drive = null;
+      this.incomingPageProgress = 0;
+      this.sheet.setTurnProgress(
+        incomingPageShapeProgress(0),
+        drive.startX,
+        deltaTime,
+        0,
+        drive.tuning.curvatureRelaxation,
+      );
+      this.sheet.stop();
+      this.completed = false;
     }
   }
 
@@ -612,18 +730,6 @@ function gestureThrowVelocity(drag: NaturalPageTurnDrag): number {
 
 function safeTime(time: number): number {
   return Number.isFinite(time) ? time : 0;
-}
-
-function settleEasedProgress(elapsed: number, duration: number): number {
-  const progress = clamp(elapsed / duration, 0, 1);
-  return 1 - (1 - progress) ** 2;
-}
-
-function landingTurnProgress(progress: number): number {
-  return (
-    SETTLING_PAGE_START_PROGRESS +
-    (1 - SETTLING_PAGE_START_PROGRESS) * clamp(progress, 0, 1)
-  );
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {

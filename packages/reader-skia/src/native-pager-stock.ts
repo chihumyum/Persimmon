@@ -5,7 +5,7 @@ import {
   type PageTurnCaptureAddresses,
 } from "./page-turn-textures";
 
-// A one-second runway absorbs normal RN/GC jitter at 10 pps while keeping the
+// A ten-turn runway absorbs normal RN/GC jitter during rapid paging while keeping the
 // complete spread graph inside the native display-list ceiling. Reconciliation
 // still adds one outer edge per acknowledged turn, so a larger radius raises
 // the memory floor without changing the sustainable refill rate.
@@ -59,6 +59,10 @@ export function nativePagerStockEntryIdFromTurnId(turnId: string): string {
     NATIVE_PAGER_TURN_INSTANCE_SEPARATOR,
   );
   return separatorIndex < 0 ? turnId : turnId.slice(0, separatorIndex);
+}
+
+export function nativePagerStockTurnIsRapid(turnId: string): boolean {
+  return turnId.endsWith(":rapid");
 }
 
 /**

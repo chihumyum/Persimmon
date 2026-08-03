@@ -12,6 +12,7 @@ import {
   pageTurnCameraBookX,
   projectPageTurnBookX,
 } from "./page-turn-perspective";
+import { incomingPageProjectedOffset } from "./page-turn-incoming-reveal";
 
 const PROFILE_FLOATS_PER_POINT = 4;
 const PROFILE_X = 0;
@@ -185,13 +186,20 @@ export function updatePageTurnNativeFrameValues(
   const projectedProfile = paperUniforms.profile;
   paperUniforms.perspective[3] = xScale;
   const cameraBookX = paperUniforms.perspective[0]!;
+  const projectedOffset = incomingPageProjectedOffset(
+    profile,
+    cameraBookX,
+    xScale,
+    state.settlingIncomingPage ? state.settlingProgress : undefined,
+  );
   let paperMinimumX = Number.POSITIVE_INFINITY;
   let paperMaximumX = Number.NEGATIVE_INFINITY;
   for (let index = 0; index < DEFAULT_PAGE_PROFILE_POINTS; index += 1) {
     const offset = index * PROFILE_FLOATS_PER_POINT;
     const physicalX = profile[offset + PROFILE_X]! * xScale;
     const depth = profile[offset + 1]!;
-    const projectedX = projectPageTurnBookX(physicalX, depth, cameraBookX);
+    const projectedX =
+      projectPageTurnBookX(physicalX, depth, cameraBookX) + projectedOffset;
     projectedProfile[offset + PROFILE_X] = projectedX;
     projectedProfile[offset + 1] = depth;
     projectedProfile[offset + PROFILE_NORMAL_X] =
@@ -258,6 +266,9 @@ export function updatePageTurnNativeFrameValues(
   paperRect.y = 0;
   paperRect.width = Math.max(0, paperMaximum - paperMinimum);
   paperRect.height = viewportHeight;
+  if (state.settlingIncomingPage && state.settlingProgress <= 0) {
+    paperRect.width = 0;
+  }
 
   // The silhouette anchors the cast shadow on screen, so it is the projected
   // edge; the material edge and its velocity stay physical because they drive

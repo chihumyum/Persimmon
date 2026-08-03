@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   bookXForGestureTravel,
+  normalPageTurnDirectionForTouch,
   pageTurnGestureReleaseSample,
   pageTurnDirectionFromTranslation,
+  pageTurnStartBookXForTouch,
   pageTurnTerminalDirection,
 } from "./page-turn-gesture-direction";
 
@@ -47,6 +49,113 @@ describe("page turn gesture direction", () => {
     expect(
       bookXForGestureTravel(0.9, -physicalPageWidth * 2, 1, physicalPageWidth),
     ).toBe(-1);
+  });
+
+  it("accepts ordinary spread turns only on their physical page", () => {
+    const interactionWidth = 800;
+
+    expect(normalPageTurnDirectionForTouch(0, 40, true, interactionWidth)).toBe(
+      -1,
+    );
+    expect(
+      normalPageTurnDirectionForTouch(399, 40, true, interactionWidth),
+    ).toBe(-1);
+    expect(
+      normalPageTurnDirectionForTouch(200, -40, true, interactionWidth),
+    ).toBeUndefined();
+    expect(
+      normalPageTurnDirectionForTouch(400, 40, true, interactionWidth),
+    ).toBeUndefined();
+    expect(
+      normalPageTurnDirectionForTouch(400, -40, true, interactionWidth),
+    ).toBe(1);
+    expect(
+      normalPageTurnDirectionForTouch(600, 40, true, interactionWidth),
+    ).toBeUndefined();
+    expect(
+      normalPageTurnDirectionForTouch(800, -40, true, interactionWidth),
+    ).toBe(1);
+  });
+
+  it("keeps both ordinary directions available in single-page layout", () => {
+    expect(normalPageTurnDirectionForTouch(300, -40, false, 400)).toBe(1);
+    expect(normalPageTurnDirectionForTouch(100, 40, false, 400)).toBe(-1);
+  });
+
+  it("rejects invalid spread origins without manufacturing a direction", () => {
+    expect(normalPageTurnDirectionForTouch(-1, 40, true, 800)).toBeUndefined();
+    expect(
+      normalPageTurnDirectionForTouch(801, -40, true, 800),
+    ).toBeUndefined();
+    expect(normalPageTurnDirectionForTouch(200, 40, true, 0)).toBeUndefined();
+    expect(
+      normalPageTurnDirectionForTouch(Number.NaN, 40, true, 800),
+    ).toBeUndefined();
+  });
+
+  it("maps every valid ordinary spread turn to a full grip", () => {
+    const physicalPageWidth = 400;
+    const interactionWidth = 800;
+
+    expect(
+      pageTurnStartBookXForTouch(
+        0,
+        -1,
+        true,
+        physicalPageWidth,
+        interactionWidth,
+      ),
+    ).toBe(1);
+    expect(
+      pageTurnStartBookXForTouch(
+        399,
+        -1,
+        true,
+        physicalPageWidth,
+        interactionWidth,
+      ),
+    ).toBeGreaterThan(0.5);
+    expect(
+      pageTurnStartBookXForTouch(
+        400,
+        1,
+        true,
+        physicalPageWidth,
+        interactionWidth,
+      ),
+    ).toBe(0.5);
+    expect(
+      pageTurnStartBookXForTouch(
+        800,
+        1,
+        true,
+        physicalPageWidth,
+        interactionWidth,
+      ),
+    ).toBe(1);
+  });
+
+  it("preserves the original single-page touch mapping", () => {
+    const physicalPageWidth = 400;
+
+    expect(
+      pageTurnStartBookXForTouch(
+        200,
+        1,
+        false,
+        physicalPageWidth,
+        physicalPageWidth,
+      ),
+    ).toBe(0.5);
+    expect(
+      pageTurnStartBookXForTouch(
+        200,
+        -1,
+        false,
+        physicalPageWidth,
+        physicalPageWidth,
+      ),
+    ).toBe(0.5);
   });
 
   it("samples symmetric terminal fling geometry in both directions", () => {

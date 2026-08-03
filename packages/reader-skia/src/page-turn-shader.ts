@@ -1,5 +1,6 @@
 import {
   DEFAULT_PAGE_PROFILE_POINTS,
+  incomingPageRevealProgress,
   type RolledPageMetrics,
   type RolledPagePoint,
 } from "@persimmon/page-turn-core";
@@ -96,6 +97,7 @@ export function summarizePageTurnShadow(
   metrics: RolledPageMetrics,
   xScale: 1 | -1 = 1,
   cameraBookX = pageTurnCameraBookXForLayout(false),
+  incomingPageProgress?: number,
 ): PageTurnShadow {
   let minimumX = Number.POSITIVE_INFINITY;
   let maximumX = Number.NEGATIVE_INFINITY;
@@ -104,6 +106,13 @@ export function summarizePageTurnShadow(
     minimumX = Math.min(minimumX, x);
     maximumX = Math.max(maximumX, x);
   }
+  const reveal =
+    incomingPageProgress === undefined
+      ? 1
+      : incomingPageRevealProgress(incomingPageProgress);
+  const projectedOffset = -Math.max(0, maximumX) * (1 - reveal);
+  minimumX += projectedOffset;
+  maximumX += projectedOffset;
   const direction = xScale;
   const edgeX = metrics.edgeX * xScale;
   const edgeVelocityX = metrics.edgeVelocityX * xScale;
@@ -121,6 +130,9 @@ export function summarizePageTurnShadow(
     direction,
     false,
   );
+  if (reveal <= 0) {
+    shadow[2] = 0;
+  }
   return {
     center: shadow[0]!,
     width: shadow[1]!,

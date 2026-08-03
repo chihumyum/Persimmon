@@ -266,6 +266,13 @@ export const en = {
       none: "None",
       noneAccessibility: "Turn off page-turn animation",
     },
+    rapidPageTurn: {
+      section: "Edge Gesture",
+      title: "Hold to Riffle Forward",
+      description:
+        "Reverse-drag into the outer 15% and hold for 0.25 seconds to riffle rapidly",
+      accessibility: "Enable reverse edge hold for rapid forward page turns",
+    },
     settings: {
       groupAccessibility: "Reading settings categories",
       closeAccessibility: "Close reading settings",

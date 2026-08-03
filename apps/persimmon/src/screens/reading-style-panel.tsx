@@ -54,6 +54,7 @@ interface ReadingSettingsPanelProps {
   readonly hasBookFonts?: boolean;
   readonly layout: ReaderLayoutMode;
   readonly pageTurnAnimation: ReaderPageTurnAnimation;
+  readonly rapidPageTurnEnabled: boolean;
   readonly theme: ReaderTheme;
   readonly bottom: number;
   readonly onAnimationChange: (animation: ReaderPageTurnAnimation) => void;
@@ -62,6 +63,7 @@ interface ReadingSettingsPanelProps {
   readonly onDownloadFont: (familyId: string) => Promise<string>;
   readonly onImportFont: () => Promise<string | undefined>;
   readonly onLayoutChange: (layout: ReaderLayoutMode) => void;
+  readonly onRapidPageTurnEnabledChange: (enabled: boolean) => void;
   readonly onRemoveFont: (familyId: string) => Promise<void>;
 }
 
@@ -258,6 +260,7 @@ export function ReadingSettingsPanel({
   hasBookFonts = false,
   layout,
   pageTurnAnimation,
+  rapidPageTurnEnabled,
   theme,
   bottom,
   onAnimationChange,
@@ -266,6 +269,7 @@ export function ReadingSettingsPanel({
   onDownloadFont,
   onImportFont,
   onLayoutChange,
+  onRapidPageTurnEnabledChange,
   onRemoveFont,
 }: ReadingSettingsPanelProps) {
   const { t } = useTranslation();
@@ -360,7 +364,13 @@ export function ReadingSettingsPanel({
     replaceAppearance(resetPageAppearance(appearanceRef.current));
     onAnimationChange("natural");
     onLayoutChange("single");
-  }, [onAnimationChange, onLayoutChange, replaceAppearance]);
+    onRapidPageTurnEnabledChange(true);
+  }, [
+    onAnimationChange,
+    onLayoutChange,
+    onRapidPageTurnEnabledChange,
+    replaceAppearance,
+  ]);
   const resetTextSettings = useCallback(() => {
     replaceAppearance(resetTextAppearance(appearanceRef.current));
   }, [replaceAppearance]);
@@ -538,9 +548,11 @@ export function ReadingSettingsPanel({
             <ReadingPageSettings
               layout={layout}
               pageTurnAnimation={pageTurnAnimation}
+              rapidPageTurnEnabled={rapidPageTurnEnabled}
               theme={theme}
               onAnimationChange={onAnimationChange}
               onLayoutChange={onLayoutChange}
+              onRapidPageTurnEnabledChange={onRapidPageTurnEnabledChange}
             />
             <View style={styles.settingSection}>
               <Text style={[styles.sectionLabel, { color: theme.controlText }]}>

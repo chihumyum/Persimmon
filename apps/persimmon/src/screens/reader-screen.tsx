@@ -64,6 +64,7 @@ export interface ReaderScreenProps {
   readonly resolvedColorScheme: ResolvedReaderColorScheme;
   readonly layout: ReaderLayoutMode;
   readonly pageTurnAnimation: ReaderPageTurnAnimation;
+  readonly rapidPageTurnEnabled: boolean;
   readonly pageTurnTuning: ReaderPageTurnTuning;
   readonly opened: OpenedLibraryBook;
   readonly fontFamilies: readonly FontFamilyRecord[];
@@ -77,6 +78,7 @@ export interface ReaderScreenProps {
     animation: ReaderPageTurnAnimation,
   ) => void;
   readonly onPageTurnTuningChange: (tuning: ReaderPageTurnTuning) => void;
+  readonly onRapidPageTurnEnabledChange: (enabled: boolean) => void;
   readonly onProgress: (progress: ReaderProgress) => void;
   readonly onRemoveFont: (familyId: string) => Promise<void>;
 }
@@ -87,6 +89,7 @@ export function ReaderScreen({
   resolvedColorScheme,
   layout,
   pageTurnAnimation,
+  rapidPageTurnEnabled,
   pageTurnTuning,
   opened,
   fontFamilies,
@@ -98,6 +101,7 @@ export function ReaderScreen({
   onLayoutChange,
   onPageTurnAnimationChange,
   onPageTurnTuningChange,
+  onRapidPageTurnEnabledChange,
   onProgress,
   onRemoveFont,
 }: ReaderScreenProps) {
@@ -332,6 +336,7 @@ export function ReaderScreen({
                   appearance={appearance}
                   layout={readerFrame.layout}
                   pageTurnAnimation={pageTurnAnimation}
+                  rapidPageTurnEnabled={rapidPageTurnEnabled}
                   theme={theme}
                   topInset={insets.top}
                   bottomInset={insets.bottom}
@@ -463,11 +468,13 @@ export function ReaderScreen({
           hasBookFonts={Object.keys(opened.book.fontFamilies ?? {}).length > 0}
           layout={layout}
           pageTurnAnimation={pageTurnAnimation}
+          rapidPageTurnEnabled={rapidPageTurnEnabled}
           theme={theme}
           bottom={
             insets.bottom + uiSize.readerChrome + uiSize.readerChromePanelGap
           }
           onAnimationChange={onPageTurnAnimationChange}
+          onRapidPageTurnEnabledChange={onRapidPageTurnEnabledChange}
           onChange={onAppearanceChange}
           onClose={() => setSettingsVisible(false)}
           onDownloadFont={onDownloadFont}

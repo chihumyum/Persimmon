@@ -13,6 +13,7 @@ import {
   pageTurnPerspectiveProgressDerivative,
   projectPageTurnBookX,
 } from "./page-turn-perspective";
+import { incomingPageProjectedOffset } from "./page-turn-incoming-reveal";
 
 const PROFILE_FLOATS_PER_POINT = 4;
 const PROFILE_X = 0;
@@ -105,6 +106,12 @@ export function updatePageTurnRenderFrame(
   const halfCellBookX = (0.5 * bookXSpan) / sampleCount;
   const cameraBookX = pageTurnCameraBookX(minimumBookX, maximumBookX);
   const xScale = pageTurnXScale(state.direction);
+  const projectedOffset = incomingPageProjectedOffset(
+    state.profile,
+    cameraBookX,
+    xScale,
+    state.settlingIncomingPage ? state.settlingProgress : undefined,
+  );
 
   for (let sample = 0; sample < sampleCount; sample += 1) {
     visibleDepth[sample] = Number.NEGATIVE_INFINITY;
@@ -124,16 +131,18 @@ export function updatePageTurnRenderFrame(
     const offset = segmentIndex * PROFILE_FLOATS_PER_POINT;
     const startDepth = profile[offset + PROFILE_Z]!;
     const endDepth = profile[offset + PROFILE_FLOATS_PER_POINT + PROFILE_Z]!;
-    const startX = projectPageTurnBookX(
-      profile[offset + PROFILE_X]! * xScale,
-      startDepth,
-      cameraBookX,
-    );
-    const endX = projectPageTurnBookX(
-      profile[offset + PROFILE_FLOATS_PER_POINT + PROFILE_X]! * xScale,
-      endDepth,
-      cameraBookX,
-    );
+    const startX =
+      projectPageTurnBookX(
+        profile[offset + PROFILE_X]! * xScale,
+        startDepth,
+        cameraBookX,
+      ) + projectedOffset;
+    const endX =
+      projectPageTurnBookX(
+        profile[offset + PROFILE_FLOATS_PER_POINT + PROFILE_X]! * xScale,
+        endDepth,
+        cameraBookX,
+      ) + projectedOffset;
     const deltaX = endX - startX;
     if (Math.abs(deltaX) < 0.000001) {
       continue;
@@ -209,11 +218,12 @@ export function updatePageTurnRenderFrame(
   let maximumX = Number.NEGATIVE_INFINITY;
   for (let index = 0; index < DEFAULT_PAGE_PROFILE_POINTS; index += 1) {
     const offset = index * PROFILE_FLOATS_PER_POINT;
-    const x = projectPageTurnBookX(
-      profile[offset + PROFILE_X]! * xScale,
-      profile[offset + PROFILE_Z]!,
-      cameraBookX,
-    );
+    const x =
+      projectPageTurnBookX(
+        profile[offset + PROFILE_X]! * xScale,
+        profile[offset + PROFILE_Z]!,
+        cameraBookX,
+      ) + projectedOffset;
     minimumX = Math.min(minimumX, x);
     maximumX = Math.max(maximumX, x);
   }

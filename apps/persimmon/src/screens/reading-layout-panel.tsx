@@ -3,7 +3,7 @@ import type {
   ReaderPageTurnAnimation,
   ReaderTheme,
 } from "@persimmon/reader-skia";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, Switch, View } from "react-native";
 import { useTranslation } from "react-i18next";
 
 import { UiIcon, type UiIconName } from "../components/ui-icon";
@@ -14,17 +14,21 @@ import { uiRadius, uiSpace } from "../components/ui-tokens";
 interface ReadingPageSettingsProps {
   readonly layout: ReaderLayoutMode;
   readonly pageTurnAnimation: ReaderPageTurnAnimation;
+  readonly rapidPageTurnEnabled: boolean;
   readonly theme: ReaderTheme;
   readonly onAnimationChange: (animation: ReaderPageTurnAnimation) => void;
   readonly onLayoutChange: (layout: ReaderLayoutMode) => void;
+  readonly onRapidPageTurnEnabledChange: (enabled: boolean) => void;
 }
 
 export function ReadingPageSettings({
   layout,
   pageTurnAnimation,
+  rapidPageTurnEnabled,
   theme,
   onAnimationChange,
   onLayoutChange,
+  onRapidPageTurnEnabledChange,
 }: ReadingPageSettingsProps) {
   const { t } = useTranslation();
   const layoutOptions: readonly {
@@ -132,6 +136,46 @@ export function ReadingPageSettings({
           onChange={onAnimationChange}
         />
       </View>
+
+      <View style={styles.section}>
+        <Text style={[styles.sectionLabel, { color: theme.controlText }]}>
+          {t("reader.rapidPageTurn.section")}
+        </Text>
+        <View
+          style={[
+            styles.rapidPageTurnRow,
+            {
+              backgroundColor: theme.panelRaised,
+              borderColor: theme.border,
+            },
+          ]}
+        >
+          <View style={styles.rapidPageTurnCopy}>
+            <Text
+              style={[styles.rapidPageTurnTitle, { color: theme.controlText }]}
+            >
+              {t("reader.rapidPageTurn.title")}
+            </Text>
+            <Text
+              style={[
+                styles.rapidPageTurnDescription,
+                { color: theme.secondaryText },
+              ]}
+            >
+              {t("reader.rapidPageTurn.description")}
+            </Text>
+          </View>
+          <Switch
+            accessibilityLabel={t("reader.rapidPageTurn.accessibility")}
+            accessibilityRole="switch"
+            ios_backgroundColor={theme.panelMuted}
+            thumbColor={theme.paper}
+            trackColor={{ false: theme.panelMuted, true: theme.accent }}
+            value={rapidPageTurnEnabled}
+            onValueChange={onRapidPageTurnEnabledChange}
+          />
+        </View>
+      </View>
     </>
   );
 }
@@ -158,6 +202,27 @@ const styles = StyleSheet.create({
   optionRow: {
     flexDirection: "row",
     gap: uiSpace.sm + uiSpace.hairline,
+  },
+  rapidPageTurnCopy: {
+    flex: 1,
+    gap: uiSpace.xxs,
+  },
+  rapidPageTurnDescription: {
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  rapidPageTurnRow: {
+    alignItems: "center",
+    borderRadius: uiRadius.card,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: uiSpace.md,
+    paddingHorizontal: uiSpace.md,
+    paddingVertical: uiSpace.sm,
+  },
+  rapidPageTurnTitle: {
+    fontSize: 13,
+    fontWeight: "700",
   },
   section: {
     gap: uiSpace.sm,

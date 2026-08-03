@@ -19,6 +19,18 @@ import {
 } from "./page-turn-worklet";
 
 describe("UI-runtime page-turn engine", () => {
+  it("opens the release point only for an explicitly widened lane", () => {
+    const tuning = { ...DEFAULT_PAGE_TURN_TUNING, releaseX: 2 };
+    const ordinary = createPageTurnWorkletState(tuning);
+    const rapid = createPageTurnWorkletState(tuning, 1);
+
+    expect(ordinary.tuningReleaseX).toBe(0.8);
+    expect(rapid.tuningReleaseX).toBe(1);
+
+    setPageTurnWorkletTuning(ordinary, tuning, 1);
+    expect(ordinary.tuningReleaseX).toBe(1);
+  });
+
   it("preserves the iOS two-thirds commit threshold", () => {
     const commitThreshold = (0.53 * 2) / 3;
     const tuning = {
@@ -220,6 +232,22 @@ describe("UI-runtime page-turn engine", () => {
     }
 
     expect(worklet.outcome).toBe(1);
+  });
+
+  it("retracts an incoming previous page after the hand reverses", () => {
+    const worklet = createPageTurnWorkletState();
+    beginPageTurnWorkletDrag(worklet, -1, 0.96, 0.5, 0, true);
+    movePageTurnWorkletDrag(worklet, 0.56, 0.5, 0.55, 0.2);
+    movePageTurnWorkletDrag(worklet, 0.93, 0.5, 0.04, 0.5);
+
+    expect(endPageTurnWorkletDrag(worklet, 0.5)).toBe(-1);
+    expect(worklet.phase).toBe(PAGE_TURN_WORKLET_REVERT);
+    for (let frame = 0; frame < 120; frame += 1) {
+      advancePageTurnWorklet(worklet, 1 / 60);
+    }
+
+    expect(worklet.outcome).toBe(-1);
+    expect(worklet.settlingProgress).toBe(0);
   });
 });
 

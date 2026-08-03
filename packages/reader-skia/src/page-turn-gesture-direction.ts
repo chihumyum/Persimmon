@@ -23,6 +23,41 @@ export function pageTurnDirectionFromTranslation(
 }
 
 /**
+ * Resolves an ordinary drag after applying the physical two-page spread model.
+ *
+ * A single page keeps accepting either horizontal direction. In a spread, the
+ * left physical page only turns right and the right physical page only turns
+ * left. The exact spine coordinate belongs to the right page so the two halves
+ * remain a deterministic, non-overlapping partition.
+ */
+export function normalPageTurnDirectionForTouch(
+  localX: number,
+  translationX: number,
+  spread: boolean,
+  interactionWidth: number,
+): PageTurnDirection | undefined {
+  "worklet";
+  const direction = pageTurnDirectionFromTranslation(translationX);
+  if (!spread || direction === undefined) {
+    return direction;
+  }
+  if (
+    !Number.isFinite(localX) ||
+    !Number.isFinite(interactionWidth) ||
+    interactionWidth <= 0 ||
+    localX < 0 ||
+    localX > interactionWidth
+  ) {
+    return undefined;
+  }
+  const startsOnLeftPage = localX < interactionWidth * 0.5;
+  if (direction === -1) {
+    return startsOnLeftPage ? direction : undefined;
+  }
+  return startsOnLeftPage ? undefined : direction;
+}
+
+/**
  * Recovers the direction from a terminal Pan sample when Android recognizes a
  * short fling but coalesces every active update into `onEnd`.
  *
@@ -45,6 +80,33 @@ export function pageTurnTerminalDirection(
     return undefined;
   }
   return pageTurnDirectionFromTranslation(translationX);
+}
+
+/**
+ * Maps a touch origin onto the sheet that will be turned.
+ *
+ * A spread always uses the complete two-page interaction width. Combined with
+ * `normalPageTurnDirectionForTouch`, every valid ordinary drag therefore starts
+ * at bookX 0.5..1 and has a full grip; the old near-spine weak-grip range cannot
+ * be reached, regardless of whether rapid page turns are enabled. A single page
+ * preserves its original physical-page mapping.
+ */
+export function pageTurnStartBookXForTouch(
+  localX: number,
+  direction: PageTurnDirection,
+  spread: boolean,
+  physicalPageWidth: number,
+  interactionWidth: number,
+): number {
+  "worklet";
+  const clampUnit = (value: number): number => Math.min(1, Math.max(0, value));
+  if (spread) {
+    const normalizedX = clampUnit(localX / Math.max(1, interactionWidth));
+    return direction === 1 ? normalizedX : 1 - normalizedX;
+  }
+  return direction === 1
+    ? clampUnit(localX / physicalPageWidth)
+    : clampUnit(1 - localX / physicalPageWidth);
 }
 
 /**

@@ -5,7 +5,7 @@ import {
 
 export type PageCaptureTier = "active" | "prefetch" | "background";
 
-export type PageTurnInputKind = "gesture" | "tap";
+export type PageTurnInputKind = "gesture" | "rapid" | "tap";
 
 export interface PageCaptureQualityInput {
   readonly tier: PageCaptureTier;

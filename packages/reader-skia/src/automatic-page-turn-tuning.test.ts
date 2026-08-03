@@ -20,6 +20,12 @@ describe("automatic page turn tuning", () => {
     ).toBeCloseTo(3.3);
   });
 
+  it("keeps the automatic solver within the click-turn release range", () => {
+    expect(normalizeAutomaticPageTurnTuning({ releaseX: 2 }).releaseX).toBe(
+      0.8,
+    );
+  });
+
   it("clamps every live control to the supported solver range", () => {
     expect(
       normalizeAutomaticPageTurnTuning({

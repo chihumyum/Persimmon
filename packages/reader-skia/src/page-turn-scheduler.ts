@@ -3,7 +3,16 @@ import type { ReleasedPageTurnGesture } from "@persimmon/page-turn-core";
 import { PAGE_TURN_LANE_HARD_LIMIT } from "./page-turn-concurrency";
 import { samePageAddress, type PageAddress } from "./section-navigation";
 
+/** Roughly 10 launches per second while preserving the two-lane burst budget. */
 export const PAGE_TURN_START_INTERVAL_MS = 100;
+
+export type ScheduledPageTurnMotion = "tap" | "rapid" | "gesture";
+
+export function isProgrammaticPageTurnMotion(
+  motion: ScheduledPageTurnMotion,
+): boolean {
+  return motion !== "gesture";
+}
 
 export interface ScheduledPageTurn {
   readonly id: string;
@@ -39,7 +48,7 @@ export interface ScheduledPageTurn {
    * that a cold texture is visible.
    */
   readonly presentationReady: boolean;
-  readonly motion: "tap" | "gesture";
+  readonly motion: ScheduledPageTurnMotion;
   readonly gestureRelease?: ReleasedPageTurnGesture;
   readonly completed: boolean;
 }
@@ -89,6 +98,22 @@ export function requestScheduledPageTurn(
     requestedAtMs,
     false,
     "tap",
+  );
+}
+
+export function requestScheduledRapidPageTurn(
+  state: PageTurnSchedulerState,
+  direction: 1 | -1,
+  scheduler: PageTurnScheduler,
+  requestedAtMs = Date.now(),
+): PageTurnSchedulerState {
+  return tryStartScheduledTurn(
+    state,
+    direction,
+    scheduler,
+    requestedAtMs,
+    false,
+    "rapid",
   );
 }
 
@@ -182,7 +207,7 @@ export function markScheduledPageTurnLaneReady(
 /**
  * Opens the native presentation gate for a source-order batch. If texture or
  * React work made a reserved cadence slot stale, shift this turn and every
- * later tap by the same amount. This preserves 100 ms spacing without letting
+ * later tap by the same amount. This preserves cadence spacing without letting
  * several overdue lanes catch up on one UI frame.
  */
 export function markScheduledPageTurnsPresented(
@@ -198,14 +223,14 @@ export function markScheduledPageTurnsPresented(
   let cumulativeShiftMs = 0;
   const turns = state.turns.map((turn) => {
     let startAtMs =
-      turn.motion === "tap" && !turn.completed
+      isProgrammaticPageTurnMotion(turn.motion) && !turn.completed
         ? turn.startAtMs + cumulativeShiftMs
         : turn.startAtMs;
     let presentationReady = turn.presentationReady;
     if (
       presentedIds.has(turn.id) &&
       !turn.completed &&
-      turn.motion === "tap" &&
+      isProgrammaticPageTurnMotion(turn.motion) &&
       !turn.presentationReady
     ) {
       const overdueMs = Math.max(0, presentedAtMs - startAtMs);
@@ -291,7 +316,7 @@ function tryStartScheduledTurn(
   scheduler: PageTurnScheduler,
   requestedAtMs: number,
   interactive: boolean,
-  motion: "tap" | "gesture",
+  motion: ScheduledPageTurnMotion,
   gestureRelease?: ReleasedPageTurnGesture,
   respectThrottle = true,
 ): PageTurnSchedulerState {
@@ -306,7 +331,7 @@ function tryStartScheduledTurn(
   if (occupiedLanes.size >= maximumConcurrentTurns) {
     return state;
   }
-  if (motion === "tap") {
+  if (isProgrammaticPageTurnMotion(motion)) {
     const maximumConcurrentTapTurns = Math.min(
       maximumConcurrentTurns,
       Math.max(
@@ -316,8 +341,8 @@ function tryStartScheduledTurn(
         ),
       ),
     );
-    const activeTapTurns = state.turns.filter(
-      (turn) => turn.motion === "tap",
+    const activeTapTurns = state.turns.filter((turn) =>
+      isProgrammaticPageTurnMotion(turn.motion),
     ).length;
     if (activeTapTurns >= maximumConcurrentTapTurns) {
       return state;
@@ -343,7 +368,7 @@ function tryStartScheduledTurn(
     scheduler.minimumTurnIntervalMs ?? PAGE_TURN_START_INTERVAL_MS,
   );
   const scheduledStartAtMs =
-    motion === "tap" && respectThrottle
+    isProgrammaticPageTurnMotion(motion) && respectThrottle
       ? Math.max(requestedAtMs, state.nextTapStartAtMs)
       : requestedAtMs;
   return {
@@ -363,10 +388,9 @@ function tryStartScheduledTurn(
         scheduledStartAtMs,
       ),
     ],
-    nextTapStartAtMs:
-      motion === "tap"
-        ? scheduledStartAtMs + minimumTurnIntervalMs
-        : state.nextTapStartAtMs,
+    nextTapStartAtMs: isProgrammaticPageTurnMotion(motion)
+      ? scheduledStartAtMs + minimumTurnIntervalMs
+      : state.nextTapStartAtMs,
   };
 }
 
@@ -396,7 +420,7 @@ function createTurn(
   lane: number,
   interactive: boolean,
   scheduler: PageTurnScheduler,
-  motion: "tap" | "gesture" = "tap",
+  motion: ScheduledPageTurnMotion = "tap",
   gestureRelease?: ReleasedPageTurnGesture,
   startAtMs = 0,
 ): ScheduledPageTurn {

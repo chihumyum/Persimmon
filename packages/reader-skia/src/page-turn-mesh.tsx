@@ -53,6 +53,7 @@ interface PageTurnMeshProps {
   readonly face?: PageTurnFace | "both";
   readonly drawShadow?: boolean;
   readonly direction?: 1 | -1;
+  readonly incomingPageProgress?: number;
 }
 
 export interface PageTurnMeshHandle {
@@ -65,6 +66,7 @@ export function buildWebPageTurnRenderFrame(
   viewportWidth: number,
   spread: boolean,
   direction: 1 | -1 = 1,
+  incomingPageProgress?: number,
 ): PageTurnRenderFrame {
   return {
     mapping: buildPageTurnLookup(
@@ -73,6 +75,7 @@ export function buildWebPageTurnRenderFrame(
       spread ? -1 : 0,
       1,
       direction,
+      incomingPageProgress,
     ),
     shadow: [...shadow],
   };
@@ -227,6 +230,7 @@ const LookupPageTurnMesh = forwardRef<PageTurnMeshHandle, PageTurnMeshProps>(
       face = "both",
       drawShadow = true,
       direction = 1,
+      incomingPageProgress,
     },
     ref,
   ) {
@@ -251,8 +255,16 @@ const LookupPageTurnMesh = forwardRef<PageTurnMeshHandle, PageTurnMeshProps>(
         minimumBookX,
         maximumBookX,
         direction,
+        incomingPageProgress,
       );
-    }, [direction, initialProfile, lookupSamples, maximumBookX, minimumBookX]);
+    }, [
+      direction,
+      incomingPageProgress,
+      initialProfile,
+      lookupSamples,
+      maximumBookX,
+      minimumBookX,
+    ]);
     const fallbackFrame = useSharedValue<PageTurnRenderFrame>({
       mapping: initialLookup,
       shadow: [0.5, 0.045, 0, 1],

@@ -67,6 +67,10 @@ describe("page-turn gesture kinematics", () => {
         gestureCommitThreshold: 0,
       }).gestureCommitThreshold,
     ).toBe(MIN_GESTURE_COMMIT_THRESHOLD);
+    expect(
+      clampPageTurnTuning({ ...DEFAULT_PAGE_TURN_TUNING, releaseX: 2 }, 1)
+        .releaseX,
+    ).toBe(1);
   });
 
   it("maps release speed to a bounded propagation speed", () => {

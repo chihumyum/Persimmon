@@ -12,6 +12,8 @@ export interface AutomaticPageTurnTuning {
   readonly playbackSpeed: number;
 }
 
+export const AUTOMATIC_PAGE_TURN_MAXIMUM_RELEASE_X = 0.8;
+
 export const DEFAULT_AUTOMATIC_PAGE_TURN_TUNING: AutomaticPageTurnTuning = {
   releaseX: 0.72,
   liftVelocity: 1.5,
@@ -23,30 +25,35 @@ export const DEFAULT_AUTOMATIC_PAGE_TURN_TUNING: AutomaticPageTurnTuning = {
 export function normalizeAutomaticPageTurnTuning(
   tuning: Partial<AutomaticPageTurnTuning> | undefined,
 ): AutomaticPageTurnTuning {
-  const core = clampPageTurnTuning({
-    releaseX: finiteOrDefault(
-      tuning?.releaseX,
-      DEFAULT_AUTOMATIC_PAGE_TURN_TUNING.releaseX,
-    ),
-    liftVelocity: finiteOrDefault(
-      tuning?.liftVelocity,
-      DEFAULT_AUTOMATIC_PAGE_TURN_TUNING.liftVelocity,
-    ),
-    liftToLeft: finiteOrDefault(
-      tuning?.liftToLeft,
-      DEFAULT_AUTOMATIC_PAGE_TURN_TUNING.liftToLeft,
-    ),
-    curvatureRelaxation: finiteOrDefault(
-      tuning?.curvatureRelaxation,
-      DEFAULT_AUTOMATIC_PAGE_TURN_TUNING.curvatureRelaxation,
-    ),
-    pageWeight: DEFAULT_PAGE_TURN_TUNING.pageWeight,
-    gestureCommitThreshold: DEFAULT_PAGE_TURN_TUNING.gestureCommitThreshold,
-    gestureMinimumSpeedScale: DEFAULT_PAGE_TURN_TUNING.gestureMinimumSpeedScale,
-    gestureMaximumSpeedScale: DEFAULT_PAGE_TURN_TUNING.gestureMaximumSpeedScale,
-    gestureVelocityGain: DEFAULT_PAGE_TURN_TUNING.gestureVelocityGain,
-    gestureIdleDecaySeconds: DEFAULT_PAGE_TURN_TUNING.gestureIdleDecaySeconds,
-  });
+  const core = clampPageTurnTuning(
+    {
+      releaseX: finiteOrDefault(
+        tuning?.releaseX,
+        DEFAULT_AUTOMATIC_PAGE_TURN_TUNING.releaseX,
+      ),
+      liftVelocity: finiteOrDefault(
+        tuning?.liftVelocity,
+        DEFAULT_AUTOMATIC_PAGE_TURN_TUNING.liftVelocity,
+      ),
+      liftToLeft: finiteOrDefault(
+        tuning?.liftToLeft,
+        DEFAULT_AUTOMATIC_PAGE_TURN_TUNING.liftToLeft,
+      ),
+      curvatureRelaxation: finiteOrDefault(
+        tuning?.curvatureRelaxation,
+        DEFAULT_AUTOMATIC_PAGE_TURN_TUNING.curvatureRelaxation,
+      ),
+      pageWeight: DEFAULT_PAGE_TURN_TUNING.pageWeight,
+      gestureCommitThreshold: DEFAULT_PAGE_TURN_TUNING.gestureCommitThreshold,
+      gestureMinimumSpeedScale:
+        DEFAULT_PAGE_TURN_TUNING.gestureMinimumSpeedScale,
+      gestureMaximumSpeedScale:
+        DEFAULT_PAGE_TURN_TUNING.gestureMaximumSpeedScale,
+      gestureVelocityGain: DEFAULT_PAGE_TURN_TUNING.gestureVelocityGain,
+      gestureIdleDecaySeconds: DEFAULT_PAGE_TURN_TUNING.gestureIdleDecaySeconds,
+    },
+    AUTOMATIC_PAGE_TURN_MAXIMUM_RELEASE_X,
+  );
   const requestedPlaybackSpeed =
     tuning?.playbackSpeed ?? DEFAULT_AUTOMATIC_PAGE_TURN_TUNING.playbackSpeed;
   return {

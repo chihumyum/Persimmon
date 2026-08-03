@@ -535,6 +535,12 @@ export function PersimmonApp() {
     },
     [updateReaderSettings],
   );
+  const updateRapidPageTurnEnabled = useCallback(
+    (rapidPageTurnEnabled: boolean) => {
+      updateReaderSettings({ rapidPageTurnEnabled });
+    },
+    [updateReaderSettings],
+  );
 
   const deleteEntry = useCallback(
     (entry: LibraryBookSummary) => {
@@ -658,6 +664,7 @@ export function PersimmonApp() {
         resolvedColorScheme={resolvedColorScheme}
         layout={readerSettings.layout}
         pageTurnAnimation={readerSettings.pageTurnAnimation}
+        rapidPageTurnEnabled={readerSettings.rapidPageTurnEnabled}
         pageTurnTuning={readerSettings.pageTurnTuning}
         opened={activeBook}
         fontFamilies={fontFamilies}
@@ -673,6 +680,7 @@ export function PersimmonApp() {
         onLayoutChange={updateLayout}
         onPageTurnAnimationChange={updatePageTurnAnimation}
         onPageTurnTuningChange={updatePageTurnTuning}
+        onRapidPageTurnEnabledChange={updateRapidPageTurnEnabled}
         onProgress={updateProgress}
         onRemoveFont={removeFont}
       />

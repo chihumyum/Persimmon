@@ -1,6 +1,31 @@
 import { describe, expect, it } from "vitest";
 
-import { NativePagerPresentationGate } from "./native-pager-presentation";
+import {
+  NativePagerFirstFrameGate,
+  NativePagerPresentationGate,
+} from "./native-pager-presentation";
+
+describe("native pager first-frame barrier", () => {
+  it("does not release a consumed turn before its presented start", () => {
+    const gate = new NativePagerFirstFrameGate();
+    gate.reserve("turn:cold");
+
+    expect(gate.confirmPresented("turn:other")).toBe(false);
+    expect(gate.confirmPresented("turn:cold")).toBe(true);
+    expect(gate.confirmPresented("turn:cold")).toBe(false);
+  });
+
+  it("forgets an unpresented turn when native cancels or resets", () => {
+    const gate = new NativePagerFirstFrameGate();
+    gate.reserve("turn:cancelled");
+    gate.discard("turn:cancelled");
+    expect(gate.confirmPresented("turn:cancelled")).toBe(false);
+
+    gate.reserve("turn:reset");
+    gate.reset();
+    expect(gate.confirmPresented("turn:reset")).toBe(false);
+  });
+});
 
 describe("native pager presentation handoff", () => {
   it("waits until the declarative canvas has the consumed target", () => {

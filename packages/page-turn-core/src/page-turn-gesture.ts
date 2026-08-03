@@ -75,14 +75,18 @@ const COMMIT_ACCELERATION_LIMIT = 10;
 const COMMIT_VELOCITY_GAIN = 0.18;
 const COMMIT_ACCELERATION_GAIN = 0.035;
 
-export function clampPageTurnTuning(tuning: PageTurnTuning): PageTurnTuning {
+export function clampPageTurnTuning(
+  tuning: PageTurnTuning,
+  maximumReleaseX = 0.8,
+): PageTurnTuning {
   const gestureMinimumSpeedScale = clamp(
     tuning.gestureMinimumSpeedScale,
     0.5,
     1.5,
   );
+  const safeMaximumReleaseX = clamp(maximumReleaseX, 0.58, 1);
   return {
-    releaseX: clamp(tuning.releaseX, 0.58, 0.8),
+    releaseX: clamp(tuning.releaseX, 0.58, safeMaximumReleaseX),
     liftVelocity: clamp(tuning.liftVelocity, 0.7, 1.8),
     liftToLeft: clamp(tuning.liftToLeft, 1.4, 2.6),
     curvatureRelaxation: clamp(tuning.curvatureRelaxation, 3.5, 14),

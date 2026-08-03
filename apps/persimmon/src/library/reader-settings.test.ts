@@ -36,6 +36,7 @@ describe("reader settings", () => {
       },
       layout: "spread",
       pageTurnAnimation: "natural",
+      rapidPageTurnEnabled: true,
       pageTurnTuning: DEFAULT_READER_PAGE_TURN_TUNING,
     });
   });
@@ -78,6 +79,7 @@ describe("reader settings", () => {
       },
       layout: "single",
       pageTurnAnimation: "natural",
+      rapidPageTurnEnabled: true,
       pageTurnTuning: DEFAULT_READER_PAGE_TURN_TUNING,
     });
   });
@@ -95,6 +97,16 @@ describe("reader settings", () => {
       },
       pageTurnAnimation: "none",
     });
+  });
+
+  it("defaults rapid page turns on while preserving an explicit opt-out", () => {
+    expect(normalizeSettings({}).rapidPageTurnEnabled).toBe(true);
+    expect(
+      normalizeSettings({ rapidPageTurnEnabled: false }).rapidPageTurnEnabled,
+    ).toBe(false);
+    expect(
+      normalizeSettings({ rapidPageTurnEnabled: "no" }).rapidPageTurnEnabled,
+    ).toBe(true);
   });
 
   it("preserves the supported cool reader theme", () => {
@@ -158,7 +170,7 @@ describe("reader settings", () => {
     });
   });
 
-  it("discards legacy click tuning while retaining gesture tuning", () => {
+  it("ignores obsolete rapid and click tuning while preserving gestures", () => {
     const gesture = {
       ...DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
       liftVelocity: 1.5,
@@ -167,6 +179,13 @@ describe("reader settings", () => {
     expect(
       normalizeSettings({
         pageTurnTuning: {
+          rapid: {
+            releaseX: 1,
+            liftVelocity: 1.8,
+            liftToLeft: 2.6,
+            curvatureRelaxation: 14,
+            playbackSpeed: 2,
+          },
           click: {
             releaseX: 0.58,
             liftVelocity: 0.7,
@@ -177,7 +196,9 @@ describe("reader settings", () => {
           gesture,
         },
       }).pageTurnTuning,
-    ).toEqual({ gesture });
+    ).toEqual({
+      gesture,
+    });
   });
 
   it("falls back for corrupt settings", () => {

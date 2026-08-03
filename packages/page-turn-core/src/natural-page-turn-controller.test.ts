@@ -5,10 +5,26 @@ import {
   NaturalPageTurnController,
   MIN_PRESSED_EDGE_X,
   SLOW_COMMIT_EDGE_X,
-  automaticPageTurnSolverDurationSeconds,
+  automaticPageTurnSolverDurationSecondsForDirection,
 } from "./index";
 
 describe("natural page turn controller", () => {
+  it("opens the release point only when the caller opts into 1.0", () => {
+    const tuning = { ...DEFAULT_PAGE_TURN_TUNING, releaseX: 1 };
+    const ordinary = new NaturalPageTurnController(tuning);
+    const rapid = new NaturalPageTurnController(tuning, 1);
+
+    ordinary.play();
+    rapid.play();
+    for (let frame = 0; frame < 3; frame += 1) {
+      ordinary.advance(0.04);
+      rapid.advance(0.04);
+    }
+
+    expect(ordinary.getMetrics().edgeX).toBeCloseTo(0.8, 8);
+    expect(rapid.getMetrics().edgeX).toBeCloseTo(1, 8);
+  });
+
   it("replays the reference automatic press and turn without shape shortcuts", () => {
     const controller = new NaturalPageTurnController();
     controller.play();
@@ -30,9 +46,11 @@ describe("natural page turn controller", () => {
     }
 
     expect(controller.getPhase()).toBe("completed");
-    const estimatedDuration = automaticPageTurnSolverDurationSeconds(
-      DEFAULT_PAGE_TURN_TUNING,
-    );
+    const estimatedDuration =
+      automaticPageTurnSolverDurationSecondsForDirection(
+        DEFAULT_PAGE_TURN_TUNING,
+        1,
+      );
     expect(elapsed).toBeGreaterThanOrEqual(estimatedDuration);
     expect(elapsed).toBeLessThan(estimatedDuration + 1 / 120);
   });
@@ -177,8 +195,18 @@ describe("natural page turn controller", () => {
     expect(Math.abs(controller.getMetrics().edgeX)).toBeLessThan(0.1);
     expect(controller.getMetrics().maxLift).toBeGreaterThan(0.6);
 
+    const firstPose = controller.getPoints().map((point) => ({ ...point }));
     controller.advance(1 / 60);
     expect(controller.getPhase()).toBe("settle");
+    expect(controller.getIncomingPageProgress()).toBeGreaterThan(0);
+    controller.getPoints().forEach((point, index) => {
+      expect(point.x).toBeCloseTo(firstPose[index]!.x, 8);
+      expect(point.z).toBeCloseTo(firstPose[index]!.z, 8);
+    });
+
+    for (let frame = 0; frame < 14; frame += 1) {
+      controller.advance(1 / 60);
+    }
     expect(controller.getMetrics().edgeX).toBeLessThan(0);
 
     advanceUntilSettled(controller);
@@ -204,6 +232,20 @@ describe("natural page turn controller", () => {
     advanceUntilSettled(controller);
     expect(controller.getPhase()).toBe("completed");
     expect(controller.getMetrics().edgeX).toBeCloseTo(-1, 5);
+  });
+
+  it("withdraws an incoming page when the hand reverses before release", () => {
+    const controller = new NaturalPageTurnController();
+    expect(controller.beginSettlingPageDrag(0)).toBe(true);
+    controller.moveSettlingPageDrag(0.55, 0.2);
+    controller.moveSettlingPageDrag(0.04, 0.5);
+
+    expect(controller.getIncomingPageProgress()).toBeCloseTo(0.04, 8);
+    expect(controller.endSettlingPageDrag(0.5)).toBe("revert");
+    advanceUntilSettled(controller);
+
+    expect(controller.getPhase()).toBe("idle");
+    expect(controller.getIncomingPageProgress()).toBe(0);
   });
 });
 

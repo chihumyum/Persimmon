@@ -70,6 +70,7 @@ interface NativePagerSkiaViewApi {
     spread: boolean,
     contentRevision: number,
     durationMs: number,
+    rapidDurationMs: number,
     launchIntervalMs: number,
     paperColor: number,
   ) => void;
@@ -80,12 +81,17 @@ interface NativePagerSkiaViewApi {
     automaticLiftVelocity: number,
     automaticLiftToLeft: number,
     automaticCurvatureRelaxation: number,
+    rapidReleaseX: number,
+    rapidLiftVelocity: number,
+    rapidLiftToLeft: number,
+    rapidCurvatureRelaxation: number,
     gestureReleaseX: number,
     gestureLiftVelocity: number,
     gestureLiftToLeft: number,
     gestureCurvatureRelaxation: number,
   ) => void;
   pagerConsumeInput?: (nativeId: number, direction: 1 | -1) => boolean;
+  pagerTryConsumeInput?: (nativeId: number, direction: 1 | -1) => boolean;
   pagerBeginGesture?: (
     nativeId: number,
     direction: 1 | -1,
@@ -145,6 +151,7 @@ const nativePagerRnApi = {
   setInputEnabled: nativePagerWorkletApi?.pagerSetInputEnabled,
   configureMotion: nativePagerWorkletApi?.pagerConfigureMotion,
   consumeInput: nativePagerWorkletApi?.pagerConsumeInput,
+  tryConsumeInput: nativePagerWorkletApi?.pagerTryConsumeInput,
   beginGesture: nativePagerWorkletApi?.pagerBeginGesture,
   updateGesture: nativePagerWorkletApi?.pagerUpdateGesture,
   endGesture: nativePagerWorkletApi?.pagerEndGesture,
@@ -168,7 +175,7 @@ export function nativePagerCompositorAvailable(): boolean {
     return false;
   }
   nativePagerAvailability =
-    protocolVersion >= 5 &&
+    protocolVersion >= 7 &&
     typeof nativePagerRnApi.ready === "function" &&
     typeof nativePagerRnApi.enqueue === "function" &&
     typeof nativePagerRnApi.enqueuePicture === "function" &&
@@ -178,6 +185,7 @@ export function nativePagerCompositorAvailable(): boolean {
     typeof nativePagerRnApi.setInputEnabled === "function" &&
     typeof nativePagerRnApi.configureMotion === "function" &&
     typeof nativePagerRnApi.consumeInput === "function" &&
+    typeof nativePagerRnApi.tryConsumeInput === "function" &&
     typeof nativePagerRnApi.beginGesture === "function" &&
     typeof nativePagerRnApi.updateGesture === "function" &&
     typeof nativePagerRnApi.endGesture === "function" &&
@@ -336,6 +344,7 @@ export function stockNativePagerPicture(
       command.spread,
       command.contentRevision,
       command.durationMs,
+      command.rapidDurationMs,
       command.launchIntervalMs,
       command.paperColor,
     );
@@ -376,6 +385,10 @@ export function configureNativePagerMotion(
       config.automatic.liftVelocity,
       config.automatic.liftToLeft,
       config.automatic.curvatureRelaxation,
+      config.rapid.releaseX,
+      config.rapid.liftVelocity,
+      config.rapid.liftToLeft,
+      config.rapid.curvatureRelaxation,
       config.gesture.releaseX,
       config.gesture.liftVelocity,
       config.gesture.liftToLeft,
@@ -394,6 +407,22 @@ export function consumeNativePagerInputOnUI(
   "worklet";
   try {
     return nativePagerWorkletApi?.pagerConsumeInput?.(nativeId, direction);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Consumes a stocked page immediately or rejects this cadence tick. Unlike a
+ * real tap, a held riffle must never queue work that can outlive the finger.
+ */
+export function tryConsumeNativePagerInputOnUI(
+  nativeId: number,
+  direction: 1 | -1,
+): boolean | undefined {
+  "worklet";
+  try {
+    return nativePagerWorkletApi?.pagerTryConsumeInput?.(nativeId, direction);
   } catch {
     return undefined;
   }

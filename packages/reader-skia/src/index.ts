@@ -1,6 +1,7 @@
 export const READER_RENDERER_VERSION = 1;
 
 export {
+  AUTOMATIC_PAGE_TURN_MAXIMUM_RELEASE_X,
   DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
   normalizeAutomaticPageTurnTuning,
   type AutomaticPageTurnTuning,

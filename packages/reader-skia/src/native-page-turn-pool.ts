@@ -16,7 +16,7 @@ export interface NativeProgrammaticPageTurnCommand {
    */
   readonly readyToStart: boolean;
   readonly settlingIncomingPage: boolean;
-  readonly motion: "tap" | "gesture";
+  readonly motion: "tap" | "rapid" | "gesture";
   /**
    * Automatic turns may be accelerated while a rapid-tap burst is active.
    * Gesture releases always use their physical 1x clock.
