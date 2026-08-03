@@ -446,6 +446,33 @@ class NativeLibraryRepository implements LibraryRepository {
     );
   }
 
+  async clearAllData(): Promise<void> {
+    this.assertInitialized();
+    const storageKeys = await AsyncStorage.getAllKeys();
+    const libraryKeys = storageKeys.filter(
+      (key) =>
+        key === INDEX_KEY ||
+        key === READER_SETTINGS_KEY ||
+        key === LEGACY_LIBRARY_KEY ||
+        key === LEGACY_MIGRATION_KEY ||
+        key.startsWith(PROGRESS_PREFIX),
+    );
+
+    if (this.root.exists) {
+      this.root.delete();
+    }
+    this.root.create({ idempotent: true, intermediates: true });
+    this.booksDirectory.create({ idempotent: true });
+    this.stagingDirectory.create({ idempotent: true });
+    this.manifests.clear();
+
+    await AsyncStorage.multiRemove(libraryKeys);
+    await AsyncStorage.multiSet([
+      [INDEX_KEY, "[]"],
+      [LEGACY_MIGRATION_KEY, "true"],
+    ]);
+  }
+
   private assertInitialized(): void {
     if (!this.initialized) {
       throw new Error("LibraryRepository.initialize() must be called first");

@@ -54,6 +54,15 @@ export class GoogleDriveCloudRepository implements CloudSyncRepository {
 
   constructor(private readonly client: GoogleDriveClient) {}
 
+  async clearAllData(): Promise<number> {
+    const files = await this.client.listAppDataFiles();
+    await mapWithConcurrency(files, 6, (file) =>
+      this.client.deleteFile(file.id),
+    );
+    this.files = [];
+    return files.length;
+  }
+
   async loadSnapshot(): Promise<CloudSyncSnapshot> {
     const [account, files] = await Promise.all([
       this.client.getAccount(),

@@ -96,6 +96,11 @@ class FakeLibrary implements LibraryRepository {
   }
 
   async saveSettings(): Promise<void> {}
+
+  async clearAllData(): Promise<void> {
+    this.books.clear();
+    this.bytes.clear();
+  }
 }
 
 class MemoryStateStore {
@@ -236,10 +241,46 @@ describe("SyncEngine", () => {
     );
 
     await engine.initialize();
-    const result = await engine.sync(cloud);
+    const progressEvents: Array<{
+      readonly stage: "downloading" | "finalizing";
+      readonly completedBooks: number;
+      readonly totalBooks: number;
+      readonly currentBookTitle?: string;
+    }> = [];
+    const progressivelyVisibleEntries: LibraryBookSummary[] = [];
+    const result = await engine.sync(cloud, {
+      onProgress: (progress) => {
+        progressEvents.push(progress);
+      },
+      onLibraryChanged: async () => {
+        const [visibleEntry] = await library.listBooks();
+        if (visibleEntry) {
+          progressivelyVisibleEntries.push(visibleEntry);
+        }
+      },
+    });
 
     expect(result.downloadedBooks).toBe(1);
     expect(result.updatedProgress).toBe(1);
+    expect(progressEvents).toEqual([
+      {
+        stage: "downloading",
+        completedBooks: 0,
+        totalBooks: 1,
+        currentBookTitle: "Cloud Book",
+      },
+      {
+        stage: "finalizing",
+        completedBooks: 1,
+        totalBooks: 1,
+      },
+    ]);
+    expect(progressivelyVisibleEntries).toEqual([
+      expect.objectContaining({
+        locator,
+        readingProgress: 0.73,
+      }),
+    ]);
     expect((await library.listBooks())[0]).toMatchObject({
       locator,
       readingProgress: 0.73,

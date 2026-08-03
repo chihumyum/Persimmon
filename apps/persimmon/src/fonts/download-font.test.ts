@@ -26,6 +26,7 @@ class RecordingRepository implements FontRepository {
     return undefined;
   }
   async removeFamily(): Promise<void> {}
+  async clearInstalledFonts(): Promise<void> {}
 }
 
 afterEach(() => {

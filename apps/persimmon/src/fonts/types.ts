@@ -38,4 +38,5 @@ export interface FontRepository {
   installFont(input: InstallFontInput): Promise<FontFamilyRecord>;
   readFace(faceId: string): Promise<Uint8Array | undefined>;
   removeFamily(familyId: string): Promise<void>;
+  clearInstalledFonts(): Promise<void>;
 }

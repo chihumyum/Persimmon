@@ -81,4 +81,18 @@ describe("ProgressWriteQueue", () => {
     await queue.flush();
     expect(offsets).toEqual([10, 40]);
   });
+
+  it("can discard a failed pending snapshot before destructive local cleanup", async () => {
+    const queue = new ProgressWriteQueue(async () => {
+      throw new Error("storage failed");
+    });
+
+    queue.enqueue(snapshot(10));
+    await expect(queue.flush()).rejects.toThrow("storage failed");
+    expect(queue.hasPending()).toBe(true);
+
+    queue.discardPending();
+
+    expect(queue.hasPending()).toBe(false);
+  });
 });

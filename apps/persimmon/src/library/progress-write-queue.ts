@@ -28,6 +28,10 @@ export class ProgressWriteQueue {
     return Boolean(this.pending);
   }
 
+  discardPending(): void {
+    this.pending = undefined;
+  }
+
   flush(): Promise<void> {
     if (this.active) {
       return this.active;

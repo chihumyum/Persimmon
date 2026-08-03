@@ -12,6 +12,7 @@ import {
   type SyncBookUpsert,
   type SyncProgressMutation,
   type SyncResult,
+  type SyncObserver,
 } from "./types";
 
 function locatorKey(locator: BookLocator): string {
@@ -152,7 +153,10 @@ export class SyncEngine {
     await this.persist();
   }
 
-  async sync(cloud: CloudSyncRepository): Promise<SyncResult> {
+  async sync(
+    cloud: CloudSyncRepository,
+    observer: SyncObserver = {},
+  ): Promise<SyncResult> {
     this.assertInitialized();
     await this.reconcileRepository();
 
@@ -230,53 +234,123 @@ export class SyncEngine {
 
     let downloadedBooks = 0;
     let removedBooks = 0;
+    let updatedProgress = 0;
     for (const [bookId, mutation] of Object.entries(merged.books)) {
       const local = localEntries.get(bookId);
-      if (mutation.kind === "delete") {
-        if (local) {
-          await this.library.removeBook(bookId);
-          localEntries.delete(bookId);
-          removedBooks += 1;
-        }
-        this.markRemoteBookDeleted(bookId);
-        this.ensureOwnBookDeleted(bookId);
+      if (mutation.kind !== "delete") {
         continue;
       }
+      if (local) {
+        await this.library.removeBook(bookId);
+        localEntries.delete(bookId);
+        removedBooks += 1;
+        await observer.onLibraryChanged?.();
+      }
+      this.markRemoteBookDeleted(bookId);
+      this.ensureOwnBookDeleted(bookId);
+    }
 
-      let resolvedLocal = local;
-      if (!resolvedLocal || resolvedLocal.revisionId !== mutation.revisionId) {
-        const bytes = await cloud.downloadBook(
-          mutation.revisionId,
-          mutation.byteLength,
+    const upserts = Object.entries(merged.books).filter(
+      (entry): entry is [string, SyncBookUpsert] => entry[1].kind === "upsert",
+    );
+    const pendingDownloads = upserts
+      .filter(([bookId, mutation]) => {
+        const local = localEntries.get(bookId);
+        return !local || local.revisionId !== mutation.revisionId;
+      })
+      .sort(([leftBookId, left], [rightBookId, right]) => {
+        const leftAddedAt = Date.parse(left.addedAt);
+        const rightAddedAt = Date.parse(right.addedAt);
+        const leftPriority =
+          merged.progress[leftBookId]?.clock.wallTime ??
+          (Number.isFinite(leftAddedAt) ? leftAddedAt : 0);
+        const rightPriority =
+          merged.progress[rightBookId]?.clock.wallTime ??
+          (Number.isFinite(rightAddedAt) ? rightAddedAt : 0);
+        return (
+          rightPriority - leftPriority || left.title.localeCompare(right.title)
         );
-        const expectedDigest = revisionDigest(mutation.revisionId);
-        if (
-          !expectedDigest ||
-          (await this.digestBytes(bytes)) !== expectedDigest
-        ) {
-          throw new Error(`云端 EPUB 校验失败：${mutation.title}`);
-        }
-        const imported = await this.library.importBook({
-          bytes,
-          fileName: mutation.fileName,
-          addedAt: mutation.addedAt,
-        });
-        if (
-          imported.id !== mutation.bookId ||
-          imported.revisionId !== mutation.revisionId
-        ) {
-          throw new Error(`云端 EPUB 身份校验失败：${mutation.title}`);
-        }
-        localEntries.set(imported.id, imported);
-        resolvedLocal = imported;
-        downloadedBooks += 1;
+      });
+    const pendingBookIds = new Set(pendingDownloads.map(([bookId]) => bookId));
+    for (const [bookId, mutation] of upserts) {
+      if (pendingBookIds.has(bookId)) {
+        continue;
+      }
+      const local = localEntries.get(bookId);
+      if (!local) {
+        continue;
       }
       this.markRemoteBookPresent(mutation);
-      this.ensureOwnBookPresent(resolvedLocal);
+      this.ensureOwnBookPresent(local);
+    }
+
+    const totalDownloads = pendingDownloads.length;
+    if (totalDownloads > 0) {
+      await observer.onProgress?.({
+        stage: "downloading",
+        completedBooks: 0,
+        totalBooks: totalDownloads,
+        currentBookTitle: pendingDownloads[0]![1].title,
+      });
+    }
+
+    for (const [bookId, mutation] of pendingDownloads) {
+      const bytes = await cloud.downloadBook(
+        mutation.revisionId,
+        mutation.byteLength,
+      );
+      const expectedDigest = revisionDigest(mutation.revisionId);
+      if (
+        !expectedDigest ||
+        (await this.digestBytes(bytes)) !== expectedDigest
+      ) {
+        throw new Error(`云端 EPUB 校验失败：${mutation.title}`);
+      }
+      const imported = await this.library.importBook({
+        bytes,
+        fileName: mutation.fileName,
+        addedAt: mutation.addedAt,
+      });
+      if (
+        imported.id !== mutation.bookId ||
+        imported.revisionId !== mutation.revisionId
+      ) {
+        throw new Error(`云端 EPUB 身份校验失败：${mutation.title}`);
+      }
+      localEntries.set(imported.id, imported);
+
+      const remoteProgress = merged.progress[bookId];
+      if (
+        remoteProgress &&
+        remoteProgress.locator.revisionId === imported.revisionId
+      ) {
+        await this.library.saveProgress(remoteProgress.locator, {
+          ...(remoteProgress.publicationProgress === undefined
+            ? {}
+            : { publicationProgress: remoteProgress.publicationProgress }),
+          updatedAt: new Date(remoteProgress.clock.wallTime).toISOString(),
+        });
+        updatedProgress += 1;
+      }
+
+      downloadedBooks += 1;
+      this.markRemoteBookPresent(mutation);
+      this.ensureOwnBookPresent(imported);
+      await observer.onLibraryChanged?.();
+      await observer.onProgress?.({
+        stage:
+          downloadedBooks === totalDownloads ? "finalizing" : "downloading",
+        completedBooks: downloadedBooks,
+        totalBooks: totalDownloads,
+        ...(pendingDownloads[downloadedBooks]
+          ? {
+              currentBookTitle: pendingDownloads[downloadedBooks]![1].title,
+            }
+          : {}),
+      });
     }
 
     localEntries = await this.localEntries();
-    let updatedProgress = 0;
     for (const [bookId, mutation] of Object.entries(merged.progress)) {
       const bookMutation = merged.books[bookId];
       const local = localEntries.get(bookId);

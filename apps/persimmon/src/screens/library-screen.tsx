@@ -38,6 +38,7 @@ import { shouldUseIconOnlySort } from "../library/library-controls-layout";
 import {
   librarySyncBannerPlacement,
   shouldAnnounceSyncCompletion,
+  syncProgressFraction,
   SYNC_COMPLETION_VISIBLE_MS,
 } from "../library/library-sync-banner";
 import {
@@ -274,6 +275,8 @@ function SyncBanner({
         : status.phase === "syncing"
           ? t("sync.banner.syncing")
           : "Google Drive";
+  const progress = status.phase === "syncing" ? status.progress : undefined;
+  const progressFraction = progress ? syncProgressFraction(progress) : 0;
 
   return (
     <View
@@ -323,6 +326,31 @@ function SyncBanner({
           >
             {syncDescription(status)}
           </Text>
+          {progress && progress.totalBooks > 0 ? (
+            <View
+              accessibilityLabel={t("sync.banner.progressAccessibility")}
+              accessibilityRole="progressbar"
+              accessibilityValue={{
+                min: 0,
+                max: progress.totalBooks,
+                now: progress.completedBooks,
+              }}
+              style={[
+                styles.syncBannerProgressTrack,
+                { backgroundColor: theme.panelMuted },
+              ]}
+            >
+              <View
+                style={[
+                  styles.syncBannerProgressFill,
+                  {
+                    backgroundColor: theme.accentStrong,
+                    width: `${progressFraction * 100}%`,
+                  },
+                ]}
+              />
+            </View>
+          ) : null}
         </View>
       </Pressable>
       {status.phase !== "syncing" && onClose ? (
@@ -447,6 +475,7 @@ function FloatingSyncBanner({
 export interface LibraryScreenProps {
   readonly entries: readonly LibraryBookSummary[];
   readonly colorMode: ReaderColorMode;
+  readonly dataClearing: "local" | "cloud" | null;
   readonly readerThemeName: ReaderThemeName;
   readonly error: string | null;
   readonly importing: boolean;
@@ -455,6 +484,8 @@ export interface LibraryScreenProps {
   readonly syncStatus: GoogleDriveSyncStatus;
   readonly theme: ReaderTheme;
   readonly onConnectGoogleDrive: () => void;
+  readonly onClearCloudData: () => void;
+  readonly onClearLocalData: () => void;
   readonly onColorModeChange: (colorMode: ReaderColorMode) => void;
   readonly onDelete: (entry: LibraryBookSummary) => void;
   readonly onDisconnectGoogleDrive: () => void;
@@ -472,6 +503,7 @@ export interface LibraryScreenProps {
 export function LibraryScreen({
   entries,
   colorMode,
+  dataClearing,
   readerThemeName,
   error,
   importing,
@@ -480,6 +512,8 @@ export function LibraryScreen({
   syncStatus,
   theme,
   onConnectGoogleDrive,
+  onClearCloudData,
+  onClearLocalData,
   onColorModeChange,
   onDelete,
   onDisconnectGoogleDrive,
@@ -864,12 +898,16 @@ export function LibraryScreen({
       <LibrarySettingsModal
         bookMetadataVisible={bookMetadataVisible}
         colorMode={colorMode}
+        dataActionsDisabled={importing || openingBookId !== null}
+        dataClearing={dataClearing}
         languagePreference={languagePreference}
         readerThemeName={readerThemeName}
         syncStatus={syncStatus}
         theme={theme}
         visible={settingsVisible}
         onBookMetadataVisibleChange={updateBookMetadataVisible}
+        onClearCloudData={onClearCloudData}
+        onClearLocalData={onClearLocalData}
         onClose={() => setSettingsVisible(false)}
         onColorModeChange={onColorModeChange}
         onConnectGoogleDrive={onConnectGoogleDrive}
@@ -1061,6 +1099,17 @@ const styles = StyleSheet.create({
     minHeight: 68,
     paddingLeft: 15,
     paddingVertical: 10,
+  },
+  syncBannerProgressFill: {
+    borderRadius: uiRadius.pill,
+    height: "100%",
+  },
+  syncBannerProgressTrack: {
+    borderRadius: uiRadius.pill,
+    height: 3,
+    marginTop: 7,
+    overflow: "hidden",
+    width: "100%",
   },
   syncBannerTitle: {
     fontSize: 13,

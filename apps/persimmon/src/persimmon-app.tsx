@@ -150,6 +150,9 @@ export function PersimmonApp() {
   const [syncStatus, setSyncStatus] = useState<GoogleDriveSyncStatus>(
     googleDriveSyncService.getStatus(),
   );
+  const [dataClearing, setDataClearing] = useState<"local" | "cloud" | null>(
+    null,
+  );
   const progressTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
@@ -165,6 +168,7 @@ export function PersimmonApp() {
   const settingsTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
+  const settingsWrite = useRef<Promise<void>>(Promise.resolve());
 
   const refreshLibrary = useCallback(async () => {
     setEntries(await libraryRepository.listBooks());
@@ -221,6 +225,11 @@ export function PersimmonApp() {
   }, []);
 
   useEffect(() => googleDriveSyncService.subscribe(setSyncStatus), []);
+
+  useEffect(
+    () => googleDriveSyncService.subscribeLibraryChanges(refreshLibrary),
+    [refreshLibrary],
+  );
 
   useEffect(() => {
     if (!hydrated) {
@@ -450,8 +459,9 @@ export function PersimmonApp() {
       clearTimeout(settingsTimer.current);
     }
     settingsTimer.current = setTimeout(() => {
-      libraryRepository
-        .saveSettings(next)
+      settingsTimer.current = undefined;
+      settingsWrite.current = settingsWrite.current
+        .then(() => libraryRepository.saveSettings(next))
         .catch(() => setError(translate("errors.library.settingsSaveFailed")));
     }, 250);
   }, []);
@@ -572,6 +582,66 @@ export function PersimmonApp() {
     }
   }, []);
 
+  const clearLocalData = useCallback(async () => {
+    setDataClearing("local");
+    setError(null);
+    try {
+      await persistPendingProgress();
+      if (progressTimer.current) {
+        clearTimeout(progressTimer.current);
+        progressTimer.current = undefined;
+      }
+      progressWriter.current?.discardPending();
+      if (settingsTimer.current) {
+        clearTimeout(settingsTimer.current);
+        settingsTimer.current = undefined;
+      }
+      await settingsWrite.current;
+      await googleDriveSyncService.disconnectAndResetLocalState();
+      await libraryRepository.clearAllData();
+      readerSettingsRef.current = DEFAULT_READER_SETTINGS;
+      setReaderSettings(DEFAULT_READER_SETTINGS);
+      setFontFamilies(BUILTIN_FONT_FAMILIES);
+      setEntries([]);
+      setActiveBook(null);
+      setOpeningBookId(null);
+      setScreen({ kind: "library" });
+      await fontRepository.clearInstalledFonts();
+      Alert.alert(
+        translate("settings.data.clearLocalCompleteTitle"),
+        translate("settings.data.clearLocalCompleteMessage"),
+      );
+    } catch {
+      setError(translate("settings.data.clearLocalFailedMessage"));
+      Alert.alert(
+        translate("settings.data.clearLocalFailedTitle"),
+        translate("settings.data.clearLocalFailedMessage"),
+      );
+    } finally {
+      setDataClearing(null);
+    }
+  }, [persistPendingProgress]);
+
+  const clearCloudData = useCallback(async () => {
+    setDataClearing("cloud");
+    setError(null);
+    try {
+      await googleDriveSyncService.clearCloudData();
+      Alert.alert(
+        translate("settings.data.clearCloudCompleteTitle"),
+        translate("settings.data.clearCloudCompleteMessage"),
+      );
+    } catch {
+      setError(translate("settings.data.clearCloudFailedMessage"));
+      Alert.alert(
+        translate("settings.data.clearCloudFailedTitle"),
+        translate("settings.data.clearCloudFailedMessage"),
+      );
+    } finally {
+      setDataClearing(null);
+    }
+  }, []);
+
   if (
     !languageReady ||
     !hydrated ||
@@ -613,6 +683,7 @@ export function PersimmonApp() {
     <LibraryScreen
       entries={entries}
       colorMode={readerSettings.appearance.colorMode}
+      dataClearing={dataClearing}
       readerThemeName={readerSettings.appearance.theme}
       error={error}
       importing={importing}
@@ -622,6 +693,12 @@ export function PersimmonApp() {
       theme={appTheme}
       onConnectGoogleDrive={() => {
         void googleDriveSyncService.connectAndSync();
+      }}
+      onClearCloudData={() => {
+        void clearCloudData();
+      }}
+      onClearLocalData={() => {
+        void clearLocalData();
       }}
       onDelete={deleteEntry}
       onDisconnectGoogleDrive={() => {

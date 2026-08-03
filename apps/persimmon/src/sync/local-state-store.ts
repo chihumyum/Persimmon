@@ -108,4 +108,8 @@ export class LocalSyncStateStore {
   async save(state: LocalSyncState): Promise<void> {
     await AsyncStorage.setItem(LOCAL_SYNC_STATE_KEY, JSON.stringify(state));
   }
+
+  async clear(): Promise<void> {
+    await AsyncStorage.removeItem(LOCAL_SYNC_STATE_KEY);
+  }
 }

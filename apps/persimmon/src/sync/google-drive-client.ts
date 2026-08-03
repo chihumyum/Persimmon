@@ -114,6 +114,16 @@ export class GoogleDriveClient {
     return new Uint8Array(await response.arrayBuffer());
   }
 
+  async deleteFile(fileId: string): Promise<void> {
+    const response = await this.request(
+      `${DRIVE_API_ROOT}/files/${encodeURIComponent(fileId)}`,
+      { method: "DELETE" },
+    );
+    if (!response.ok && response.status !== 404) {
+      throw await responseError(response);
+    }
+  }
+
   async uploadResumable(
     name: string,
     mimeType: string,

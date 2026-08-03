@@ -190,6 +190,7 @@ export interface LibraryRepository {
   removeBook(bookId: string): Promise<void>;
   getSettings(): Promise<ReaderSettings>;
   saveSettings(settings: ReaderSettings): Promise<void>;
+  clearAllData(): Promise<void>;
 }
 
 export type LibraryErrorCode =

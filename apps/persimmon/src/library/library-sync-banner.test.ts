@@ -4,6 +4,7 @@ import type { GoogleDriveSyncStatus } from "../sync/types";
 import {
   librarySyncBannerPlacement,
   shouldAnnounceSyncCompletion,
+  syncProgressFraction,
 } from "./library-sync-banner";
 
 const readyContext = {
@@ -91,5 +92,31 @@ describe("shouldAnnounceSyncCompletion", () => {
     expect(shouldAnnounceSyncCompletion("syncing", "idle")).toBe(true);
     expect(shouldAnnounceSyncCompletion("loading", "idle")).toBe(false);
     expect(shouldAnnounceSyncCompletion("idle", "idle")).toBe(false);
+  });
+});
+
+describe("syncProgressFraction", () => {
+  it("converts completed books into a clamped determinate fraction", () => {
+    expect(
+      syncProgressFraction({
+        stage: "downloading",
+        completedBooks: 3,
+        totalBooks: 12,
+      }),
+    ).toBe(0.25);
+    expect(
+      syncProgressFraction({
+        stage: "finalizing",
+        completedBooks: 13,
+        totalBooks: 12,
+      }),
+    ).toBe(1);
+    expect(
+      syncProgressFraction({
+        stage: "downloading",
+        completedBooks: 0,
+        totalBooks: 0,
+      }),
+    ).toBe(0);
   });
 });

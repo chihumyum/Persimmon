@@ -20,6 +20,14 @@ function reversedIosClientId(clientId) {
   )}`;
 }
 
+function configuredSupportEmail(value) {
+  return (
+    typeof value === "string" &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) &&
+    !value.includes("example.com")
+  );
+}
+
 module.exports = ({ config }) => {
   const iosClientId =
     process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ??
@@ -27,6 +35,7 @@ module.exports = ({ config }) => {
   const androidClientId =
     process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ??
     DEFAULT_GOOGLE_ANDROID_CLIENT_ID;
+  const supportEmail = process.env.EXPO_PUBLIC_SUPPORT_EMAIL;
   const plugins = [
     ...(config.plugins ?? []),
     "./plugins/with-google-signin-modular-headers",
@@ -48,6 +57,7 @@ module.exports = ({ config }) => {
         iosClientId,
         androidClientId,
       },
+      ...(configuredSupportEmail(supportEmail) ? { supportEmail } : {}),
     },
   };
 };

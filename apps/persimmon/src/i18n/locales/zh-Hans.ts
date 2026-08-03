@@ -136,6 +136,7 @@ export const zhHans = {
       syncing: "Google Drive 同步",
       openSettingsAccessibility: "打开云同步设置",
       syncingAccessibility: "Google Drive 正在同步",
+      progressAccessibility: "Google Drive 书籍同步进度",
       closeAccessibility: "关闭 Google Drive 提示",
     },
     description: {
@@ -145,6 +146,9 @@ export const zhHans = {
       authorizing: "正在等待 Google 授权…",
       syncingAccount: "正在与 {{accountEmail}} 同步书架…",
       syncing: "正在同步书架与阅读进度…",
+      syncingBook: "正在同步第 {{current}} / {{total}} 本 ·《{{title}}》",
+      syncingBooks: "正在同步第 {{current}} / {{total}} 本…",
+      finalizingBooks: "已同步 {{completed}} / {{total}} 本，正在完成…",
       idle: "{{account}} · {{time}} 已同步",
     },
     actions: {
@@ -163,6 +167,53 @@ export const zhHans = {
       connectFirst: "请先连接 Google Drive。",
       network: "无法连接 Google Drive，请检查网络后重试。",
       failed: "Google Drive 同步失败，请稍后重试。",
+    },
+  },
+  settings: {
+    data: {
+      section: "数据管理",
+      sectionDescription:
+        "本机与云端数据分开清理，避免误删或清理后被同步自动恢复。",
+      clearLocalTitle: "清空本机数据",
+      clearLocalDescription:
+        "删除本机书库、进度、阅读设置和已安装字体；断开 Drive，但保留云端副本与 App 语言选择。",
+      clearLocalConfirmation:
+        "将永久删除这台设备上的全部书籍、阅读进度、阅读设置和已安装字体，并断开 Google Drive。云端副本不会删除。此操作无法撤销。",
+      clearLocalAction: "清空本机",
+      clearLocalCompleteTitle: "本机数据已清空",
+      clearLocalCompleteMessage:
+        "本机阅读数据已删除，Google Drive 已断开；云端副本仍然保留。",
+      clearLocalFailedTitle: "无法清空本机数据",
+      clearLocalFailedMessage: "部分数据可能仍然保留，请重启 App 后再试。",
+      clearCloudTitle: "清空 Google Drive 数据",
+      clearCloudDescription:
+        "删除 Persimmon 隐藏目录中的 EPUB 与同步记录；断开 Drive，但保留本机副本。",
+      clearCloudDisconnectedDescription:
+        "连接 Google Drive 后可删除 Persimmon 隐藏目录中的全部云端副本。",
+      clearCloudConfirmation:
+        "将永久删除当前 Google Drive 账户中 Persimmon 隐藏目录里的全部 EPUB、阅读进度与设备同步记录，然后断开连接。本机副本不会删除。此操作无法撤销。",
+      clearCloudAction: "清空云端",
+      clearCloudCompleteTitle: "云端数据已清空",
+      clearCloudCompleteMessage:
+        "Persimmon 的 Google Drive 隐藏数据已删除并断开连接；本机副本仍然保留。",
+      clearCloudFailedTitle: "无法完全清空云端数据",
+      clearCloudFailedMessage:
+        "Google Drive 已断开，以防剩余数据被重新上传。请检查网络，重新连接后再试。",
+    },
+    about: {
+      section: "关于",
+      privacy: "隐私政策",
+      feedback: "发送反馈",
+      feedbackDescription: "使用系统分享面板，并附带版本与设备信息",
+      feedbackEmailDescription: "打开邮件编辑器并发送到 {{email}}",
+      feedbackSubject: "Persimmon {{version}} 反馈",
+      feedbackTemplate:
+        "Persimmon 反馈\n\n请描述问题或建议：\n\n\nApp 版本：{{version}}\n平台：{{platform}}",
+      feedbackFailedTitle: "无法打开分享面板",
+      feedbackFailedMessage: "请稍后重试，或检查设备是否有可用的分享目标。",
+      licenses: "开放源代码许可",
+      version: "版本",
+      copyright: "© 2026 Persimmon. All rights reserved.",
     },
   },
   reader: {

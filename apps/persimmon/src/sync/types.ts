@@ -115,6 +115,22 @@ export interface SyncResult {
   readonly completedAt: string;
 }
 
+export interface GoogleDriveBookSyncProgress {
+  readonly stage: "downloading" | "finalizing";
+  readonly completedBooks: number;
+  readonly totalBooks: number;
+  readonly currentBookTitle?: string;
+}
+
+export type SyncProgressReporter = (
+  progress: GoogleDriveBookSyncProgress,
+) => void | Promise<void>;
+
+export interface SyncObserver {
+  readonly onProgress?: SyncProgressReporter;
+  readonly onLibraryChanged?: () => void | Promise<void>;
+}
+
 export type GoogleDriveSyncStatus =
   | { readonly phase: "loading" }
   | { readonly phase: "unconfigured"; readonly message: string }
@@ -124,6 +140,7 @@ export type GoogleDriveSyncStatus =
       readonly phase: "syncing";
       readonly accountEmail?: string;
       readonly lastSyncedAt?: string;
+      readonly progress?: GoogleDriveBookSyncProgress;
     }
   | {
       readonly phase: "idle";

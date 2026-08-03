@@ -140,6 +140,21 @@ class NativeFontRepository implements FontRepository {
     );
   }
 
+  async clearInstalledFonts(): Promise<void> {
+    this.assertInitialized();
+    if (this.root.exists) {
+      this.root.delete();
+    }
+    this.root.create({ idempotent: true, intermediates: true });
+    this.files.create({ idempotent: true });
+    this.staging.create({ idempotent: true });
+    this.snapshot = {
+      schemaVersion: FONT_REPOSITORY_SCHEMA_VERSION,
+      families: [],
+    };
+    await AsyncStorage.removeItem(SNAPSHOT_KEY);
+  }
+
   private removeOrphanedFiles(): void {
     const referenced = new Set(
       this.snapshot.families.flatMap((family) =>

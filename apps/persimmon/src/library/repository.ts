@@ -369,6 +369,25 @@ class IndexedDbLibraryRepository implements LibraryRepository {
     });
   }
 
+  async clearAllData(): Promise<void> {
+    const database = this.requireDatabase();
+    const transaction = database.transaction(
+      ["books", "sections", "resources", "progress", "settings"],
+      "readwrite",
+    );
+    const settingsStore = transaction.objectStore("settings");
+    await Promise.all([
+      transaction.objectStore("books").clear(),
+      transaction.objectStore("sections").clear(),
+      transaction.objectStore("resources").clear(),
+      transaction.objectStore("progress").clear(),
+      settingsStore.clear(),
+      settingsStore.put({ key: LEGACY_MIGRATION_KEY, value: true }),
+    ]);
+    await transaction.done;
+    await AsyncStorage.removeItem(LEGACY_LIBRARY_KEY);
+  }
+
   private requireDatabase(): IDBPDatabase<PersimmonDatabase> {
     if (!this.database) {
       throw new Error("LibraryRepository.initialize() must be called first");

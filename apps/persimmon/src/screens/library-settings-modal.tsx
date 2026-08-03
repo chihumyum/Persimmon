@@ -1,4 +1,5 @@
 import type { ReaderTheme } from "@persimmon/reader-skia";
+import { useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -20,8 +21,15 @@ import { uiBackdropColor } from "../components/ui-shadow";
 import { UiText as Text } from "../components/ui-text";
 import { uiRadius, uiSpace } from "../components/ui-tokens";
 import { formatTime, translate, type AppLanguagePreference } from "../i18n";
+import type { LegalDocument } from "../legal/legal-content";
 import type { ReaderColorMode, ReaderThemeName } from "../library/types";
 import type { GoogleDriveSyncStatus } from "../sync/types";
+import { AppAboutSettingsSection } from "./app-about-settings-section";
+import {
+  AppDataSettingsSection,
+  type DataClearTarget,
+} from "./app-data-settings-section";
+import { SettingsDocumentSurface } from "./settings-document-modal";
 
 export function syncDescription(status: GoogleDriveSyncStatus): string {
   switch (status.phase) {
@@ -33,12 +41,36 @@ export function syncDescription(status: GoogleDriveSyncStatus): string {
       return translate("sync.description.disconnected");
     case "authorizing":
       return translate("sync.description.authorizing");
-    case "syncing":
+    case "syncing": {
+      const progress = status.progress;
+      if (progress && progress.totalBooks > 0) {
+        if (progress.stage === "finalizing") {
+          return translate("sync.description.finalizingBooks", {
+            completed: progress.completedBooks,
+            total: progress.totalBooks,
+          });
+        }
+        const current = Math.min(
+          progress.totalBooks,
+          progress.completedBooks + 1,
+        );
+        return progress.currentBookTitle
+          ? translate("sync.description.syncingBook", {
+              current,
+              total: progress.totalBooks,
+              title: progress.currentBookTitle,
+            })
+          : translate("sync.description.syncingBooks", {
+              current,
+              total: progress.totalBooks,
+            });
+      }
       return status.accountEmail
         ? translate("sync.description.syncingAccount", {
             accountEmail: status.accountEmail,
           })
         : translate("sync.description.syncing");
+    }
     case "idle": {
       return translate("sync.description.idle", {
         account: status.accountEmail ?? "Google Drive",
@@ -54,12 +86,16 @@ export function syncDescription(status: GoogleDriveSyncStatus): string {
 export interface LibrarySettingsModalProps {
   readonly bookMetadataVisible: boolean;
   readonly colorMode: ReaderColorMode;
+  readonly dataActionsDisabled: boolean;
+  readonly dataClearing: DataClearTarget | null;
   readonly languagePreference: AppLanguagePreference;
   readonly readerThemeName: ReaderThemeName;
   readonly syncStatus: GoogleDriveSyncStatus;
   readonly theme: ReaderTheme;
   readonly visible: boolean;
   readonly onBookMetadataVisibleChange: (visible: boolean) => void;
+  readonly onClearCloudData: () => void;
+  readonly onClearLocalData: () => void;
   readonly onClose: () => void;
   readonly onColorModeChange: (mode: ReaderColorMode) => void;
   readonly onLanguagePreferenceChange: (
@@ -74,12 +110,16 @@ export interface LibrarySettingsModalProps {
 export function LibrarySettingsModal({
   bookMetadataVisible,
   colorMode,
+  dataActionsDisabled,
+  dataClearing,
   languagePreference,
   readerThemeName,
   syncStatus,
   theme,
   visible,
   onBookMetadataVisibleChange,
+  onClearCloudData,
+  onClearLocalData,
   onClose,
   onColorModeChange,
   onLanguagePreferenceChange,
@@ -90,6 +130,7 @@ export function LibrarySettingsModal({
 }: LibrarySettingsModalProps) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const [legalDocument, setLegalDocument] = useState<LegalDocument>();
   const colorModeOptions: readonly {
     readonly value: ReaderColorMode;
     readonly label: string;
@@ -145,11 +186,23 @@ export function LibrarySettingsModal({
     syncStatus.phase === "syncing" ||
     syncStatus.phase === "error" ||
     syncStatus.phase === "reauthorization-required";
+  const canClearCloud =
+    syncStatus.phase === "idle" ||
+    syncStatus.phase === "syncing" ||
+    syncStatus.phase === "error";
+  const dataBusy = dataClearing !== null;
+  const closeCurrentSurface = () => {
+    if (legalDocument) {
+      setLegalDocument(undefined);
+    } else {
+      onClose();
+    }
+  };
 
   return (
     <Modal
       animationType="fade"
-      onRequestClose={onClose}
+      onRequestClose={closeCurrentSurface}
       statusBarTranslucent
       transparent
       visible={visible}
@@ -167,181 +220,232 @@ export function LibrarySettingsModal({
         <Pressable
           accessibilityLabel={t("library.settings.closeAccessibility")}
           accessibilityRole="button"
-          onPress={onClose}
+          onPress={closeCurrentSurface}
           style={StyleSheet.absoluteFill}
         />
-        <UiModalSurface theme={theme}>
-          <View style={styles.header}>
-            <Text variant="modalTitle" style={{ color: theme.text }}>
-              {t("common.settings")}
-            </Text>
-            <UiButton
-              compact
-              label={t("common.done")}
-              onPress={onClose}
-              textTone="accent"
-              theme={theme}
-              variant="ghost"
-            />
-          </View>
-
-          <ScrollView
-            contentContainerStyle={styles.content}
-            showsVerticalScrollIndicator={false}
-          >
-            <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: theme.controlText }]}>
-                {t("appearance.section")}
+        {legalDocument ? (
+          <SettingsDocumentSurface
+            document={legalDocument}
+            theme={theme}
+            onClose={() => setLegalDocument(undefined)}
+          />
+        ) : (
+          <UiModalSurface theme={theme}>
+            <View style={styles.header}>
+              <Text variant="modalTitle" style={{ color: theme.text }}>
+                {t("common.settings")}
               </Text>
-              <View style={styles.appearanceControl}>
+              <UiButton
+                compact
+                label={t("common.done")}
+                onPress={onClose}
+                textTone="accent"
+                theme={theme}
+                variant="ghost"
+              />
+            </View>
+
+            <ScrollView
+              contentContainerStyle={styles.content}
+              pointerEvents={dataBusy ? "none" : "auto"}
+              scrollEnabled={!dataBusy}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.section}>
                 <Text
-                  style={[styles.appearanceLabel, { color: theme.controlText }]}
+                  style={[styles.sectionTitle, { color: theme.controlText }]}
                 >
-                  {t("appearance.colorMode")}
+                  {t("appearance.section")}
                 </Text>
-                <UiSegmentedControl
-                  accessibilityLabel={t("appearance.colorModeGroup")}
-                  options={colorModeOptions}
-                  theme={theme}
-                  value={colorMode}
-                  onChange={onColorModeChange}
-                />
-              </View>
-              <View style={styles.appearanceControl}>
-                <Text
-                  style={[styles.appearanceLabel, { color: theme.controlText }]}
-                >
-                  {t("language.label")}
-                </Text>
-                <UiSegmentedControl
-                  accessibilityLabel={t("language.groupAccessibility")}
-                  options={languageOptions}
-                  theme={theme}
-                  value={languagePreference}
-                  onChange={onLanguagePreferenceChange}
-                />
-                <Text
-                  style={[
-                    styles.preferenceHint,
-                    { color: theme.secondaryText },
-                  ]}
-                >
-                  {t(
-                    languagePreference === "system"
-                      ? "language.systemDescription"
-                      : "language.overrideDescription",
-                  )}
-                </Text>
-              </View>
-              <View style={styles.appearanceControl}>
-                <Text
-                  style={[styles.appearanceLabel, { color: theme.controlText }]}
-                >
-                  {t("appearance.theme")}
-                </Text>
-                <ReaderThemeSelector
-                  accessibilityLabel={t("appearance.libraryThemeGroup")}
-                  theme={theme}
-                  value={readerThemeName}
-                  onChange={onThemeChange}
-                />
-              </View>
-              <View
-                style={[
-                  styles.preferenceRow,
-                  {
-                    backgroundColor: theme.panelRaised,
-                    borderColor: theme.border,
-                  },
-                ]}
-              >
-                <View style={styles.preferenceCopy}>
+                <View style={styles.appearanceControl}>
                   <Text
                     style={[
-                      styles.preferenceTitle,
+                      styles.appearanceLabel,
                       { color: theme.controlText },
                     ]}
                   >
-                    {t("library.settings.showMetadata")}
+                    {t("appearance.colorMode")}
                   </Text>
+                  <UiSegmentedControl
+                    accessibilityLabel={t("appearance.colorModeGroup")}
+                    options={colorModeOptions}
+                    theme={theme}
+                    value={colorMode}
+                    onChange={onColorModeChange}
+                  />
+                </View>
+                <View style={styles.appearanceControl}>
                   <Text
                     style={[
-                      styles.preferenceBody,
+                      styles.appearanceLabel,
+                      { color: theme.controlText },
+                    ]}
+                  >
+                    {t("language.label")}
+                  </Text>
+                  <UiSegmentedControl
+                    accessibilityLabel={t("language.groupAccessibility")}
+                    options={languageOptions}
+                    theme={theme}
+                    value={languagePreference}
+                    onChange={onLanguagePreferenceChange}
+                  />
+                  <Text
+                    style={[
+                      styles.preferenceHint,
                       { color: theme.secondaryText },
                     ]}
                   >
-                    {t("library.settings.showMetadataDescription")}
+                    {t(
+                      languagePreference === "system"
+                        ? "language.systemDescription"
+                        : "language.overrideDescription",
+                    )}
                   </Text>
                 </View>
-                <Switch
-                  accessibilityLabel={t(
-                    "library.settings.showMetadataAccessibility",
-                  )}
-                  onValueChange={onBookMetadataVisibleChange}
-                  thumbColor={
-                    Platform.OS === "android" ? theme.panelRaised : undefined
-                  }
-                  trackColor={{
-                    false: theme.panelMuted,
-                    true: theme.accent,
-                  }}
-                  value={bookMetadataVisible}
-                />
-              </View>
-            </View>
-
-            <View style={[styles.divider, { backgroundColor: theme.border }]} />
-
-            <View style={styles.section}>
-              <View style={styles.syncHeading}>
-                <View style={styles.syncHeadingCopy}>
-                  <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                    Google Drive
-                  </Text>
+                <View style={styles.appearanceControl}>
                   <Text
-                    style={[styles.sectionBody, { color: theme.secondaryText }]}
+                    style={[
+                      styles.appearanceLabel,
+                      { color: theme.controlText },
+                    ]}
                   >
-                    {syncDescription(syncStatus)}
+                    {t("appearance.theme")}
                   </Text>
+                  <ReaderThemeSelector
+                    accessibilityLabel={t("appearance.libraryThemeGroup")}
+                    theme={theme}
+                    value={readerThemeName}
+                    onChange={onThemeChange}
+                  />
                 </View>
-                {busy ? (
-                  <ActivityIndicator color={theme.accent} size="small" />
-                ) : null}
+                <View
+                  style={[
+                    styles.preferenceRow,
+                    {
+                      backgroundColor: theme.panelRaised,
+                      borderColor: theme.border,
+                    },
+                  ]}
+                >
+                  <View style={styles.preferenceCopy}>
+                    <Text
+                      style={[
+                        styles.preferenceTitle,
+                        { color: theme.controlText },
+                      ]}
+                    >
+                      {t("library.settings.showMetadata")}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.preferenceBody,
+                        { color: theme.secondaryText },
+                      ]}
+                    >
+                      {t("library.settings.showMetadataDescription")}
+                    </Text>
+                  </View>
+                  <Switch
+                    accessibilityLabel={t(
+                      "library.settings.showMetadataAccessibility",
+                    )}
+                    onValueChange={onBookMetadataVisibleChange}
+                    thumbColor={
+                      Platform.OS === "android" ? theme.panelRaised : undefined
+                    }
+                    trackColor={{
+                      false: theme.panelMuted,
+                      true: theme.accent,
+                    }}
+                    value={bookMetadataVisible}
+                  />
+                </View>
               </View>
 
-              <View style={styles.actionRow}>
-                {canConnect ? (
-                  <UiButton
-                    label={
-                      syncStatus.phase === "disconnected"
-                        ? t("sync.actions.connect")
-                        : t("sync.actions.reconnect")
-                    }
-                    onPress={onConnectGoogleDrive}
-                    theme={theme}
-                    variant="primary"
-                  />
-                ) : null}
-                {canSync ? (
-                  <UiButton
-                    label={t("sync.actions.syncNow")}
-                    onPress={onSyncNow}
-                    theme={theme}
-                  />
-                ) : null}
-                {canDisconnect ? (
-                  <UiButton
-                    label={t("sync.actions.disconnect")}
-                    onPress={onDisconnectGoogleDrive}
-                    textTone="muted"
-                    theme={theme}
-                    variant="ghost"
-                  />
-                ) : null}
+              <View
+                style={[styles.divider, { backgroundColor: theme.border }]}
+              />
+
+              <View style={styles.section}>
+                <View style={styles.syncHeading}>
+                  <View style={styles.syncHeadingCopy}>
+                    <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                      Google Drive
+                    </Text>
+                    <Text
+                      style={[
+                        styles.sectionBody,
+                        { color: theme.secondaryText },
+                      ]}
+                    >
+                      {syncDescription(syncStatus)}
+                    </Text>
+                  </View>
+                  {busy ? (
+                    <ActivityIndicator color={theme.accent} size="small" />
+                  ) : null}
+                </View>
+
+                <View style={styles.actionRow}>
+                  {canConnect ? (
+                    <UiButton
+                      label={
+                        syncStatus.phase === "disconnected"
+                          ? t("sync.actions.connect")
+                          : t("sync.actions.reconnect")
+                      }
+                      disabled={dataBusy}
+                      onPress={onConnectGoogleDrive}
+                      theme={theme}
+                      variant="primary"
+                    />
+                  ) : null}
+                  {canSync ? (
+                    <UiButton
+                      label={t("sync.actions.syncNow")}
+                      disabled={dataBusy}
+                      onPress={onSyncNow}
+                      theme={theme}
+                    />
+                  ) : null}
+                  {canDisconnect ? (
+                    <UiButton
+                      label={t("sync.actions.disconnect")}
+                      disabled={dataBusy}
+                      onPress={onDisconnectGoogleDrive}
+                      textTone="muted"
+                      theme={theme}
+                      variant="ghost"
+                    />
+                  ) : null}
+                </View>
               </View>
-            </View>
-          </ScrollView>
-        </UiModalSurface>
+
+              <View
+                style={[styles.divider, { backgroundColor: theme.border }]}
+              />
+
+              <AppDataSettingsSection
+                canClearCloud={canClearCloud}
+                dataActionsDisabled={dataActionsDisabled}
+                dataClearing={dataClearing}
+                theme={theme}
+                onClearCloudData={onClearCloudData}
+                onClearLocalData={onClearLocalData}
+              />
+
+              <View
+                style={[styles.divider, { backgroundColor: theme.border }]}
+              />
+
+              <AppAboutSettingsSection
+                theme={theme}
+                onOpenDocument={setLegalDocument}
+              />
+            </ScrollView>
+          </UiModalSurface>
+        )}
       </View>
     </Modal>
   );

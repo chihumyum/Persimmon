@@ -11,7 +11,9 @@ EPUB 阅读器。它不使用 WebView：EPUB 会先被编译成版本化、平�
 - 安全 CSS 白名单（对齐、粗斜体、段间距、隐藏内容），不执行书内脚本；
 - Native 文件系统本地书库，原 EPUB、章节、资源和进度分开存储；
 - 极简书架、按书名或作者搜索、保留原始比例的混排封面、筛选与排序；
-- 统一设置页，以及书卡长按原生菜单中的详情、下载 / 同步和删除操作；
+- 统一设置页，包含隐私政策、邮件 / 系统分享反馈、版本、开放源代码许可，以及分离的本机 /
+  Google Drive 数据清理；
+- 书卡长按原生菜单中的详情、下载 / 同步和删除操作；
 - Google Drive `appDataFolder` 在 iOS /
   Android 自动拉取原 EPUB、删除状态、稳定阅读位置和显示进度；
 - 支持跟随系统、简体中文或 English 的 App 内语言覆盖；系统“按 App 语言”在重新构建原生客户端后同样可用；EPUB 的排版 locale 独立跟随书籍语言元数据；
@@ -25,7 +27,8 @@ token 与组件规范见
 [docs/design-system.md](docs/design-system.md)，当前验收证据与真机清单见
 [docs/mvp-acceptance.md](docs/mvp-acceptance.md)，Google
 Cloud 凭证创建和双设备验收见
-[docs/google-drive-sync.md](docs/google-drive-sync.md)。
+[docs/google-drive-sync.md](docs/google-drive-sync.md)，发布前剩余事项见
+[docs/release-checklist.md](docs/release-checklist.md)。
 
 ## Workspace
 
@@ -72,9 +75,10 @@ pnpm native:android:device
 pnpm dev:native
 ```
 
-修改 Native 依赖、Expo 配置或 SDK 后需要重建客户端。当前仓库的 iOS / Android
-bundle 已通过；正式宣称真机可用前，仍须在目标设备执行
-[真机验收清单](docs/mvp-acceptance.md#native-真机签字清单)。
+修改 Native 依赖、Expo 配置或 SDK 后需要重建客户端。2026-08-03，维护者已确认 iOS
+/ Android 真机功能与性能验收通过；自动门禁和签字边界记录在
+[真机验收清单](docs/mvp-acceptance.md#native-真机签字清单)。商店签名、元数据和审核仍按
+[发布清单](docs/release-checklist.md)单独完成。
 
 ## MVP scope
 

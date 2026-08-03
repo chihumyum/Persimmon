@@ -16,6 +16,7 @@ import { SyncEngine } from "./sync-engine";
 import type { GoogleDriveSyncStatus } from "./types";
 
 type StatusListener = (status: GoogleDriveSyncStatus) => void;
+type LibraryChangeListener = () => void | Promise<void>;
 
 function userFacingSyncError(error: unknown): string {
   if (error instanceof GoogleAuthError) {
@@ -45,12 +46,14 @@ function userFacingSyncError(error: unknown): string {
 }
 
 class GoogleDriveSyncService {
-  private readonly engine = new SyncEngine(
+  private stateStore = new LocalSyncStateStore();
+  private engine = new SyncEngine(
     libraryRepository,
-    new LocalSyncStateStore(),
+    this.stateStore,
     sha256Hex,
   );
   private readonly listeners = new Set<StatusListener>();
+  private readonly libraryChangeListeners = new Set<LibraryChangeListener>();
   private status: GoogleDriveSyncStatus = { phase: "loading" };
   private engineInitialization?: Promise<void>;
   private serviceInitialization?: Promise<void>;
@@ -58,6 +61,7 @@ class GoogleDriveSyncService {
   private operationTail: Promise<void> = Promise.resolve();
   private scheduledSync?: ReturnType<typeof setTimeout>;
   private authorized = false;
+  private dataOperationActive = false;
   private accountEmail?: string;
   private lastSyncedAt?: string;
 
@@ -69,6 +73,11 @@ class GoogleDriveSyncService {
     this.listeners.add(listener);
     listener(this.status);
     return () => this.listeners.delete(listener);
+  }
+
+  subscribeLibraryChanges(listener: LibraryChangeListener): () => void {
+    this.libraryChangeListeners.add(listener);
+    return () => this.libraryChangeListeners.delete(listener);
   }
 
   initialize(): Promise<void> {
@@ -107,10 +116,7 @@ class GoogleDriveSyncService {
   }
 
   async disconnect(): Promise<void> {
-    if (this.scheduledSync) {
-      clearTimeout(this.scheduledSync);
-      this.scheduledSync = undefined;
-    }
+    this.cancelScheduledSync();
     try {
       await googleDriveAuth.disconnect();
     } catch {
@@ -123,7 +129,32 @@ class GoogleDriveSyncService {
     }
   }
 
+  async disconnectAndResetLocalState(): Promise<void> {
+    await this.runDataOperation(async () => {
+      await this.stateStore.clear();
+      this.resetEngine();
+    });
+  }
+
+  async clearCloudData(): Promise<void> {
+    if (!this.authorized) {
+      throw new GoogleAuthError(
+        "authorization-required",
+        translate("sync.errors.connectFirst"),
+      );
+    }
+    await this.runDataOperation(async () => {
+      const client = new GoogleDriveClient(googleDriveAuth);
+      await new GoogleDriveCloudRepository(client).clearAllData();
+      await this.stateStore.clear();
+      this.resetEngine();
+    });
+  }
+
   async syncNow(): Promise<void> {
+    if (this.dataOperationActive) {
+      return;
+    }
     try {
       await this.ensureEngine();
     } catch (error) {
@@ -146,12 +177,18 @@ class GoogleDriveSyncService {
   }
 
   async noteBookImported(entry: LibraryBookSummary): Promise<void> {
+    if (this.dataOperationActive) {
+      return;
+    }
     await this.ensureEngine();
     await this.enqueue(() => this.engine.noteBookImported(entry));
     this.scheduleSync();
   }
 
   async noteBookDeleted(bookId: string): Promise<void> {
+    if (this.dataOperationActive) {
+      return;
+    }
     await this.ensureEngine();
     await this.enqueue(() => this.engine.noteBookDeleted(bookId));
     this.scheduleSync();
@@ -162,6 +199,9 @@ class GoogleDriveSyncService {
     publicationProgress?: number,
     updatedAt?: string,
   ): Promise<void> {
+    if (this.dataOperationActive) {
+      return;
+    }
     await this.ensureEngine();
     await libraryRepository.saveProgress(locator, {
       ...(publicationProgress === undefined ? {} : { publicationProgress }),
@@ -210,6 +250,17 @@ class GoogleDriveSyncService {
       const client = new GoogleDriveClient(googleDriveAuth);
       const result = await this.engine.sync(
         new GoogleDriveCloudRepository(client),
+        {
+          onProgress: (progress) => {
+            this.updateStatus({
+              phase: "syncing",
+              ...(this.accountEmail ? { accountEmail: this.accountEmail } : {}),
+              ...(this.lastSyncedAt ? { lastSyncedAt: this.lastSyncedAt } : {}),
+              progress,
+            });
+          },
+          onLibraryChanged: () => this.notifyLibraryChanged(),
+        },
       );
       this.accountEmail = result.account.email;
       this.lastSyncedAt = result.completedAt;
@@ -224,7 +275,7 @@ class GoogleDriveSyncService {
   }
 
   private scheduleSync(): void {
-    if (!this.authorized) {
+    if (!this.authorized || this.dataOperationActive) {
       return;
     }
     if (this.scheduledSync) {
@@ -243,6 +294,36 @@ class GoogleDriveSyncService {
       () => undefined,
     );
     return result;
+  }
+
+  private async runDataOperation(
+    operation: () => Promise<void>,
+  ): Promise<void> {
+    if (this.dataOperationActive) {
+      throw new Error("A data-management operation is already running.");
+    }
+    this.dataOperationActive = true;
+    this.cancelScheduledSync();
+    try {
+      await this.activeSync;
+      await this.enqueue(operation);
+    } finally {
+      await this.disconnect();
+      this.dataOperationActive = false;
+    }
+  }
+
+  private cancelScheduledSync(): void {
+    if (this.scheduledSync) {
+      clearTimeout(this.scheduledSync);
+      this.scheduledSync = undefined;
+    }
+  }
+
+  private resetEngine(): void {
+    this.stateStore = new LocalSyncStateStore();
+    this.engine = new SyncEngine(libraryRepository, this.stateStore, sha256Hex);
+    this.engineInitialization = undefined;
   }
 
   private updateAuthOrErrorStatus(error: unknown): void {
@@ -277,6 +358,18 @@ class GoogleDriveSyncService {
     for (const listener of this.listeners) {
       listener(status);
     }
+  }
+
+  private async notifyLibraryChanged(): Promise<void> {
+    await Promise.all(
+      [...this.libraryChangeListeners].map(async (listener) => {
+        try {
+          await listener();
+        } catch {
+          // A UI refresh failure must not abort an otherwise valid cloud sync.
+        }
+      }),
+    );
   }
 }
 

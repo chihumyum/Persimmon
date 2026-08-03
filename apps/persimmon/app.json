@@ -17,6 +17,7 @@
     ],
     "name": "Persimmon",
     "slug": "persimmon",
+    "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -29,6 +30,13 @@
     },
     "android": {
       "package": "dev.chihum.persimmon",
+      "allowBackup": false,
+      "blockedPermissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.VIBRATE"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/icons/android/app-icon-foreground.png",
         "backgroundImage": "./assets/icons/android/app-icon-background.png",

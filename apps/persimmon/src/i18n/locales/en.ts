@@ -144,6 +144,7 @@ export const en = {
       syncing: "Google Drive Sync",
       openSettingsAccessibility: "Open cloud sync settings",
       syncingAccessibility: "Google Drive is syncing",
+      progressAccessibility: "Google Drive book sync progress",
       closeAccessibility: "Close Google Drive notice",
     },
     description: {
@@ -153,6 +154,9 @@ export const en = {
       authorizing: "Waiting for Google authorization…",
       syncingAccount: "Syncing your library with {{accountEmail}}…",
       syncing: "Syncing your library and reading progress…",
+      syncingBook: "Syncing book {{current}} of {{total}} · {{title}}",
+      syncingBooks: "Syncing book {{current}} of {{total}}…",
+      finalizingBooks: "{{completed}} of {{total}} books synced · Finishing…",
       idle: "{{account}} · Synced at {{time}}",
     },
     actions: {
@@ -177,6 +181,56 @@ export const en = {
       network:
         "Could not connect to Google Drive. Check your network and try again.",
       failed: "Google Drive sync failed. Try again later.",
+    },
+  },
+  settings: {
+    data: {
+      section: "Data Management",
+      sectionDescription:
+        "Local and cloud data are cleared separately to prevent accidental deletion or an immediate sync restore.",
+      clearLocalTitle: "Clear Local Data",
+      clearLocalDescription:
+        "Removes the local library, progress, reading settings, and installed fonts. Drive is disconnected; cloud copies and the app-language choice remain.",
+      clearLocalConfirmation:
+        "This permanently removes every book, reading progress, reading setting, and installed font on this device, then disconnects Google Drive. Cloud copies are not deleted. This cannot be undone.",
+      clearLocalAction: "Clear Local",
+      clearLocalCompleteTitle: "Local Data Cleared",
+      clearLocalCompleteMessage:
+        "Local reading data was removed and Google Drive was disconnected. Cloud copies remain.",
+      clearLocalFailedTitle: "Could Not Clear Local Data",
+      clearLocalFailedMessage:
+        "Some data may remain. Restart the app and try again.",
+      clearCloudTitle: "Clear Google Drive Data",
+      clearCloudDescription:
+        "Removes EPUB and sync records from Persimmon's hidden folder. Drive is disconnected; local copies remain.",
+      clearCloudDisconnectedDescription:
+        "Connect Google Drive to remove every cloud copy in Persimmon's hidden folder.",
+      clearCloudConfirmation:
+        "This permanently removes every EPUB, reading-progress record, and device-sync record in Persimmon's hidden folder for the current Google Drive account, then disconnects. Local copies are not deleted. This cannot be undone.",
+      clearCloudAction: "Clear Cloud",
+      clearCloudCompleteTitle: "Cloud Data Cleared",
+      clearCloudCompleteMessage:
+        "Persimmon's hidden Google Drive data was removed and the account was disconnected. Local copies remain.",
+      clearCloudFailedTitle: "Cloud Data Was Not Fully Cleared",
+      clearCloudFailedMessage:
+        "Google Drive was disconnected to prevent remaining data from being uploaded again. Check the network, reconnect, and retry.",
+    },
+    about: {
+      section: "About",
+      privacy: "Privacy Policy",
+      feedback: "Send Feedback",
+      feedbackDescription:
+        "Uses the system share sheet and includes app and device details",
+      feedbackEmailDescription: "Opens an email draft addressed to {{email}}",
+      feedbackSubject: "Persimmon {{version}} Feedback",
+      feedbackTemplate:
+        "Persimmon Feedback\n\nDescribe the issue or suggestion:\n\n\nApp version: {{version}}\nPlatform: {{platform}}",
+      feedbackFailedTitle: "Could Not Open Share Sheet",
+      feedbackFailedMessage:
+        "Try again later or check that the device has an available share destination.",
+      licenses: "Open-Source Licenses",
+      version: "Version",
+      copyright: "© 2026 Persimmon. All rights reserved.",
     },
   },
   reader: {

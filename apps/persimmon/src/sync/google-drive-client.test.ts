@@ -19,6 +19,36 @@ afterEach(() => {
 });
 
 describe("GoogleDriveClient", () => {
+  it("deletes only the requested app-data file", async () => {
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        requests.push({ url: String(input), ...(init ? { init } : {}) });
+        return new Response(null, { status: 204 });
+      }),
+    );
+
+    await new GoogleDriveClient(auth()).deleteFile("file/id");
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toBe(
+      "https://www.googleapis.com/drive/v3/files/file%2Fid",
+    );
+    expect(requests[0]?.init?.method).toBe("DELETE");
+  });
+
+  it("treats an already-absent app-data file as deleted", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 404 })),
+    );
+
+    await expect(
+      new GoogleDriveClient(auth()).deleteFile("missing"),
+    ).resolves.toBeUndefined();
+  });
+
   it("uploads binary data as an ArrayBuffer supported by native networking", async () => {
     const requests: Array<{ url: string; init?: RequestInit }> = [];
     vi.stubGlobal(

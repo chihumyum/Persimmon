@@ -1,4 +1,7 @@
-import type { GoogleDriveSyncStatus } from "../sync/types";
+import type {
+  GoogleDriveBookSyncProgress,
+  GoogleDriveSyncStatus,
+} from "../sync/types";
 
 export type LibrarySyncBannerPlacement = "hidden" | "top" | "floating";
 
@@ -34,4 +37,16 @@ export function shouldAnnounceSyncCompletion(
   currentPhase: GoogleDriveSyncStatus["phase"],
 ): boolean {
   return previousPhase === "syncing" && currentPhase === "idle";
+}
+
+export function syncProgressFraction(
+  progress: GoogleDriveBookSyncProgress,
+): number {
+  if (progress.totalBooks <= 0) {
+    return 0;
+  }
+  return Math.min(
+    1,
+    Math.max(0, progress.completedBooks / progress.totalBooks),
+  );
 }

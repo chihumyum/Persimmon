@@ -144,6 +144,23 @@ class IndexedDbFontRepository implements FontRepository {
     );
   }
 
+  async clearInstalledFonts(): Promise<void> {
+    const database = this.requireDatabase();
+    const transaction = database.transaction(
+      ["metadata", "files"],
+      "readwrite",
+    );
+    await Promise.all([
+      transaction.objectStore("metadata").clear(),
+      transaction.objectStore("files").clear(),
+    ]);
+    await transaction.done;
+    this.snapshot = {
+      schemaVersion: FONT_REPOSITORY_SCHEMA_VERSION,
+      families: [],
+    };
+  }
+
   private async removeOrphanedFiles(): Promise<void> {
     const database = this.requireDatabase();
     const referenced = new Set(
