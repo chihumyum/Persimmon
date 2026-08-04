@@ -1841,10 +1841,10 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..56dda7c8dbdfa2cfaf37f7b6e58fe1f7
     * Constructor
 diff --git a/cpp/rnskia/RNSkPagerCompositor.h b/cpp/rnskia/RNSkPagerCompositor.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..e7355182c38e4d92fce0b22b441b9a6997f91677
+index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565b0e37b29
 --- /dev/null
 +++ b/cpp/rnskia/RNSkPagerCompositor.h
-@@ -0,0 +1,2879 @@
+@@ -0,0 +1,3034 @@
 +#pragma once
 +
 +#include <algorithm>
@@ -2110,14 +2110,9 @@ index 0000000000000000000000000000000000000000..e7355182c38e4d92fce0b22b441b9a69
 +          backgroundRightPageKey.empty()
 +              ? std::string()
 +              : pageTextureKey(contentRevision, backgroundRightPageKey);
-+      stockPageTextureLocked(frontTextureKey, frontPicture, pixelWidth,
-+                             pixelHeight);
-+      stockPageTextureLocked(backTextureKey, backPicture, pixelWidth,
-+                             pixelHeight);
-+      stockPageTextureLocked(backgroundLeftTextureKey, backgroundLeftPicture,
-+                             pixelWidth, pixelHeight);
-+      stockPageTextureLocked(backgroundRightTextureKey, backgroundRightPicture,
-+                             pixelWidth, pixelHeight);
++      const std::array<std::string, 4> incomingTextureKeys = {
++          frontTextureKey, backTextureKey, backgroundLeftTextureKey,
++          backgroundRightTextureKey};
 +      const auto existing = std::find_if(
 +          _stock.begin(), _stock.end(),
 +          [&fromPageKey, normalizedDirection](const StockEntry &entry) {
@@ -2138,6 +2133,9 @@ index 0000000000000000000000000000000000000000..e7355182c38e4d92fce0b22b441b9a69
 +        }
 +        _stock.erase(existing);
 +      }
++      // Release the distant edge before admitting its replacement's page
++      // material. Doing this in the opposite order can force the bounded page
++      // table to evict a picture that the still-live old graph references.
 +      while (_stock.size() >= kMaximumStockCount) {
 +        const auto pageDistances = stockPageDistancesLocked();
 +        auto eviction = _stock.end();
@@ -2157,6 +2155,20 @@ index 0000000000000000000000000000000000000000..e7355182c38e4d92fce0b22b441b9a69
 +          break;
 +        }
 +        _stock.erase(eviction);
++      }
++      const bool retainedAllPageMaterial =
++          stockPageTextureLocked(frontTextureKey, frontPicture, pixelWidth,
++                                 pixelHeight, incomingTextureKeys) &&
++          stockPageTextureLocked(backTextureKey, backPicture, pixelWidth,
++                                 pixelHeight, incomingTextureKeys) &&
++          stockPageTextureLocked(backgroundLeftTextureKey,
++                                 backgroundLeftPicture, pixelWidth,
++                                 pixelHeight, incomingTextureKeys) &&
++          stockPageTextureLocked(backgroundRightTextureKey,
++                                 backgroundRightPicture, pixelWidth,
++                                 pixelHeight, incomingTextureKeys);
++      if (!retainedAllPageMaterial) {
++        return;
 +      }
 +      _stock.push_back(
 +          {std::move(id), std::move(fromPageKey), std::move(toPageKey),
@@ -2213,6 +2225,7 @@ index 0000000000000000000000000000000000000000..e7355182c38e4d92fce0b22b441b9a69
 +  // now or drop this cadence tick so releasing the finger is an exact stop.
 +  bool tryConsumeInput(int direction) {
 +    bool accepted = false;
++    bool requestedTextureRefill = false;
 +    {
 +      std::lock_guard<std::mutex> lock(_mutex);
 +      if (!_inputEnabled || _currentPageKey.empty() ||
@@ -2225,8 +2238,10 @@ index 0000000000000000000000000000000000000000..e7355182c38e4d92fce0b22b441b9a69
 +      const double nowEpochMs = epochNowMs();
 +      accepted = consumeStockLocked(
 +          normalizedDirection, nowSteadyMs, nowEpochMs, true, true, true);
++      requestedTextureRefill =
++          !accepted && stockAvailableLocked(normalizedDirection);
 +    }
-+    if (accepted) {
++    if (accepted || requestedTextureRefill) {
 +      _requestRedraw();
 +    }
 +    return accepted;
@@ -2273,12 +2288,18 @@ index 0000000000000000000000000000000000000000..e7355182c38e4d92fce0b22b441b9a69
 +          preparedPageImageLocked(stock->backgroundRightTextureKey);
 +      const double nowSteadyMs = steadyNowMs();
 +      const double nowEpochMs = epochNowMs();
++      if (!beginDirectionEpochLocked(
++              normalizedDirection, nowSteadyMs, nowEpochMs)) {
++        emitStockMissLocked(normalizedDirection, nowEpochMs,
++                            "gesture-direction-busy");
++        return false;
++      }
 +      _turns.erase(
 +          std::remove_if(_turns.begin(), _turns.end(),
 +                         [](const Turn &turn) { return turn.completed; }),
 +          _turns.end());
-+      // A newly pressed sheet starts immediately without changing the
-+      // timeline of any released or automatic sheet already in flight.
++      // A newly pressed sheet starts immediately. Same-direction released
++      // sheets keep their timelines; an opposite stack was retired above.
 +      _nextLaunchSteadyMs = nowSteadyMs;
 +
 +      Turn turn;
@@ -2689,15 +2710,22 @@ index 0000000000000000000000000000000000000000..e7355182c38e4d92fce0b22b441b9a69
 +  // and avoid sending an entire glyph slice through one near-zero-width quad.
 +  static constexpr int kProfilePointCount = 257;
 +  static constexpr size_t kMaximumPreloadedImageCount = 12;
-+  static constexpr size_t kMaximumStockCount = 64;
++  // JS publishes a radius-ten bidirectional graph: 20 directed segments with
++  // their reverse edges, for 40 entries total. Retaining older graph windows
++  // only leaves edges whose page material can no longer fit in the bounded
++  // picture table.
++  static constexpr size_t kMaximumStockCount = 40;
 +  static constexpr size_t kMaximumPendingDirectInputCount = 64;
 +  static constexpr size_t kMaximumPresentationAcknowledgmentCount = 64;
 +  static constexpr uint8_t kMaximumPageTextureUploadFailureCount = 3;
 +  static constexpr uint8_t kMaximumTurnPictureUploadFailureCount = 3;
-+  // A radius-ten graph needs at most 42 physical page identities in spread
-+  // mode. Leave a small handoff margin without retaining old graphs after the
-+  // anchor advances; GPU textures remain governed by the byte cap below.
-+  static constexpr size_t kMaximumRetainedPagePictureCount = 48;
++  // Each retained edge names at most four capture identities. Decoration and
++  // slot identity mean rolling spread windows cannot safely be reduced to a
++  // count of physical pages. Bound the CPU display-list table by the actual
++  // StockEntry contract; GPU textures remain governed by the much smaller
++  // count and byte caps below.
++  static constexpr size_t kMaximumRetainedPagePictureCount =
++      kMaximumStockCount * 4;
 +  // Four preferred-direction pages plus a three-page reversal runway are
 +  // enough for the dedicated render thread to refill at 10 turns/second.
 +  // The count remains a safety ceiling for spread mode; the byte ceiling is
@@ -3616,11 +3644,33 @@ index 0000000000000000000000000000000000000000..e7355182c38e4d92fce0b22b441b9a69
 +    turn.hasPreviousProfile = true;
 +  }
 +
-+  void stockPageTextureLocked(const std::string &pageKey,
-+                              const sk_sp<SkPicture> &picture, int pixelWidth,
-+                              int pixelHeight) {
-+    if (pageKey.empty() || picture == nullptr) {
-+      return;
++  static bool stockReferencesPageTextureLocked(
++      const StockEntry &entry, const std::string &pageKey) {
++    return !pageKey.empty() &&
++           (entry.frontTextureKey == pageKey ||
++            entry.backTextureKey == pageKey ||
++            entry.backgroundLeftTextureKey == pageKey ||
++            entry.backgroundRightTextureKey == pageKey);
++  }
++
++  bool pageTextureReferencedByStockLocked(
++      const std::string &pageKey) const {
++    return std::any_of(
++        _stock.begin(), _stock.end(),
++        [&pageKey](const StockEntry &entry) {
++          return stockReferencesPageTextureLocked(entry, pageKey);
++        });
++  }
++
++  bool stockPageTextureLocked(
++      const std::string &pageKey, const sk_sp<SkPicture> &picture,
++      int pixelWidth, int pixelHeight,
++      const std::array<std::string, 4> &incomingPageKeys) {
++    if (pageKey.empty()) {
++      return true;
++    }
++    if (picture == nullptr) {
++      return false;
 +    }
 +    const auto existing = std::find_if(
 +        _pageTextures.begin(), _pageTextures.end(),
@@ -3635,35 +3685,32 @@ index 0000000000000000000000000000000000000000..e7355182c38e4d92fce0b22b441b9a69
 +        existing->pixelHeight = pixelHeight;
 +        existing->uploadFailureCount = 0;
 +      }
-+      return;
++      return true;
 +    }
-+    // The logical stock runway is intentionally longer than the retained
-+    // picture table. Preserve the exact texture set selected for the current
-+    // forward/reverse edges so feeding distant runway pages cannot make the
-+    // first physical gesture fall back to the asynchronous JS lane.
-+    const auto prioritizedPageKeys = prioritizedPageKeysLocked();
-+    const auto isPrioritized = [&prioritizedPageKeys](
-+                                   const PageTexture &entry) {
-+      return std::find(prioritizedPageKeys.begin(),
-+                       prioritizedPageKeys.end(),
-+                       entry.pageKey) != prioritizedPageKeys.end();
-+    };
++    // A StockEntry is an addressable promise: as long as the edge survives,
++    // every SkPicture it names must survive too. GPU images may be dropped and
++    // rebuilt, but erasing a referenced PageTexture leaves a permanent edge
++    // that can never become drawable again. The four incoming keys are also
++    // protected while their edge is assembled.
 +    while (_pageTextures.size() >= kMaximumRetainedPagePictureCount) {
-+      const auto oldest = std::min_element(
-+          _pageTextures.begin(), _pageTextures.end(),
-+          [&isPrioritized](const PageTexture &left,
-+                           const PageTexture &right) {
-+            if (left.uploadPending != right.uploadPending) {
-+              return !left.uploadPending;
-+            }
-+            const bool leftPrioritized = isPrioritized(left);
-+            const bool rightPrioritized = isPrioritized(right);
-+            if (leftPrioritized != rightPrioritized) {
-+              return !leftPrioritized;
-+            }
-+            return left.lastUsed < right.lastUsed;
-+          });
-+      if (oldest == _pageTextures.end() || oldest->uploadPending) {
++      auto oldest = _pageTextures.end();
++      for (auto candidate = _pageTextures.begin();
++           candidate != _pageTextures.end(); candidate += 1) {
++        const bool incoming =
++            std::find(incomingPageKeys.begin(), incomingPageKeys.end(),
++                      candidate->pageKey) != incomingPageKeys.end();
++        if (incoming ||
++            pageTextureReferencedByStockLocked(candidate->pageKey)) {
++          continue;
++        }
++        if (oldest == _pageTextures.end() ||
++            (oldest->uploadPending && !candidate->uploadPending) ||
++            (candidate->uploadPending == oldest->uploadPending &&
++             candidate->lastUsed < oldest->lastUsed)) {
++          oldest = candidate;
++        }
++      }
++      if (oldest == _pageTextures.end()) {
 +        break;
 +      }
 +      _pageTextures.erase(oldest);
@@ -3672,7 +3719,9 @@ index 0000000000000000000000000000000000000000..e7355182c38e4d92fce0b22b441b9a69
 +      _pageTextures.push_back(
 +          {pageKey, picture, nullptr, pixelWidth, pixelHeight,
 +           ++_pageTextureUsageCounter, false, 0});
++      return true;
 +    }
++    return false;
 +  }
 +
 +  const StockEntry *stockEdgeLocked(const std::string &fromPageKey,
@@ -3877,6 +3926,40 @@ index 0000000000000000000000000000000000000000..e7355182c38e4d92fce0b22b441b9a69
 +           pageTextureReadyLocked(entry.backgroundRightTextureKey);
 +  }
 +
++  void rearmPageTextureUploadLocked(const std::string &pageKey) {
++    if (pageKey.empty()) {
++      return;
++    }
++    const auto page = std::find_if(
++        _pageTextures.begin(), _pageTextures.end(),
++        [&pageKey](const PageTexture &entry) {
++          return entry.pageKey == pageKey;
++        });
++    if (page == _pageTextures.end() || page->image != nullptr ||
++        page->picture == nullptr || page->uploadPending ||
++        page->uploadFailureCount <
++            kMaximumPageTextureUploadFailureCount) {
++      return;
++    }
++    // A transient RenderTarget allocation failure must not permanently poison
++    // the exact page currently demanded by a held riffle. Give demand another
++    // bounded retry window; if GPU pressure remains, the next cadence tick can
++    // retry after older animated sheets have released their image references.
++    page->uploadFailureCount = 0;
++    page->lastUsed = ++_pageTextureUsageCounter;
++  }
++
++  void prioritizeRapidStockDemandLocked(const StockEntry &entry,
++                                         int direction) {
++    _preferredDirection = direction < 0 ? -1 : 1;
++    rearmPageTextureUploadLocked(entry.frontTextureKey);
++    if (entry.spread) {
++      rearmPageTextureUploadLocked(entry.backTextureKey);
++    }
++    rearmPageTextureUploadLocked(entry.backgroundLeftTextureKey);
++    rearmPageTextureUploadLocked(entry.backgroundRightTextureKey);
++  }
++
 +  static size_t estimatedPageTextureBytes(const PageTexture &page) {
 +    if (page.pixelWidth <= 0 || page.pixelHeight <= 0) {
 +      return 0;
@@ -3901,6 +3984,62 @@ index 0000000000000000000000000000000000000000..e7355182c38e4d92fce0b22b441b9a69
 +        {std::string(reason) + ":" +
 +             std::to_string(++_stockMissCounter),
 +         "stock-miss", nowEpochMs, direction < 0 ? -1 : 1});
++  }
++
++  bool beginDirectionEpochLocked(int direction, double nowSteadyMs,
++                                 double nowEpochMs) {
++    const int normalizedDirection = direction < 0 ? -1 : 1;
++    const bool reversing = std::any_of(
++        _turns.begin(), _turns.end(),
++        [normalizedDirection](const Turn &turn) {
++          return !turn.completed && turn.direction != normalizedDirection;
++        });
++    if (!reversing) {
++      return true;
++    }
++
++    // Declarative RN turns do not advance this compositor's addressable
++    // anchor until React settles them. Refuse to cross that unresolved state;
++    // the caller can use the existing RN fallback instead of starting from a
++    // stale native page key.
++    const bool hasUnaddressedTurn = std::any_of(
++        _turns.begin(), _turns.end(), [](const Turn &turn) {
++          return !turn.completed &&
++                 (turn.fromPageKey.empty() || turn.toPageKey.empty());
++        });
++    if (hasUnaddressedTurn) {
++      return false;
++    }
++
++    // The compositor's overlap ordering is intentionally one-directional.
++    // When input reverses, the native logical anchor already represents every
++    // consumed sheet, so waiting for the old visual tail would stall the new
++    // direction and drawing both directions in one stack selects the wrong
++    // background. Start a new visual epoch at that anchor: resolve the old
++    // lifecycle records, discard their unpresented frames, and let the new
++    // fully prepared sheet cover the declarative canvas from progress zero.
++    for (const auto &turn : _turns) {
++      if (turn.completed || turn.id.empty()) {
++        continue;
++      }
++      _events.push_back(
++          {turn.id, turn.commitOnComplete ? "completed" : "cancelled",
++           nowEpochMs, turn.direction});
++    }
++    _turns.clear();
++    _pendingPresentedTurnIds.clear();
++    _presentationHandoff.reset();
++    _acknowledgedPresentationTurnIds.clear();
++    _pendingDirectInputs.erase(
++        std::remove_if(
++            _pendingDirectInputs.begin(), _pendingDirectInputs.end(),
++            [normalizedDirection](const PendingDirectInput &pending) {
++              return pending.direction != normalizedDirection;
++            }),
++        _pendingDirectInputs.end());
++    _latestCompletedPageRevision = _currentPageRevision;
++    _nextLaunchSteadyMs = nowSteadyMs;
++    return true;
 +  }
 +
 +  std::string nextStockTurnIdLocked(const std::string &stockId,
@@ -3928,6 +4067,13 @@ index 0000000000000000000000000000000000000000..e7355182c38e4d92fce0b22b441b9a69
 +      }
 +      return false;
 +    }
++    stock->lastUsed = ++_stockUsageCounter;
++    if (rapidInput) {
++      // Reversal demand can arrive before the reverse runway has reached the
++      // GPU. Switch texture preparation immediately and recover exact-edge
++      // uploads that exhausted their transient failure budget.
++      prioritizeRapidStockDemandLocked(*stock, normalizedDirection);
++    }
 +    // Native input may advance the logical anchor only when its complete first
 +    // frame is already drawable. A retained SkPicture is stock material, but
 +    // promoting it here can miss indefinitely; reject cold images so the
@@ -3939,7 +4085,14 @@ index 0000000000000000000000000000000000000000..e7355182c38e4d92fce0b22b441b9a69
 +      }
 +      return false;
 +    }
-+    stock->lastUsed = ++_stockUsageCounter;
++    if (!beginDirectionEpochLocked(
++            normalizedDirection, nowSteadyMs, nowEpochMs)) {
++      if (emitStockMiss) {
++        emitStockMissLocked(normalizedDirection, nowEpochMs,
++                            "direction-busy");
++      }
++      return false;
++    }
 +
 +    if (directInput) {
 +      // The tap lane deliberately has no launch queue. Preserve the original
@@ -3953,6 +4106,8 @@ index 0000000000000000000000000000000000000000..e7355182c38e4d92fce0b22b441b9a69
 +    }
 +    Turn turn;
 +    turn.id = nextStockTurnIdLocked(stock->id, rapidInput);
++    turn.fromPageKey = stock->fromPageKey;
++    turn.toPageKey = stock->toPageKey;
 +    turn.frontImage = preparedPageImageLocked(stock->frontTextureKey);
 +    if (turn.frontImage != nullptr) {
 +      turn.frontImageId = turn.frontImage->uniqueID();

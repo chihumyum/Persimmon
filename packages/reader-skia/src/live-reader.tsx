@@ -3693,8 +3693,9 @@ function LazyReaderEngine({
         return;
       }
       const directTurnActive = nativePagerDirectTurnIdsRef.current.has(turnId);
+      const directTurnReserved = directEntry !== undefined;
       nativePagerFirstFrameGateRef.current.discard(turnId);
-      if (directTurnActive) {
+      if (directTurnActive || directTurnReserved) {
         const startedAtMs = laneTurnStartedAtRef.current.get(turnId);
         laneTurnStartedAtRef.current.delete(turnId);
         if (startedAtMs !== undefined) {
