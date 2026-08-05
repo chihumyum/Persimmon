@@ -1,15 +1,13 @@
 import type { ReaderTheme } from "@persimmon/reader-skia";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Animated,
   Easing,
-  Modal,
   Platform,
-  Pressable,
   ScrollView,
   StatusBar,
   StyleSheet,
+  Text,
   useWindowDimensions,
   View,
 } from "react-native";
@@ -21,12 +19,12 @@ import {
   type BookMenuAction,
   type BookMenuRect,
 } from "../../modules/persimmon-selection-menu";
-import { UiButton } from "../components/ui-button";
-import { UiIcon } from "../components/ui-icon";
-import { uiBackdropColor } from "../components/ui-shadow";
-import { UiEmptyState, UiInlineAlert } from "../components/ui-state-message";
-import { UiText as Text } from "../components/ui-text";
-import { uiRadius, uiSpace } from "../components/ui-tokens";
+import { LibraryNativeEmptyState } from "../components/library-native-empty-state";
+import { LibraryNativeFilterControl } from "../components/library-native-filter-control";
+import { LibraryNativeSortControl } from "../components/library-native-sort-control";
+import { LibraryNativeSyncNotice } from "../components/library-native-sync-notice";
+import { LibraryNativeToolbarButton } from "../components/library-native-toolbar-button";
+import { uiSpace } from "../components/ui-tokens";
 import type { AppLanguagePreference } from "../i18n";
 import {
   dismissGoogleDrivePrompt,
@@ -34,7 +32,6 @@ import {
   loadGoogleDrivePromptDismissed,
   saveBookMetadataVisible,
 } from "../library/library-ui-preferences";
-import { shouldUseIconOnlySort } from "../library/library-controls-layout";
 import {
   librarySyncBannerPlacement,
   shouldAnnounceSyncCompletion,
@@ -58,193 +55,6 @@ import {
   LibrarySettingsModal,
   syncDescription,
 } from "./library-settings-modal";
-
-function FilterOption({
-  label,
-  selected,
-  theme,
-  onPress,
-}: {
-  readonly label: string;
-  readonly selected: boolean;
-  readonly theme: ReaderTheme;
-  readonly onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="radio"
-      accessibilityState={{ checked: selected }}
-      aria-checked={selected}
-      onPress={onPress}
-      style={[
-        styles.filterOption,
-        selected && { backgroundColor: theme.panelRaised },
-      ]}
-    >
-      <Text
-        style={[
-          styles.filterOptionText,
-          {
-            color: selected ? theme.text : theme.secondaryText,
-            fontWeight: selected ? "700" : "500",
-          },
-        ]}
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function SortControl({
-  iconOnly,
-  sort,
-  theme,
-  onChange,
-  onExpandedWidthChange,
-}: {
-  readonly iconOnly: boolean;
-  readonly sort: LibrarySort;
-  readonly theme: ReaderTheme;
-  readonly onChange: (sort: LibrarySort) => void;
-  readonly onExpandedWidthChange: (width: number) => void;
-}) {
-  const { t } = useTranslation();
-  const [visible, setVisible] = useState(false);
-  const sortOptions: readonly {
-    readonly value: LibrarySort;
-    readonly label: string;
-  }[] = [
-    { value: "recent", label: t("library.sort.recent") },
-    { value: "added", label: t("library.sort.added") },
-    { value: "title", label: t("library.sort.title") },
-  ];
-  const label =
-    sortOptions.find((option) => option.value === sort)?.label ??
-    t("library.sort.default");
-
-  return (
-    <>
-      <View style={styles.sortControl}>
-        <UiButton
-          accessibilityLabel={t("library.sort.currentAccessibility", {
-            label,
-          })}
-          accessibilityState={{ expanded: visible }}
-          compact
-          iconOnly={iconOnly}
-          label={label}
-          leadingIcon="sort"
-          onPress={() => setVisible(true)}
-          textTone="muted"
-          theme={theme}
-          trailingIcon={iconOnly ? undefined : "chevronDown"}
-          variant="ghost"
-        />
-      </View>
-      {/* Keep intrinsic measurement outside the icon-only wrapper. Otherwise
-          Yoga constrains this copy to the compact width and creates a
-          full-button/icon-only layout feedback loop. */}
-      <View
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
-        key={label}
-        onLayout={(event) =>
-          onExpandedWidthChange(event.nativeEvent.layout.width)
-        }
-        pointerEvents="none"
-        style={styles.sortControlMeasurement}
-      >
-        <UiButton
-          compact
-          label={label}
-          leadingIcon="sort"
-          onPress={() => undefined}
-          textTone="muted"
-          theme={theme}
-          trailingIcon="chevronDown"
-          variant="ghost"
-        />
-      </View>
-      <Modal
-        animationType="fade"
-        onRequestClose={() => setVisible(false)}
-        statusBarTranslucent
-        transparent
-        visible={visible}
-      >
-        <View
-          style={[
-            styles.sortBackdrop,
-            { backgroundColor: uiBackdropColor(theme, "soft") },
-          ]}
-        >
-          <Pressable
-            accessibilityLabel={t("library.sort.closeAccessibility")}
-            accessibilityRole="button"
-            onPress={() => setVisible(false)}
-            style={StyleSheet.absoluteFill}
-          />
-          <View
-            style={[
-              styles.sortMenu,
-              {
-                backgroundColor: theme.panel,
-                borderColor: theme.border,
-                shadowColor: theme.shadow,
-              },
-            ]}
-          >
-            <Text style={[styles.sortTitle, { color: theme.text }]}>
-              {t("library.sort.heading")}
-            </Text>
-            {sortOptions.map((option) => {
-              const selected = option.value === sort;
-              return (
-                <Pressable
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: selected }}
-                  aria-checked={selected}
-                  key={option.value}
-                  onPress={() => {
-                    onChange(option.value);
-                    setVisible(false);
-                  }}
-                  style={({ pressed }) => [
-                    styles.sortOption,
-                    pressed && { backgroundColor: theme.panelMuted },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.sortOptionText,
-                      {
-                        color: selected ? theme.accentStrong : theme.text,
-                        fontWeight: selected ? "700" : "500",
-                      },
-                    ]}
-                  >
-                    {option.label}
-                  </Text>
-                  <View style={styles.sortCheck}>
-                    {selected ? (
-                      <UiIcon
-                        color={theme.accentStrong}
-                        name="check"
-                        size={17}
-                        weight="semibold"
-                      />
-                    ) : null}
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-      </Modal>
-    </>
-  );
-}
 
 function SyncBanner({
   floating = false,
@@ -276,95 +86,31 @@ function SyncBanner({
           ? t("sync.banner.syncing")
           : "Google Drive";
   const progress = status.phase === "syncing" ? status.progress : undefined;
-  const progressFraction = progress ? syncProgressFraction(progress) : 0;
-
   return (
-    <View
-      style={[
-        styles.syncBanner,
-        {
-          backgroundColor: theme.panel,
-          borderColor: needsAttention ? theme.noteAccent : theme.border,
-          ...(floating && Platform.OS !== "web"
-            ? { shadowColor: theme.shadow }
-            : {}),
-        },
-        floating && styles.syncBannerFloating,
-      ]}
-    >
-      <Pressable
-        accessibilityLabel={t("sync.banner.openSettingsAccessibility")}
-        accessibilityRole="button"
-        onPress={onOpenSettings}
-        style={styles.syncBannerMain}
-      >
-        {status.phase === "syncing" ? (
-          <ActivityIndicator
-            accessibilityLabel={t("sync.banner.syncingAccessibility")}
-            color={theme.accentStrong}
-            size="small"
-            style={styles.syncBannerIcon}
-          />
-        ) : (
-          <UiIcon
-            color={theme.accentStrong}
-            name="cloud"
-            size={20}
-            style={styles.syncBannerIcon}
-          />
-        )}
-        <View style={styles.syncBannerCopy}>
-          <Text style={[styles.syncBannerTitle, { color: theme.text }]}>
-            {title}
-          </Text>
-          <Text
-            numberOfLines={2}
-            style={[
-              styles.syncBannerDescription,
-              { color: theme.secondaryText },
-            ]}
-          >
-            {syncDescription(status)}
-          </Text>
-          {progress && progress.totalBooks > 0 ? (
-            <View
-              accessibilityLabel={t("sync.banner.progressAccessibility")}
-              accessibilityRole="progressbar"
-              accessibilityValue={{
-                min: 0,
-                max: progress.totalBooks,
-                now: progress.completedBooks,
-              }}
-              style={[
-                styles.syncBannerProgressTrack,
-                { backgroundColor: theme.panelMuted },
-              ]}
-            >
-              <View
-                style={[
-                  styles.syncBannerProgressFill,
-                  {
-                    backgroundColor: theme.accentStrong,
-                    width: `${progressFraction * 100}%`,
-                  },
-                ]}
-              />
-            </View>
-          ) : null}
-        </View>
-      </Pressable>
-      {status.phase !== "syncing" && onClose ? (
-        <Pressable
-          accessibilityLabel={t("sync.banner.closeAccessibility")}
-          accessibilityRole="button"
-          hitSlop={8}
-          onPress={onClose}
-          style={styles.syncBannerClose}
-        >
-          <UiIcon color={theme.secondaryText} name="close" size={17} />
-        </Pressable>
-      ) : null}
-    </View>
+    <LibraryNativeSyncNotice
+      closeAccessibilityLabel={t("sync.banner.closeAccessibility")}
+      description={syncDescription(status)}
+      floating={floating}
+      kind={
+        status.phase === "syncing"
+          ? "syncing"
+          : status.phase === "idle"
+            ? "success"
+            : needsAttention
+              ? "attention"
+              : "cloud"
+      }
+      openAccessibilityLabel={t("sync.banner.openSettingsAccessibility")}
+      progress={
+        progress && progress.totalBooks > 0
+          ? syncProgressFraction(progress)
+          : undefined
+      }
+      theme={theme}
+      title={title}
+      onClose={status.phase === "syncing" ? undefined : onClose}
+      onOpen={onOpenSettings}
+    />
   );
 }
 
@@ -551,9 +297,6 @@ export function LibraryScreen({
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [bookMetadataVisible, setBookMetadataVisible] = useState(true);
   const [sort, setSort] = useState<LibrarySort>("recent");
-  const [controlsWidth, setControlsWidth] = useState(0);
-  const [filterContentWidth, setFilterContentWidth] = useState(0);
-  const [expandedSortWidth, setExpandedSortWidth] = useState(0);
   const filterOptions: readonly {
     readonly value: LibraryFilter;
     readonly label: string;
@@ -562,6 +305,14 @@ export function LibraryScreen({
     { value: "reading", label: t("library.filters.reading") },
     { value: "unread", label: t("library.filters.unread") },
     { value: "finished", label: t("library.filters.finished") },
+  ];
+  const sortOptions: readonly {
+    readonly value: LibrarySort;
+    readonly label: string;
+  }[] = [
+    { value: "recent", label: t("library.sort.recent") },
+    { value: "added", label: t("library.sort.added") },
+    { value: "title", label: t("library.sort.title") },
   ];
   const [connectionPromptDismissed, setConnectionPromptDismissed] = useState<
     boolean | undefined
@@ -582,12 +333,9 @@ export function LibraryScreen({
   const floatingSyncBannerVisible =
     syncBannerPlacement === "floating" &&
     !(syncStatus.phase === "error" && syncErrorDismissed);
-  const sortIconOnly = shouldUseIconOnlySort({
-    controlsWidth,
-    expandedSortWidth,
-    filterContentWidth,
-    gap: uiSpace.md,
-  });
+  const sortLabel =
+    sortOptions.find((option) => option.value === sort)?.label ??
+    t("library.sort.default");
 
   useEffect(() => {
     let cancelled = false;
@@ -744,93 +492,87 @@ export function LibraryScreen({
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <Text variant="display" style={{ color: theme.text }}>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>
             {t("library.title")}
           </Text>
           <View style={styles.headerActions}>
-            <UiButton
+            <LibraryNativeToolbarButton
               accessibilityLabel={t("library.actions.searchAccessibility")}
-              iconOnly
-              label={t("common.search")}
-              leadingIcon="search"
+              icon="search"
               onPress={() => setSearchVisible(true)}
               theme={theme}
             />
-            <UiButton
+            <LibraryNativeToolbarButton
               accessibilityLabel={t(
                 "library.actions.openSettingsAccessibility",
               )}
-              iconOnly
-              label={t("common.settings")}
-              leadingIcon="settings"
+              icon="settings"
               onPress={() => setSettingsVisible(true)}
               theme={theme}
             />
-            <UiButton
+            <LibraryNativeToolbarButton
               accessibilityLabel={t("library.actions.importAccessibility")}
               disabled={importing}
-              iconOnly
-              label={t("library.actions.importLabel")}
-              leadingIcon="add"
+              icon="add"
               loading={importing}
               onPress={onImport}
               theme={theme}
-              variant="primary"
+              tintColor={theme.accentStrong}
             />
           </View>
         </View>
 
         {error ? (
-          <UiInlineAlert
-            actionLabel={t("library.actions.closeError")}
-            message={error}
-            theme={theme}
-            onAction={onDismissError}
-          />
+          <View style={styles.noticeBlock}>
+            <LibraryNativeSyncNotice
+              closeAccessibilityLabel={t("library.actions.closeError")}
+              description={error}
+              kind="attention"
+              openAccessibilityLabel={t("library.actions.closeError")}
+              theme={theme}
+              title={t("library.error.title")}
+              onClose={onDismissError}
+              onOpen={onDismissError}
+            />
+          </View>
         ) : null}
 
         {syncBannerPlacement === "top" ? (
-          <SyncBanner
-            status={syncStatus}
-            theme={theme}
-            onClose={dismissConnectionPrompt}
-            onOpenSettings={() => setSettingsVisible(true)}
-          />
+          <View style={styles.noticeBlock}>
+            <SyncBanner
+              status={syncStatus}
+              theme={theme}
+              onClose={dismissConnectionPrompt}
+              onOpenSettings={() => setSettingsVisible(true)}
+            />
+          </View>
         ) : null}
 
-        <View
-          onLayout={(event) => setControlsWidth(event.nativeEvent.layout.width)}
-          style={styles.controls}
-        >
-          <ScrollView
-            contentContainerStyle={[
-              styles.filterGroup,
-              { backgroundColor: theme.panelMuted },
-            ]}
-            horizontal
-            onContentSizeChange={(width) => setFilterContentWidth(width)}
-            showsHorizontalScrollIndicator={false}
-            style={styles.filterScroller}
-          >
-            {filterOptions.map((option) => (
-              <FilterOption
-                key={option.value}
-                label={t("library.filters.withCount", {
-                  label: option.label,
-                  count: counts[option.value],
-                })}
-                selected={filter === option.value}
-                theme={theme}
-                onPress={() => setFilter(option.value)}
-              />
-            ))}
-          </ScrollView>
-          <SortControl
-            iconOnly={sortIconOnly}
-            sort={sort}
+        <View style={styles.controls}>
+          <LibraryNativeFilterControl
+            accessibilityLabel={t("library.title")}
+            options={filterOptions.map((option) => ({
+              ...option,
+              label: compact
+                ? option.label
+                : t("library.filters.withCount", {
+                    label: option.label,
+                    count: counts[option.value],
+                  }),
+            }))}
             theme={theme}
+            value={filter}
+            onChange={setFilter}
+          />
+          <LibraryNativeSortControl
+            accessibilityLabel={t("library.sort.currentAccessibility", {
+              label: sortLabel,
+            })}
+            iconOnly={compact}
+            options={sortOptions}
+            theme={theme}
+            value={sort}
             onChange={setSort}
-            onExpandedWidthChange={setExpandedSortWidth}
           />
         </View>
 
@@ -861,7 +603,7 @@ export function LibraryScreen({
         </View>
 
         {visibleEntries.length === 0 ? (
-          <UiEmptyState
+          <LibraryNativeEmptyState
             body={t("library.empty.body")}
             theme={theme}
             title={t("library.empty.title")}
@@ -949,26 +691,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 25,
   },
-  filterGroup: {
-    borderRadius: uiRadius.pill,
-    flexGrow: 0,
-    padding: 3,
-  },
-  filterScroller: {
-    flex: 1,
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  filterOption: {
-    alignItems: "center",
-    borderRadius: uiRadius.pill,
-    justifyContent: "center",
-    minHeight: 38,
-    paddingHorizontal: 12,
-  },
-  filterOptionText: {
-    fontSize: 12,
-  },
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -985,85 +707,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: uiSpace.sm,
   },
+  headerTitle: {
+    fontFamily: Platform.select({ android: "sans-serif", ios: "System" }),
+    fontSize: 34,
+    fontWeight: "700",
+    letterSpacing: -0.7,
+  },
   hiddenGridEntry: {
     display: "none",
   },
   screen: {
     flex: 1,
   },
-  sortBackdrop: {
-    alignItems: "center",
-    flex: 1,
-    justifyContent: "center",
-    padding: 18,
-  },
-  sortCheck: {
-    alignItems: "center",
-    justifyContent: "center",
-    width: 20,
-  },
-  sortControl: {
-    flexShrink: 0,
-    position: "relative",
-  },
-  sortControlMeasurement: {
-    opacity: 0,
-    position: "absolute",
-    right: 0,
-    top: 0,
-  },
-  sortMenu: {
-    borderRadius: 19,
-    borderWidth: StyleSheet.hairlineWidth,
-    maxWidth: 330,
-    padding: 9,
-    width: "100%",
-    ...(Platform.OS === "web"
-      ? { boxShadow: "0 20px 60px rgba(0, 0, 0, 0.24)" }
-      : {
-          elevation: 12,
-          shadowOffset: { width: 0, height: 15 },
-          shadowOpacity: 0.24,
-          shadowRadius: 28,
-        }),
-  },
-  sortOption: {
-    alignItems: "center",
-    borderRadius: 12,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    minHeight: 48,
-    paddingHorizontal: 13,
-  },
-  sortOptionText: {
-    fontSize: 15,
-  },
-  sortTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    paddingBottom: 7,
-    paddingHorizontal: 13,
-    paddingTop: 8,
-  },
-  syncBanner: {
-    alignItems: "center",
-    borderRadius: uiRadius.card,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: "row",
-    marginBottom: 20,
-    minHeight: 68,
-  },
-  syncBannerFloating: {
-    marginBottom: 0,
-    ...(Platform.OS === "web"
-      ? { boxShadow: "0 12px 36px rgba(0, 0, 0, 0.18)" }
-      : {
-          elevation: 8,
-          shadowOffset: { width: 0, height: 9 },
-          shadowOpacity: 0.2,
-          shadowRadius: 18,
-        }),
-  },
+  noticeBlock: { marginBottom: 20 },
   syncBannerFloatingLayer: {
     alignItems: "center",
     left: 0,
@@ -1074,45 +730,5 @@ const styles = StyleSheet.create({
   syncBannerFloatingWidth: {
     maxWidth: 560,
     width: "100%",
-  },
-  syncBannerClose: {
-    alignItems: "center",
-    alignSelf: "stretch",
-    justifyContent: "center",
-    width: 44,
-  },
-  syncBannerCopy: {
-    flex: 1,
-  },
-  syncBannerDescription: {
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 2,
-  },
-  syncBannerIcon: {
-    marginRight: 12,
-  },
-  syncBannerMain: {
-    alignItems: "center",
-    flex: 1,
-    flexDirection: "row",
-    minHeight: 68,
-    paddingLeft: 15,
-    paddingVertical: 10,
-  },
-  syncBannerProgressFill: {
-    borderRadius: uiRadius.pill,
-    height: "100%",
-  },
-  syncBannerProgressTrack: {
-    borderRadius: uiRadius.pill,
-    height: 3,
-    marginTop: 7,
-    overflow: "hidden",
-    width: "100%",
-  },
-  syncBannerTitle: {
-    fontSize: 13,
-    fontWeight: "700",
   },
 });

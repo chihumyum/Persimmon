@@ -1,3 +1,8 @@
+import {
+  PAGE_DECORATION_FONT_SIZE,
+  PAGE_DECORATION_LETTER_SPACING,
+  PAGE_DECORATION_LINE_HEIGHT,
+} from "@persimmon/reader-skia";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PixelRatio, StyleSheet, View } from "react-native";
 import Animated, {
@@ -17,17 +22,16 @@ import {
   toolbarBreadcrumbLabel,
 } from "./toolbar-breadcrumb";
 
-const HORIZONTAL_PADDING = 24;
 const CAROUSEL_GAP = 36;
 const CAROUSEL_PIXELS_PER_SECOND = 28;
 
 export interface ToolbarBreadcrumbCarouselProps {
-  readonly color?: string;
+  readonly color: string;
   readonly labels: readonly string[];
 }
 
 export function ToolbarBreadcrumbCarousel({
-  color = "#6e6259",
+  color,
   labels,
 }: ToolbarBreadcrumbCarouselProps) {
   const { t } = useTranslation();
@@ -80,9 +84,7 @@ export function ToolbarBreadcrumbCarousel({
       })}
       accessibilityRole="header"
       onLayout={(event) =>
-        setAvailableWidth(
-          Math.max(0, event.nativeEvent.layout.width - HORIZONTAL_PADDING),
-        )
+        setAvailableWidth(Math.max(0, event.nativeEvent.layout.width))
       }
       pointerEvents="none"
       style={styles.container}
@@ -104,6 +106,7 @@ export function ToolbarBreadcrumbCarousel({
                 accessible={false}
                 numberOfLines={1}
                 style={[
+                  styles.decorationText,
                   styles.carouselLabel,
                   {
                     color,
@@ -118,7 +121,10 @@ export function ToolbarBreadcrumbCarousel({
           </Animated.View>
         </View>
       ) : (
-        <Text numberOfLines={1} style={[styles.label, { color }]}>
+        <Text
+          numberOfLines={1}
+          style={[styles.decorationText, styles.label, { color }]}
+        >
           {fullLabel}
         </Text>
       )}
@@ -128,11 +134,6 @@ export function ToolbarBreadcrumbCarousel({
 
 const styles = StyleSheet.create({
   carouselLabel: {
-    fontFamily: READER_UI_FONT_FAMILY,
-    fontSize: 12,
-    includeFontPadding: false,
-    letterSpacing: 0.2,
-    lineHeight: 17,
     textAlign: "left",
   },
   carouselTrack: {
@@ -147,20 +148,20 @@ const styles = StyleSheet.create({
   container: {
     alignItems: "center",
     flex: 1,
-    height: 36,
+    height: PAGE_DECORATION_LINE_HEIGHT,
     justifyContent: "center",
-    marginHorizontal: 12,
     minWidth: 0,
     overflow: "hidden",
-    paddingHorizontal: 12,
+  },
+  decorationText: {
+    fontFamily: READER_UI_FONT_FAMILY,
+    fontSize: PAGE_DECORATION_FONT_SIZE,
+    includeFontPadding: false,
+    letterSpacing: PAGE_DECORATION_LETTER_SPACING,
+    lineHeight: PAGE_DECORATION_LINE_HEIGHT,
   },
   label: {
     flexShrink: 1,
-    fontFamily: READER_UI_FONT_FAMILY,
-    fontSize: 12,
-    includeFontPadding: false,
-    letterSpacing: 0.2,
-    lineHeight: 17,
     textAlign: "center",
   },
 });

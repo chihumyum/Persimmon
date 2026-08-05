@@ -612,7 +612,7 @@ test("customizes typography and persists header progress placement", async ({
   );
 });
 
-test("keeps the TOC path between the corner toolbar controls", async ({
+test("matches the reading header and fills the space between toolbar controls", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -645,10 +645,12 @@ test("keeps the TOC path between the corner toolbar controls", async ({
   const settingsButtonBox = await page
     .getByRole("button", { name: "打开阅读设置" })
     .boundingBox();
+  const readerCanvasBox = await page.locator("canvas").first().boundingBox();
   expect(breadcrumbBox).not.toBeNull();
   expect(shelfButtonBox).not.toBeNull();
   expect(tocButtonBox).not.toBeNull();
   expect(settingsButtonBox).not.toBeNull();
+  expect(readerCanvasBox).not.toBeNull();
   await expect(page.getByRole("button", { name: "打开阅读布局" })).toHaveCount(
     0,
   );
@@ -656,13 +658,18 @@ test("keeps the TOC path between the corner toolbar controls", async ({
     0,
   );
   expect(breadcrumbBox!.y).toBeLessThan(844 / 2);
-  const breadcrumbCenterY = breadcrumbBox!.y + breadcrumbBox!.height / 2;
-  const shelfButtonCenterY = shelfButtonBox!.y + shelfButtonBox!.height / 2;
-  const tocButtonCenterY = tocButtonBox!.y + tocButtonBox!.height / 2;
-  expect(Math.abs(breadcrumbCenterY - shelfButtonCenterY)).toBeLessThanOrEqual(
-    1,
-  );
-  expect(Math.abs(breadcrumbCenterY - tocButtonCenterY)).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(breadcrumbBox!.y - readerCanvasBox!.y - 12),
+  ).toBeLessThanOrEqual(1);
+  expect(Math.abs(breadcrumbBox!.height - 15.6)).toBeLessThanOrEqual(1);
+  const leftControlGap =
+    breadcrumbBox!.x - (shelfButtonBox!.x + shelfButtonBox!.width);
+  const rightControlGap =
+    tocButtonBox!.x - (breadcrumbBox!.x + breadcrumbBox!.width);
+  expect(leftControlGap).toBeGreaterThanOrEqual(0);
+  expect(leftControlGap).toBeLessThanOrEqual(8.5);
+  expect(rightControlGap).toBeGreaterThanOrEqual(0);
+  expect(rightControlGap).toBeLessThanOrEqual(8.5);
   expect(shelfButtonBox!.x).toBeLessThan(390 / 2);
   expect(shelfButtonBox!.y).toBeLessThan(844 / 2);
   expect(tocButtonBox!.x).toBeGreaterThan(390 / 2);

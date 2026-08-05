@@ -28,11 +28,37 @@ export const uiRadius = {
 
 export const uiSize = {
   minimumHitTarget: 44,
-  compactControl: 36,
-  compactControlHitSlop: 4,
-  readerChrome: 34,
-  readerChromeHitSlop: 5,
+  compactControl: 40,
+  compactControlHitSlop: 2,
+  /**
+   * Canonical diameter for every circular app control. Segmented controls
+   * deliberately use the same height so neighboring controls share one rail.
+   */
+  control: 50,
+  controlIcon: 22,
+  readerChrome: 50,
+  readerChromeHitSlop: 0,
   readerChromePanelGap: 12,
+  segmentedControl: 50,
+  sheetHeader: 66,
+  sheetHeaderInset: 8,
+  optionRow: 60,
+  optionRowWithDescription: 76,
+  /**
+   * SwiftUI Form/Section supplies the remaining native row chrome around
+   * this content. These resolve visually to the same 60/76 pt row rails.
+   */
+  nativeGroupedRowContent: 44,
+  nativeGroupedRowWithDescriptionContent: 58,
+  optionHorizontalInset: 16,
+  dividerHorizontalInset: 16,
+} as const;
+
+export const uiSheet = {
+  readerSettingsAllowsUserResizing: true,
+  readerSettingsRootHeightRatio: 0.58,
+  readerSettingsFontHeightRatio: 0.76,
+  readerSettingsTypographyHeightRatio: 0.4,
 } as const;
 
 export const uiMotion = {
@@ -58,6 +84,36 @@ export const uiTypography = {
     fontSize: 19,
     fontWeight: "700",
     lineHeight: 24,
+  },
+  sheetHeader: {
+    fontSize: 20,
+    fontWeight: "600",
+    lineHeight: 25,
+  },
+  segmentLabel: {
+    fontSize: 17,
+    fontWeight: "600",
+    lineHeight: 22,
+  },
+  optionLabel: {
+    fontSize: 17,
+    fontWeight: "500",
+    lineHeight: 23,
+  },
+  optionDescription: {
+    fontSize: 14,
+    fontWeight: "400",
+    lineHeight: 19,
+  },
+  optionValue: {
+    fontSize: 17,
+    fontWeight: "400",
+    lineHeight: 23,
+  },
+  optionAction: {
+    fontSize: 17,
+    fontWeight: "500",
+    lineHeight: 23,
   },
   sectionTitle: {
     fontSize: 14,

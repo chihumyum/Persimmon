@@ -1,34 +1,38 @@
 import type { ReaderTheme } from "@persimmon/reader-skia";
-import { useState } from "react";
+import Constants from "expo-constants";
+import { Children, Fragment, type ReactNode, useState } from "react";
 import {
-  ActivityIndicator,
-  Modal,
+  Alert,
+  Linking,
   Platform,
-  Pressable,
   ScrollView,
+  Share,
   StyleSheet,
-  Switch,
+  Text,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { UiButton } from "../components/ui-button";
-import { UiModalSurface } from "../components/ui-modal-surface";
-import { ReaderThemeSelector } from "../components/reader-theme-selector";
-import { UiSegmentedControl } from "../components/ui-segmented-control";
-import { uiBackdropColor } from "../components/ui-shadow";
-import { UiText as Text } from "../components/ui-text";
-import { uiRadius, uiSpace } from "../components/ui-tokens";
+import { LibraryNativeSheet } from "../components/library-native-sheet";
+import { ReaderSettingsActionRow } from "../components/reader-settings-action-row";
+import { ReaderSettingsMenuRow } from "../components/reader-settings-menu-row";
+import { ReaderSettingsSwitchRow } from "../components/reader-settings-switch-row";
 import { formatTime, translate, type AppLanguagePreference } from "../i18n";
-import type { LegalDocument } from "../legal/legal-content";
+import {
+  licensesDocument,
+  privacyDocument,
+  type LegalDocument,
+} from "../legal/legal-content";
 import type { ReaderColorMode, ReaderThemeName } from "../library/types";
 import type { GoogleDriveSyncStatus } from "../sync/types";
-import { AppAboutSettingsSection } from "./app-about-settings-section";
 import {
-  AppDataSettingsSection,
-  type DataClearTarget,
-} from "./app-data-settings-section";
+  uiRadius,
+  uiSize,
+  uiSpace,
+  uiTypography,
+} from "../components/ui-tokens";
+import { type DataClearTarget } from "./app-data-settings-section";
 import { SettingsDocumentSurface } from "./settings-document-modal";
 
 export function syncDescription(status: GoogleDriveSyncStatus): string {
@@ -71,16 +75,77 @@ export function syncDescription(status: GoogleDriveSyncStatus): string {
           })
         : translate("sync.description.syncing");
     }
-    case "idle": {
+    case "idle":
       return translate("sync.description.idle", {
         account: status.accountEmail ?? "Google Drive",
         time: formatTime(new Date(status.lastSyncedAt)),
       });
-    }
     case "reauthorization-required":
     case "error":
       return status.message;
   }
+}
+
+function SettingsSection({
+  children,
+  footer,
+  footerCentered = false,
+  theme,
+  title,
+}: {
+  readonly children: ReactNode;
+  readonly footer?: string;
+  readonly footerCentered?: boolean;
+  readonly theme: ReaderTheme;
+  readonly title: string;
+}) {
+  const rows = Children.toArray(children);
+  return (
+    <View style={styles.section}>
+      <Text style={[styles.sectionTitle, { color: theme.secondaryText }]}>
+        {title}
+      </Text>
+      <View
+        style={[
+          styles.sectionCard,
+          {
+            backgroundColor: theme.panelRaised,
+            borderColor: theme.border,
+          },
+        ]}
+      >
+        {rows.map((row, index) => (
+          <Fragment key={`${title}-${index}`}>
+            {index > 0 ? (
+              <View
+                style={[styles.divider, { backgroundColor: theme.border }]}
+              />
+            ) : null}
+            {row}
+          </Fragment>
+        ))}
+      </View>
+      {footer ? (
+        <Text
+          style={[
+            styles.sectionFooter,
+            footerCentered && styles.sectionFooterCentered,
+            { color: theme.secondaryText },
+          ]}
+        >
+          {footer}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function publicSupportEmail(): string | undefined {
+  const configured = Constants.expoConfig?.extra?.supportEmail;
+  return typeof configured === "string" &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(configured)
+    ? configured
+    : undefined;
 }
 
 export interface LibrarySettingsModalProps {
@@ -128,51 +193,23 @@ export function LibrarySettingsModal({
   onSyncNow,
   onThemeChange,
 }: LibrarySettingsModalProps) {
-  const { t } = useTranslation();
-  const insets = useSafeAreaInsets();
+  const { i18n, t } = useTranslation();
+  const { bottom: bottomInset } = useSafeAreaInsets();
   const [legalDocument, setLegalDocument] = useState<LegalDocument>();
-  const colorModeOptions: readonly {
-    readonly value: ReaderColorMode;
-    readonly label: string;
-    readonly accessibilityLabel: string;
-  }[] = [
-    {
-      value: "system",
-      label: t("appearance.colorModes.system"),
-      accessibilityLabel: t("appearance.colorModes.systemAccessibility"),
-    },
-    {
-      value: "light",
-      label: t("appearance.colorModes.light"),
-      accessibilityLabel: t("appearance.colorModes.lightAccessibility"),
-    },
-    {
-      value: "dark",
-      label: t("appearance.colorModes.dark"),
-      accessibilityLabel: t("appearance.colorModes.darkAccessibility"),
-    },
-  ];
-  const languageOptions: readonly {
-    readonly value: AppLanguagePreference;
-    readonly label: string;
-    readonly accessibilityLabel: string;
-  }[] = [
-    {
-      value: "system",
-      label: t("language.options.system"),
-      accessibilityLabel: t("language.options.systemAccessibility"),
-    },
-    {
-      value: "zh-Hans",
-      label: t("language.options.zhHans"),
-      accessibilityLabel: t("language.options.zhHansAccessibility"),
-    },
-    {
-      value: "en",
-      label: t("language.options.english"),
-      accessibilityLabel: t("language.options.englishAccessibility"),
-    },
-  ];
+  const colorModeOptions = [
+    { value: "system", label: t("appearance.colorModes.system") },
+    { value: "light", label: t("appearance.colorModes.light") },
+    { value: "dark", label: t("appearance.colorModes.dark") },
+  ] as const;
+  const languageOptions = [
+    { value: "system", label: t("language.options.system") },
+    { value: "zh-Hans", label: t("language.options.zhHans") },
+    { value: "en", label: t("language.options.english") },
+  ] as const;
+  const themeOptions = [
+    { value: "warm", label: t("appearance.themes.warm") },
+    { value: "cool", label: t("appearance.themes.cool") },
+  ] as const;
   const busy =
     syncStatus.phase === "loading" ||
     syncStatus.phase === "authorizing" ||
@@ -191,345 +228,294 @@ export function LibrarySettingsModal({
     syncStatus.phase === "syncing" ||
     syncStatus.phase === "error";
   const dataBusy = dataClearing !== null;
-  const closeCurrentSurface = () => {
-    if (legalDocument) {
-      setLegalDocument(undefined);
-    } else {
-      onClose();
+  const version =
+    Constants.nativeAppVersion ?? Constants.expoConfig?.version ?? "0.1.0";
+  const buildVersion = Constants.nativeBuildVersion;
+  const versionLabel = buildVersion ? `${version} (${buildVersion})` : version;
+  const supportEmail = publicSupportEmail();
+  const syncAccountLabel =
+    "accountEmail" in syncStatus && syncStatus.accountEmail
+      ? syncStatus.accountEmail
+      : "Google Drive";
+
+  const confirmClearLocalData = () => {
+    Alert.alert(
+      t("settings.data.clearLocalTitle"),
+      t("settings.data.clearLocalConfirmation"),
+      [
+        { text: t("common.cancel"), style: "cancel" },
+        {
+          text: t("settings.data.clearLocalAction"),
+          style: "destructive",
+          onPress: onClearLocalData,
+        },
+      ],
+    );
+  };
+  const confirmClearCloudData = () => {
+    Alert.alert(
+      t("settings.data.clearCloudTitle"),
+      t("settings.data.clearCloudConfirmation"),
+      [
+        { text: t("common.cancel"), style: "cancel" },
+        {
+          text: t("settings.data.clearCloudAction"),
+          style: "destructive",
+          onPress: onClearCloudData,
+        },
+      ],
+    );
+  };
+  const sendFeedback = async () => {
+    const subject = t("settings.about.feedbackSubject", {
+      version: versionLabel,
+    });
+    const message = t("settings.about.feedbackTemplate", {
+      version: versionLabel,
+      platform: `${Platform.OS} ${String(Platform.Version)}`,
+    });
+    if (supportEmail) {
+      const mailto = `mailto:${supportEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
+      try {
+        await Linking.openURL(mailto);
+        return;
+      } catch {
+        // Fall through to the platform share sheet when no mail client exists.
+      }
+    }
+    try {
+      await Share.share({ title: t("settings.about.feedback"), message });
+    } catch {
+      Alert.alert(
+        t("settings.about.feedbackFailedTitle"),
+        t("settings.about.feedbackFailedMessage"),
+      );
     }
   };
 
-  return (
-    <Modal
-      animationType="fade"
-      onRequestClose={closeCurrentSurface}
-      statusBarTranslucent
-      transparent
-      visible={visible}
-    >
-      <View
-        style={[
-          styles.modalRoot,
-          {
-            backgroundColor: uiBackdropColor(theme),
-            paddingBottom: Math.max(insets.bottom, 14),
-            paddingTop: Math.max(insets.top, 14),
-          },
-        ]}
+  if (legalDocument) {
+    return (
+      <LibraryNativeSheet
+        backAccessibilityLabel={t("common.settings")}
+        closeAccessibilityLabel={t("library.settings.closeAccessibility")}
+        heightRatio={0.72}
+        theme={theme}
+        title={legalDocument.title}
+        visible={visible}
+        onBack={() => setLegalDocument(undefined)}
+        onClose={onClose}
       >
-        <Pressable
-          accessibilityLabel={t("library.settings.closeAccessibility")}
-          accessibilityRole="button"
-          onPress={closeCurrentSurface}
-          style={StyleSheet.absoluteFill}
-        />
-        {legalDocument ? (
-          <SettingsDocumentSurface
-            document={legalDocument}
+        <SettingsDocumentSurface document={legalDocument} theme={theme} />
+      </LibraryNativeSheet>
+    );
+  }
+
+  return (
+    <LibraryNativeSheet
+      closeAccessibilityLabel={t("library.settings.closeAccessibility")}
+      heightRatio={0.72}
+      theme={theme}
+      title={t("common.settings")}
+      visible={visible}
+      onClose={onClose}
+    >
+      <ScrollView
+        contentContainerStyle={[
+          styles.settingsList,
+          { paddingBottom: bottomInset + uiSpace.xxl },
+        ]}
+        showsVerticalScrollIndicator={false}
+        style={[styles.host, { backgroundColor: theme.panel }]}
+      >
+        <SettingsSection theme={theme} title={t("appearance.section")}>
+          <ReaderSettingsMenuRow<ReaderColorMode>
+            accessibilityLabel={t("appearance.colorModeGroup")}
+            disabled={dataBusy}
+            options={colorModeOptions}
             theme={theme}
-            onClose={() => setLegalDocument(undefined)}
+            title={t("appearance.colorMode")}
+            value={colorMode}
+            onChange={onColorModeChange}
           />
-        ) : (
-          <UiModalSurface theme={theme}>
-            <View style={styles.header}>
-              <Text variant="modalTitle" style={{ color: theme.text }}>
-                {t("common.settings")}
-              </Text>
-              <UiButton
-                compact
-                label={t("common.done")}
-                onPress={onClose}
-                textTone="accent"
-                theme={theme}
-                variant="ghost"
-              />
-            </View>
+          <ReaderSettingsMenuRow<AppLanguagePreference>
+            accessibilityLabel={t("language.groupAccessibility")}
+            description={t(
+              languagePreference === "system"
+                ? "language.systemDescription"
+                : "language.overrideDescription",
+            )}
+            disabled={dataBusy}
+            options={languageOptions}
+            theme={theme}
+            title={t("language.label")}
+            value={languagePreference}
+            onChange={onLanguagePreferenceChange}
+          />
+          <ReaderSettingsMenuRow<ReaderThemeName>
+            accessibilityLabel={t("appearance.libraryThemeGroup")}
+            disabled={dataBusy}
+            options={themeOptions}
+            theme={theme}
+            title={t("appearance.theme")}
+            value={readerThemeName}
+            onChange={onThemeChange}
+          />
+          <ReaderSettingsSwitchRow
+            description={t("library.settings.showMetadataDescription")}
+            disabled={dataBusy}
+            label={t("library.settings.showMetadata")}
+            theme={theme}
+            value={bookMetadataVisible}
+            onChange={onBookMetadataVisibleChange}
+          />
+        </SettingsSection>
 
-            <ScrollView
-              contentContainerStyle={styles.content}
-              pointerEvents={dataBusy ? "none" : "auto"}
-              scrollEnabled={!dataBusy}
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={styles.section}>
-                <Text
-                  style={[styles.sectionTitle, { color: theme.controlText }]}
-                >
-                  {t("appearance.section")}
-                </Text>
-                <View style={styles.appearanceControl}>
-                  <Text
-                    style={[
-                      styles.appearanceLabel,
-                      { color: theme.controlText },
-                    ]}
-                  >
-                    {t("appearance.colorMode")}
-                  </Text>
-                  <UiSegmentedControl
-                    accessibilityLabel={t("appearance.colorModeGroup")}
-                    options={colorModeOptions}
-                    theme={theme}
-                    value={colorMode}
-                    onChange={onColorModeChange}
-                  />
-                </View>
-                <View style={styles.appearanceControl}>
-                  <Text
-                    style={[
-                      styles.appearanceLabel,
-                      { color: theme.controlText },
-                    ]}
-                  >
-                    {t("language.label")}
-                  </Text>
-                  <UiSegmentedControl
-                    accessibilityLabel={t("language.groupAccessibility")}
-                    options={languageOptions}
-                    theme={theme}
-                    value={languagePreference}
-                    onChange={onLanguagePreferenceChange}
-                  />
-                  <Text
-                    style={[
-                      styles.preferenceHint,
-                      { color: theme.secondaryText },
-                    ]}
-                  >
-                    {t(
-                      languagePreference === "system"
-                        ? "language.systemDescription"
-                        : "language.overrideDescription",
-                    )}
-                  </Text>
-                </View>
-                <View style={styles.appearanceControl}>
-                  <Text
-                    style={[
-                      styles.appearanceLabel,
-                      { color: theme.controlText },
-                    ]}
-                  >
-                    {t("appearance.theme")}
-                  </Text>
-                  <ReaderThemeSelector
-                    accessibilityLabel={t("appearance.libraryThemeGroup")}
-                    theme={theme}
-                    value={readerThemeName}
-                    onChange={onThemeChange}
-                  />
-                </View>
-                <View
-                  style={[
-                    styles.preferenceRow,
-                    {
-                      backgroundColor: theme.panelRaised,
-                      borderColor: theme.border,
-                    },
-                  ]}
-                >
-                  <View style={styles.preferenceCopy}>
-                    <Text
-                      style={[
-                        styles.preferenceTitle,
-                        { color: theme.controlText },
-                      ]}
-                    >
-                      {t("library.settings.showMetadata")}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.preferenceBody,
-                        { color: theme.secondaryText },
-                      ]}
-                    >
-                      {t("library.settings.showMetadataDescription")}
-                    </Text>
-                  </View>
-                  <Switch
-                    accessibilityLabel={t(
-                      "library.settings.showMetadataAccessibility",
-                    )}
-                    onValueChange={onBookMetadataVisibleChange}
-                    thumbColor={
-                      Platform.OS === "android" ? theme.panelRaised : undefined
-                    }
-                    trackColor={{
-                      false: theme.panelMuted,
-                      true: theme.accent,
-                    }}
-                    value={bookMetadataVisible}
-                  />
-                </View>
-              </View>
+        <SettingsSection theme={theme} title="Google Drive">
+          <ReaderSettingsActionRow
+            description={syncDescription(syncStatus)}
+            loading={busy}
+            theme={theme}
+            title={syncAccountLabel}
+          />
+          {canConnect ? (
+            <ReaderSettingsActionRow
+              disabled={dataBusy}
+              theme={theme}
+              title={
+                syncStatus.phase === "disconnected"
+                  ? t("sync.actions.connect")
+                  : t("sync.actions.reconnect")
+              }
+              tone="accent"
+              onPress={onConnectGoogleDrive}
+            />
+          ) : null}
+          {canSync ? (
+            <ReaderSettingsActionRow
+              disabled={dataBusy}
+              theme={theme}
+              title={t("sync.actions.syncNow")}
+              tone="accent"
+              onPress={onSyncNow}
+            />
+          ) : null}
+          {canDisconnect ? (
+            <ReaderSettingsActionRow
+              disabled={dataBusy}
+              theme={theme}
+              title={t("sync.actions.disconnect")}
+              tone="danger"
+              onPress={onDisconnectGoogleDrive}
+            />
+          ) : null}
+        </SettingsSection>
 
-              <View
-                style={[styles.divider, { backgroundColor: theme.border }]}
-              />
+        <SettingsSection
+          footer={t("settings.data.sectionDescription")}
+          theme={theme}
+          title={t("settings.data.section")}
+        >
+          <ReaderSettingsActionRow
+            description={t("settings.data.clearLocalDescription")}
+            disabled={dataActionsDisabled || dataBusy}
+            loading={dataClearing === "local"}
+            theme={theme}
+            title={t("settings.data.clearLocalTitle")}
+            tone="danger"
+            onPress={confirmClearLocalData}
+          />
+          <ReaderSettingsActionRow
+            description={t(
+              canClearCloud
+                ? "settings.data.clearCloudDescription"
+                : "settings.data.clearCloudDisconnectedDescription",
+            )}
+            disabled={dataActionsDisabled || dataBusy || !canClearCloud}
+            loading={dataClearing === "cloud"}
+            theme={theme}
+            title={t("settings.data.clearCloudTitle")}
+            tone="danger"
+            onPress={confirmClearCloudData}
+          />
+        </SettingsSection>
 
-              <View style={styles.section}>
-                <View style={styles.syncHeading}>
-                  <View style={styles.syncHeadingCopy}>
-                    <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                      Google Drive
-                    </Text>
-                    <Text
-                      style={[
-                        styles.sectionBody,
-                        { color: theme.secondaryText },
-                      ]}
-                    >
-                      {syncDescription(syncStatus)}
-                    </Text>
-                  </View>
-                  {busy ? (
-                    <ActivityIndicator color={theme.accent} size="small" />
-                  ) : null}
-                </View>
-
-                <View style={styles.actionRow}>
-                  {canConnect ? (
-                    <UiButton
-                      label={
-                        syncStatus.phase === "disconnected"
-                          ? t("sync.actions.connect")
-                          : t("sync.actions.reconnect")
-                      }
-                      disabled={dataBusy}
-                      onPress={onConnectGoogleDrive}
-                      theme={theme}
-                      variant="primary"
-                    />
-                  ) : null}
-                  {canSync ? (
-                    <UiButton
-                      label={t("sync.actions.syncNow")}
-                      disabled={dataBusy}
-                      onPress={onSyncNow}
-                      theme={theme}
-                    />
-                  ) : null}
-                  {canDisconnect ? (
-                    <UiButton
-                      label={t("sync.actions.disconnect")}
-                      disabled={dataBusy}
-                      onPress={onDisconnectGoogleDrive}
-                      textTone="muted"
-                      theme={theme}
-                      variant="ghost"
-                    />
-                  ) : null}
-                </View>
-              </View>
-
-              <View
-                style={[styles.divider, { backgroundColor: theme.border }]}
-              />
-
-              <AppDataSettingsSection
-                canClearCloud={canClearCloud}
-                dataActionsDisabled={dataActionsDisabled}
-                dataClearing={dataClearing}
-                theme={theme}
-                onClearCloudData={onClearCloudData}
-                onClearLocalData={onClearLocalData}
-              />
-
-              <View
-                style={[styles.divider, { backgroundColor: theme.border }]}
-              />
-
-              <AppAboutSettingsSection
-                theme={theme}
-                onOpenDocument={setLegalDocument}
-              />
-            </ScrollView>
-          </UiModalSurface>
-        )}
-      </View>
-    </Modal>
+        <SettingsSection
+          footer={t("settings.about.copyright")}
+          footerCentered
+          theme={theme}
+          title={t("settings.about.section")}
+        >
+          <ReaderSettingsActionRow
+            showsChevron
+            theme={theme}
+            title={t("settings.about.privacy")}
+            onPress={() =>
+              setLegalDocument(privacyDocument(i18n.resolvedLanguage))
+            }
+          />
+          <ReaderSettingsActionRow
+            description={
+              supportEmail
+                ? t("settings.about.feedbackEmailDescription", {
+                    email: supportEmail,
+                  })
+                : t("settings.about.feedbackDescription")
+            }
+            showsChevron
+            theme={theme}
+            title={t("settings.about.feedback")}
+            onPress={() => void sendFeedback()}
+          />
+          <ReaderSettingsActionRow
+            showsChevron
+            theme={theme}
+            title={t("settings.about.licenses")}
+            onPress={() =>
+              setLegalDocument(licensesDocument(i18n.resolvedLanguage))
+            }
+          />
+          <ReaderSettingsActionRow
+            theme={theme}
+            title={t("settings.about.version")}
+            value={versionLabel}
+          />
+        </SettingsSection>
+      </ScrollView>
+    </LibraryNativeSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  actionRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 9,
-  },
-  appearanceControl: {
-    gap: 6,
-  },
-  appearanceLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 0.3,
-  },
-  content: {
-    gap: 20,
-    paddingBottom: 6,
-  },
   divider: {
     height: StyleSheet.hairlineWidth,
+    marginHorizontal: uiSize.dividerHorizontalInset,
   },
-  header: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: uiSpace.lg,
-  },
-  modalRoot: {
-    alignItems: "center",
+  host: {
     flex: 1,
-    justifyContent: "center",
-    paddingHorizontal: 14,
-  },
-  preferenceBody: {
-    fontSize: 11,
-    lineHeight: 16,
-    marginTop: 2,
-  },
-  preferenceCopy: {
-    flex: 1,
-    paddingRight: 10,
-  },
-  preferenceHint: {
-    fontSize: 11,
-    lineHeight: 16,
-  },
-  preferenceRow: {
-    alignItems: "center",
-    borderRadius: uiRadius.card,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: "row",
-    marginTop: 5,
-    minHeight: 64,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  preferenceTitle: {
-    fontSize: 13,
-    fontWeight: "600",
+    width: "100%",
   },
   section: {
-    gap: 12,
+    gap: uiSpace.sm,
   },
-  sectionBody: {
-    fontSize: 13,
-    lineHeight: 19,
-    marginTop: 4,
+  sectionCard: {
+    borderRadius: uiRadius.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: "hidden",
+  },
+  sectionFooter: {
+    ...uiTypography.optionDescription,
+    paddingHorizontal: uiSize.optionHorizontalInset,
+  },
+  sectionFooterCentered: {
+    textAlign: "center",
   },
   sectionTitle: {
-    fontSize: 14,
-    fontWeight: "700",
+    ...uiTypography.sectionTitle,
+    paddingHorizontal: uiSize.optionHorizontalInset,
   },
-  syncHeading: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 14,
-  },
-  syncHeadingCopy: {
-    flex: 1,
+  settingsList: {
+    gap: uiSpace.xl,
+    paddingHorizontal: uiSpace.lg,
+    paddingTop: uiSpace.sm,
   },
 });

@@ -14,6 +14,7 @@ const MATERIAL_ICON_NAMES = {
   layout: "view_column",
   minus: "remove",
   more: "more_horiz",
+  reset: "refresh",
   search: "search",
   singleColumn: "crop_portrait",
   settings: "settings",

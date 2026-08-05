@@ -12,6 +12,7 @@ export type UiIconName =
   | "layout"
   | "minus"
   | "more"
+  | "reset"
   | "search"
   | "singleColumn"
   | "settings"

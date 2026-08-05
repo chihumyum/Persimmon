@@ -11,6 +11,12 @@ import {
 } from "@shopify/react-native-skia";
 import { Platform } from "react-native";
 
+import {
+  PAGE_DECORATION_FONT_SIZE,
+  PAGE_DECORATION_HEIGHT_MULTIPLIER,
+  PAGE_DECORATION_LETTER_SPACING,
+  PAGE_DECORATION_TOP_OFFSET,
+} from "./page-decoration-metrics";
 import type { ReaderProgressDisplay } from "./reader-appearance";
 import {
   progressDisplayHasFooter,
@@ -24,9 +30,6 @@ import {
   releaseRetiredSkiaResources,
   releaseSkiaResources,
 } from "./skia-resource-release";
-
-const DECORATION_FONT_SIZE = 12;
-const DECORATION_HEIGHT_MULTIPLIER = 1.3;
 
 interface PageDecorationText {
   readonly paragraph: SkParagraph;
@@ -82,13 +85,13 @@ export function createSkiaPageDecoration({
     normalizedPagesPerView > 1
       ? Math.max(1, width - margin * 2)
       : pageContentWidth;
-  const headerY = topInset + 12;
+  const headerY = topInset + PAGE_DECORATION_TOP_OFFSET;
 
   const headerTitle = createDecorationParagraph(
     model.sectionTitle,
     decorationWidth,
     TextAlign.Center,
-    0.2,
+    PAGE_DECORATION_LETTER_SPACING,
     fontProvider,
     fontFamily,
     theme.decoration,
@@ -252,11 +255,11 @@ function createDecorationParagraph(
   const textStyle: SkTextStyle = {
     color: Skia.Color(color),
     fontFamilies: [fontFamily],
-    fontSize: DECORATION_FONT_SIZE,
+    fontSize: PAGE_DECORATION_FONT_SIZE,
     fontStyle: {
       weight: FontWeight.Normal,
     },
-    heightMultiplier: DECORATION_HEIGHT_MULTIPLIER,
+    heightMultiplier: PAGE_DECORATION_HEIGHT_MULTIPLIER,
     letterSpacing,
     locale,
   };

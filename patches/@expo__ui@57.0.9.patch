@@ -1,0 +1,433 @@
+diff --git a/android/build.gradle b/android/build.gradle
+index afdfadeb347dfce47194ca9b7cbfec41f4ec0775..5c7f7b0096eb7ae985f764740bd76e2f79cce835 100644
+--- a/android/build.gradle
++++ b/android/build.gradle
+@@ -39,6 +39,7 @@ dependencies {
+
+   implementation 'androidx.compose.foundation:foundation-android:1.10.6'
+   implementation 'androidx.compose.ui:ui-android:1.10.6'
++  implementation 'androidx.activity:activity-compose:1.8.2'
+   implementation "androidx.compose.material3:material3:1.5.0-alpha17"
+   implementation 'androidx.compose.material3:material3-android:1.5.0-alpha17'
+   implementation 'androidx.lifecycle:lifecycle-runtime:2.10.0'
+diff --git a/android/src/main/java/expo/modules/ui/ExpoUIModule.kt b/android/src/main/java/expo/modules/ui/ExpoUIModule.kt
+index 435cb67dc6c8a2a0db1602e0374f3ed07bec9dea..ee846164a2faf2863af58448cfc37ea2e41ecbfb 100644
+--- a/android/src/main/java/expo/modules/ui/ExpoUIModule.kt
++++ b/android/src/main/java/expo/modules/ui/ExpoUIModule.kt
+@@ -184,10 +184,18 @@ class ExpoUIModule : Module() {
+       val hide by AsyncFunction()
+       val expand by AsyncFunction()
+       val partialExpand by AsyncFunction()
++      val onBackRequest by Event<Unit>()
+       val onDismissRequest by Event<Unit>()
+
+       Content { props ->
+-        ModalBottomSheetContent(props, hide, expand, partialExpand) { onDismissRequest(Unit) }
++        ModalBottomSheetContent(
++          props,
++          hide,
++          expand,
++          partialExpand,
++          onDismissRequest = { onDismissRequest(Unit) },
++          onBackRequest = { onBackRequest(Unit) }
++        )
+       }
+     }
+
+diff --git a/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt b/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
+index e800ec2adafaa7120724b30b65ef37bfbe8a72c2..51ad10ff143f0a2b6a7ba5a7ceb4379734064904 100644
+--- a/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
++++ b/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
+@@ -3,6 +3,13 @@
+ package expo.modules.ui
+
+ import android.graphics.Color
++import android.os.Build
++import android.view.Gravity
++import android.view.View
++import android.view.ViewGroup
++import android.view.Window
++import android.widget.FrameLayout
++import androidx.activity.compose.BackHandler
+ import androidx.compose.material3.BottomSheetDefaults
+ import androidx.compose.material3.ExperimentalMaterial3Api
+ import androidx.compose.material3.ModalBottomSheet
+@@ -11,7 +18,13 @@ import androidx.compose.material3.contentColorFor
+ import androidx.compose.material3.rememberModalBottomSheetState
+ import androidx.compose.runtime.Composable
+ import androidx.compose.runtime.LaunchedEffect
++import androidx.compose.runtime.SideEffect
+ import androidx.compose.runtime.rememberCoroutineScope
++import androidx.compose.ui.graphics.toArgb
++import androidx.compose.ui.platform.LocalView
++import androidx.compose.ui.window.DialogWindowProvider
++import androidx.core.view.ViewCompat
++import androidx.core.view.WindowInsetsCompat
+ import expo.modules.kotlin.records.Field
+ import expo.modules.kotlin.records.Record
+ import expo.modules.kotlin.types.OptimizedRecord
+@@ -22,6 +35,52 @@ import expo.modules.kotlin.views.OptimizedComposeProps
+ import kotlinx.coroutines.withContext
+ import kotlin.coroutines.cancellation.CancellationException
+
++private const val NAVIGATION_BAR_BACKGROUND_TAG =
++  "expo-ui-modal-bottom-sheet-navigation-bar-background"
++
++private fun updateNavigationBarBackground(
++  background: View,
++  insets: WindowInsetsCompat
++) {
++  val navigationBarHeight =
++    insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
++  background.layoutParams = FrameLayout.LayoutParams(
++    ViewGroup.LayoutParams.MATCH_PARENT,
++    navigationBarHeight,
++    Gravity.BOTTOM
++  )
++}
++
++private fun configureNavigationBar(window: Window, color: Int) {
++  window.navigationBarColor = Color.TRANSPARENT
++  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
++    window.isNavigationBarContrastEnforced = false
++  }
++
++  val decorView = window.decorView as? ViewGroup ?: return
++  val background = decorView.findViewWithTag<View>(NAVIGATION_BAR_BACKGROUND_TAG)
++    ?: View(decorView.context).apply {
++      tag = NAVIGATION_BAR_BACKGROUND_TAG
++      importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
++      layoutParams = FrameLayout.LayoutParams(
++        ViewGroup.LayoutParams.MATCH_PARENT,
++        0,
++        Gravity.BOTTOM
++      )
++      decorView.addView(this)
++    }
++  background.setBackgroundColor(color)
++  background.bringToFront()
++  ViewCompat.setOnApplyWindowInsetsListener(background) { _, insets ->
++    updateNavigationBarBackground(background, insets)
++    insets
++  }
++  ViewCompat.getRootWindowInsets(decorView)?.let { insets ->
++    updateNavigationBarBackground(background, insets)
++  }
++  ViewCompat.requestApplyInsets(background)
++}
++
+ @OptimizedRecord
+ data class ModalBottomSheetPropertiesRecord(
+   @Field val shouldDismissOnBackPress: Boolean = true,
+@@ -34,7 +93,9 @@ data class ModalBottomSheetViewProps(
+   val initialFullyExpanded: Boolean = false,
+   val containerColor: Color? = null,
+   val contentColor: Color? = null,
++  val navigationBarColor: Color? = null,
+   val scrimColor: Color? = null,
++  val interceptBackPress: Boolean = false,
+   val showDragHandle: Boolean = true,
+   val sheetGesturesEnabled: Boolean = true,
+   val properties: ModalBottomSheetPropertiesRecord = ModalBottomSheetPropertiesRecord(),
+@@ -47,7 +108,8 @@ fun FunctionalComposableScope.ModalBottomSheetContent(
+   hide: AsyncFunctionHandle<Unit>,
+   expand: AsyncFunctionHandle<Unit>,
+   partialExpand: AsyncFunctionHandle<Unit>,
+-  onDismissRequest: () -> Unit
++  onDismissRequest: () -> Unit,
++  onBackRequest: () -> Unit
+ ) {
+   val sheetState = rememberModalBottomSheetState(props.skipPartiallyExpanded)
+   val scope = rememberCoroutineScope()
+@@ -107,11 +169,28 @@ fun FunctionalComposableScope.ModalBottomSheetContent(
+       else -> null
+     },
+     properties = ModalBottomSheetProperties(
+-      shouldDismissOnBackPress = props.properties.shouldDismissOnBackPress,
++      shouldDismissOnBackPress =
++        props.properties.shouldDismissOnBackPress && !props.interceptBackPress,
+       shouldDismissOnClickOutside = props.properties.shouldDismissOnClickOutside
+     ),
+     modifier = ModifierRegistry.applyModifiers(props.modifiers, appContext, composableScope, globalEventDispatcher)
+   ) {
++    BackHandler(enabled = props.interceptBackPress) {
++      onBackRequest()
++    }
++    val navigationBarColor = props.navigationBarColor.composeOrNull
++    val view = LocalView.current
++    SideEffect {
++      if (navigationBarColor != null) {
++        var parent = view.parent
++        while (parent != null && parent !is DialogWindowProvider) {
++          parent = parent.parent
++        }
++        (parent as? DialogWindowProvider)?.window?.let { window ->
++          configureNavigationBar(window, navigationBarColor.toArgb())
++        }
++      }
++    }
+     Children(UIComposableScope(), filter = { !isSlotView(it) })
+   }
+
+diff --git a/build/jetpack-compose/ModalBottomSheet/index.d.ts b/build/jetpack-compose/ModalBottomSheet/index.d.ts
+index ddf89aa5ac11610459f6db8abd96a3673f01054f..42d9185a21d55351e86947c33017f1be6d7f0f62 100644
+--- a/build/jetpack-compose/ModalBottomSheet/index.d.ts
++++ b/build/jetpack-compose/ModalBottomSheet/index.d.ts
+@@ -44,6 +44,12 @@ export interface ModalBottomSheetProps {
+      * (via swipe, back press, or tapping outside the scrim).
+      */
+     onDismissRequest: () => void;
++    /**
++     * Callback invoked for the Android system back action without dismissing the sheet.
++     * When supplied, it takes ownership of Back independently from swipe and scrim dismissal.
++     * @platform android
++     */
++    onBackRequest?: () => void;
+     /**
+      * Immediately opens the bottom sheet in full screen.
+      * @default false
+@@ -63,6 +69,10 @@ export interface ModalBottomSheetProps {
+      * The preferred color of the content inside the bottom sheet.
+      */
+     contentColor?: ColorValue;
++    /**
++     * The background color of the Android system navigation bar while the sheet is visible.
++     */
++    navigationBarColor?: ColorValue;
+     /**
+      * The color of the scrim overlay behind the bottom sheet.
+      */
+diff --git a/build/swift-ui/modifiers/presentationModifiers.d.ts b/build/swift-ui/modifiers/presentationModifiers.d.ts
+index 36de99f5d92b1b0f2c340ba4508109f1a0b6045b..86867a437428ba3ae015d33265c6b370b700f6f5 100644
+--- a/build/swift-ui/modifiers/presentationModifiers.d.ts
++++ b/build/swift-ui/modifiers/presentationModifiers.d.ts
+@@ -17,6 +17,7 @@ export type PresentationDetent = 'medium' | 'large' | {
+  * @param options - Optional settings for tracking the selected detent.
+  * @param options.selection - The currently selected detent.
+  * @param options.onSelectionChange - Callback fired when the user changes the active detent by dragging.
++ * @param options.allowsUserSelection - Whether dragging can select another detent.
+  * @platform ios 16.0+
+  * @platform tvos 16.0+
+  * @see Official [SwiftUI documentation](https://developer.apple.com/documentation/swiftui/view/presentationdetents(_:selection:)).
+@@ -24,6 +25,7 @@ export type PresentationDetent = 'medium' | 'large' | {
+ export declare const presentationDetents: (detents: PresentationDetent[], options?: {
+     selection?: PresentationDetent;
+     onSelectionChange?: (detent: PresentationDetent) => void;
++    allowsUserSelection?: boolean;
+ }) => ModifierConfig;
+ /**
+  * Controls the visibility of the drag indicator on a sheet.
+diff --git a/expo-module.config.json b/expo-module.config.json
+index 3cba55eeb8648170464bdeaad9d1515141d57c92..0ebfddaa1dea66cfe4db659048f58939feae87a5 100644
+--- a/expo-module.config.json
++++ b/expo-module.config.json
+@@ -6,12 +6,6 @@
+     "modules": ["ExpoUIModule"]
+   },
+   "android": {
+-    "modules": ["expo.modules.ui.ExpoUIModule"],
+-    "publication": {
+-      "groupId": "expo.modules.ui",
+-      "artifactId": "expo.modules.ui",
+-      "version": "57.0.9",
+-      "repository": "local-maven-repo"
+-    }
++    "modules": ["expo.modules.ui.ExpoUIModule"]
+   }
+ }
+diff --git a/ios/Modifiers/PresentationModifiers.swift b/ios/Modifiers/PresentationModifiers.swift
+index f38528425a883a5d4dc0c1ad85e62dd278fc24b3..3022d2108d2cc1768e7e1ef0afedd39cb0488043 100644
+--- a/ios/Modifiers/PresentationModifiers.swift
++++ b/ios/Modifiers/PresentationModifiers.swift
+@@ -41,6 +41,7 @@ private func parsePresentationDetent(_ detent: Either<PresentationDetentPreset,
+ internal struct PresentationDetentsModifier: ViewModifier, Record {
+   @Field var detents: [Either<PresentationDetentPreset, PresentationDetentItem>]?
+   @Field var selection: Either<PresentationDetentPreset, PresentationDetentItem>?
++  @Field var allowsUserSelection: Bool = true
+   var eventDispatcher: EventDispatcher?
+
+   init() {}
+@@ -71,6 +72,7 @@ internal struct PresentationDetentsModifier: ViewModifier, Record {
+         detents: parseDetents(),
+         rawDetents: detents ?? [],
+         initialSelection: selection.flatMap { parsePresentationDetent($0) },
++        allowsUserSelection: allowsUserSelection,
+         eventDispatcher: eventDispatcher
+       ) {
+         content
+@@ -107,6 +109,7 @@ private struct PresentationDetentsSelectionView<WrappedContent: View>: View {
+   let detents: Set<PresentationDetent>
+   let detentSerializationMap: [PresentationDetent: Any]
+   let initialSelection: PresentationDetent?
++  let allowsUserSelection: Bool
+   let eventDispatcher: EventDispatcher?
+   let wrappedContent: WrappedContent
+
+@@ -116,12 +119,14 @@ private struct PresentationDetentsSelectionView<WrappedContent: View>: View {
+     detents: Set<PresentationDetent>,
+     rawDetents: [Either<PresentationDetentPreset, PresentationDetentItem>],
+     initialSelection: PresentationDetent?,
++    allowsUserSelection: Bool,
+     eventDispatcher: EventDispatcher?,
+     @ViewBuilder content: () -> WrappedContent
+   ) {
+     self.detents = detents
+     self.detentSerializationMap = buildDetentSerializationMap(from: rawDetents)
+     self.initialSelection = initialSelection
++    self.allowsUserSelection = allowsUserSelection
+     self.eventDispatcher = eventDispatcher
+     self.wrappedContent = content()
+     // Default to the first detent in the ordered array, not `detents.first` (the Set's order is
+@@ -130,9 +135,17 @@ private struct PresentationDetentsSelectionView<WrappedContent: View>: View {
+     self._selectedDetent = State(initialValue: initialSelection ?? firstOrderedDetent ?? .large)
+   }
+
++  private var activeDetents: Set<PresentationDetent> {
++    allowsUserSelection ? detents : [selectedDetent]
++  }
++
+   var body: some View {
+     wrappedContent
+-      .presentationDetents(detents, selection: $selectedDetent)
++      // A guarded Binding still lets UISheetPresentationController drag among
++      // every advertised detent before SwiftUI rejects the final write. When
++      // selection is locked, advertise only the programmatically selected
++      // detent so no alternate height exists for the gesture recognizer.
++      .presentationDetents(activeDetents, selection: $selectedDetent)
+       .onChange(of: selectedDetent) { newDetent in
+         if let serialized = detentSerializationMap[newDetent] {
+           eventDispatcher?(["presentationDetents": ["detent": serialized]])
+@@ -140,7 +153,9 @@ private struct PresentationDetentsSelectionView<WrappedContent: View>: View {
+       }
+       .onChange(of: initialSelection) { newSelection in
+         if let newSelection {
+-          selectedDetent = newSelection
++          withAnimation(.easeInOut(duration: 0.24)) {
++            selectedDetent = newSelection
++          }
+         }
+       }
+   }
+diff --git a/src/community/bottom-sheet/BottomSheet.ios.tsx b/src/community/bottom-sheet/BottomSheet.ios.tsx
+index edd61228b9881de7ab542e535124fef67fc0b6ec..4083e3f2978d5ee0d28ba96a06030dd43ed5cce4 100644
+--- a/src/community/bottom-sheet/BottomSheet.ios.tsx
++++ b/src/community/bottom-sheet/BottomSheet.ios.tsx
+@@ -89,6 +89,8 @@ export function BottomSheet(props: BottomSheetProps) {
+     onClose,
+     onDismiss,
+     enablePanDownToClose = false,
++    enableContentPanningGesture = true,
++    enableHandlePanningGesture = true,
+     enableDynamicSizing = true,
+     handleComponent,
+     backgroundStyle,
+@@ -205,6 +207,8 @@ export function BottomSheet(props: BottomSheetProps) {
+             presentationDetents(detents, {
+               selection: selectedDetent,
+               onSelectionChange: handleDetentChange,
++              allowsUserSelection:
++                enableContentPanningGesture && enableHandlePanningGesture,
+             }),
+           ]),
+       presentationDragIndicator(handleComponent === null ? 'hidden' : 'visible'),
+@@ -218,6 +222,8 @@ export function BottomSheet(props: BottomSheetProps) {
+     handleDetentChange,
+     handleComponent,
+     enablePanDownToClose,
++    enableContentPanningGesture,
++    enableHandlePanningGesture,
+     backgroundStyle,
+   ]);
+
+diff --git a/src/jetpack-compose/ModalBottomSheet/index.tsx b/src/jetpack-compose/ModalBottomSheet/index.tsx
+index ea749156c15b4929ac692dc0a513d7b00430552c..a865d66c2ac4e48ade348b01bd400f2aeb52c2e5 100644
+--- a/src/jetpack-compose/ModalBottomSheet/index.tsx
++++ b/src/jetpack-compose/ModalBottomSheet/index.tsx
+@@ -57,6 +57,12 @@ export interface ModalBottomSheetProps {
+    * (via swipe, back press, or tapping outside the scrim).
+    */
+   onDismissRequest: () => void;
++  /**
++   * Callback invoked for the Android system back action without dismissing the sheet.
++   * When supplied, it takes ownership of Back independently from swipe and scrim dismissal.
++   * @platform android
++   */
++  onBackRequest?: () => void;
+   /**
+    * Immediately opens the bottom sheet in full screen.
+    * @default false
+@@ -76,6 +82,10 @@ export interface ModalBottomSheetProps {
+    * The preferred color of the content inside the bottom sheet.
+    */
+   contentColor?: ColorValue;
++  /**
++   * The background color of the Android system navigation bar while the sheet is visible.
++   */
++  navigationBarColor?: ColorValue;
+   /**
+    * The color of the scrim overlay behind the bottom sheet.
+    */
+@@ -101,7 +111,12 @@ export interface ModalBottomSheetProps {
+   modifiers?: ModifierConfig[];
+ }
+
+-type NativeModalBottomSheetProps = Omit<ModalBottomSheetProps, 'onDismissRequest'> & {
++type NativeModalBottomSheetProps = Omit<
++  ModalBottomSheetProps,
++  'onDismissRequest' | 'onBackRequest'
++> & {
++  interceptBackPress: boolean;
++  onBackRequest?: () => void;
+   onDismissRequest: () => void;
+ };
+
+@@ -111,13 +126,20 @@ const ModalBottomSheetNativeView: ComponentType<NativeModalBottomSheetProps> = r
+ );
+
+ function transformProps(props: ModalBottomSheetProps): NativeModalBottomSheetProps {
+-  const { modifiers, onDismissRequest, ...restProps } = props;
++  const { modifiers, onBackRequest, onDismissRequest, ...restProps } = props;
+   return {
+     modifiers,
+     ...(modifiers ? createViewModifierEventListener(modifiers) : undefined),
+     ...restProps,
+     skipPartiallyExpanded: props.skipPartiallyExpanded ?? false,
+     initialFullyExpanded: props.initialFullyExpanded ?? false,
++    interceptBackPress: onBackRequest !== undefined,
++    onBackRequest:
++      onBackRequest === undefined
++        ? undefined
++        : () => {
++            onBackRequest();
++          },
+     onDismissRequest: () => {
+       onDismissRequest?.();
+     },
+diff --git a/src/swift-ui/modifiers/presentationModifiers.ts b/src/swift-ui/modifiers/presentationModifiers.ts
+index a73238902a2163cadb800ddd24bd031b5725f7e3..3d5a9a5dcab46813b37e1cd1442b8aac395ddb82 100644
+--- a/src/swift-ui/modifiers/presentationModifiers.ts
++++ b/src/swift-ui/modifiers/presentationModifiers.ts
+@@ -19,6 +19,7 @@ export type PresentationDetent = 'medium' | 'large' | { fraction: number } | { h
+  * @param options - Optional settings for tracking the selected detent.
+  * @param options.selection - The currently selected detent.
+  * @param options.onSelectionChange - Callback fired when the user changes the active detent by dragging.
++ * @param options.allowsUserSelection - Whether dragging can select another detent.
+  * @platform ios 16.0+
+  * @platform tvos 16.0+
+  * @see Official [SwiftUI documentation](https://developer.apple.com/documentation/swiftui/view/presentationdetents(_:selection:)).
+@@ -28,9 +29,14 @@ export const presentationDetents = (
+   options?: {
+     selection?: PresentationDetent;
+     onSelectionChange?: (detent: PresentationDetent) => void;
++    allowsUserSelection?: boolean;
+   }
+ ): ModifierConfig => {
+-  const params = { detents, selection: options?.selection };
++  const params = {
++    detents,
++    selection: options?.selection,
++    allowsUserSelection: options?.allowsUserSelection ?? true,
++  };
+
+   const { onSelectionChange } = options ?? {};
+   if (onSelectionChange) {

@@ -4,10 +4,7 @@ import {
   DEFAULT_READER_APPEARANCE,
   type ReaderAppearanceSettings,
 } from "../library/types";
-import {
-  resetPageAppearance,
-  resetTextAppearance,
-} from "./reader-settings-category";
+import { resetReadingAppearance } from "./reader-settings-category";
 
 const customized: ReaderAppearanceSettings = {
   ...DEFAULT_READER_APPEARANCE,
@@ -25,23 +22,12 @@ const customized: ReaderAppearanceSettings = {
 };
 
 describe("reader settings categories", () => {
-  it("resets page presentation without touching text layout", () => {
-    expect(resetPageAppearance(customized)).toEqual({
+  it("resets reading presentation without touching typography", () => {
+    expect(resetReadingAppearance(customized)).toEqual({
       ...customized,
       colorMode: DEFAULT_READER_APPEARANCE.colorMode,
       progressDisplay: DEFAULT_READER_APPEARANCE.progressDisplay,
       theme: DEFAULT_READER_APPEARANCE.theme,
-    });
-  });
-
-  it("resets text layout without touching page presentation", () => {
-    expect(resetTextAppearance(customized)).toEqual({
-      ...customized,
-      font: DEFAULT_READER_APPEARANCE.font,
-      fontSize: DEFAULT_READER_APPEARANCE.fontSize,
-      horizontalMargin: DEFAULT_READER_APPEARANCE.horizontalMargin,
-      lineHeight: DEFAULT_READER_APPEARANCE.lineHeight,
-      paragraphSpacing: DEFAULT_READER_APPEARANCE.paragraphSpacing,
     });
   });
 });

@@ -1,6 +1,11 @@
 import type { BookPosition } from "@persimmon/book-core";
 import type { FontFamilyRecord } from "@persimmon/font-core";
-import type { ReaderLayoutMode, ReaderProgress } from "@persimmon/reader-skia";
+import {
+  PAGE_DECORATION_LINE_HEIGHT,
+  PAGE_DECORATION_TOP_OFFSET,
+  type ReaderLayoutMode,
+  type ReaderProgress,
+} from "@persimmon/reader-skia";
 import {
   resolveReaderTheme,
   type ResolvedReaderColorScheme,
@@ -25,7 +30,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 
 import { AsyncSkia } from "../../components/async-skia";
-import { UiButton } from "../components/ui-button";
+import { ReaderChromeButton } from "../components/reader-chrome-button";
 import { uiSize, uiSpace } from "../components/ui-tokens";
 import type {
   LibraryBookSummary,
@@ -37,10 +42,15 @@ import type {
   ReaderPageTurnTuning,
 } from "../library/types";
 import { navigationPathForPosition } from "../reader/navigation-path";
+import type {
+  ReaderOverlayState,
+  ReaderSettingsTab,
+} from "../reader/reader-overlay-state";
+import { resetReaderTypography } from "../reader/reader-typography-preview";
 import { ToolbarBreadcrumbCarousel } from "../reader/toolbar-breadcrumb-carousel";
 import { useAndroidReaderBack } from "../reader/use-android-reader-back";
 import { PageTurnTuningPanel } from "./page-turn-tuning-panel";
-import { ReadingSettingsPanel } from "./reading-style-panel";
+import { ReadingSettingsSheet } from "./reading-settings-sheet";
 import {
   flattenNavigation,
   TableOfContentsPanel,
@@ -48,6 +58,7 @@ import {
 
 const ReaderSurface = React.lazy(() => import("../reader/reader-surface"));
 const SHOW_PAGE_TURN_TUNING = false;
+const READER_STAGE_WEB_INSET = 18;
 
 interface Viewport {
   readonly width: number;
@@ -113,11 +124,13 @@ export function ReaderScreen({
   );
   const [readerFrame, setReaderFrame] = useState<ReaderFrame | null>(null);
   const measuredViewportRef = useRef<Viewport | null>(null);
-  const [tocVisible, setTocVisible] = useState(false);
   const [turning, setTurning] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
-  const [settingsVisible, setSettingsVisible] = useState(false);
+  const [overlay, setOverlay] = useState<ReaderOverlayState>({ kind: "none" });
+  const [typographyDraft, setTypographyDraft] = useState<
+    ReaderAppearanceSettings | undefined
+  >();
   const [layoutTransitioning, setLayoutTransitioning] = useState(false);
   const [tuningVisible, setTuningVisible] = useState(false);
   const layoutTransitioningRef = useRef(false);
@@ -135,13 +148,59 @@ export function ReaderScreen({
     [opened.book.navigation],
   );
 
+  const displayedAppearance = typographyDraft ?? appearance;
+
+  const closeTypographyPreview = useCallback(() => {
+    if (typographyDraft) {
+      onAppearanceChange(typographyDraft);
+    }
+    setTypographyDraft(undefined);
+    setOverlay({ kind: "none" });
+  }, [onAppearanceChange, typographyDraft]);
+
+  const returnFromTypographyPreview = useCallback(() => {
+    if (typographyDraft) {
+      onAppearanceChange(typographyDraft);
+    }
+    setTypographyDraft(undefined);
+    setOverlay((current) =>
+      current.kind === "settings" ? { ...current, page: "root" } : current,
+    );
+  }, [onAppearanceChange, typographyDraft]);
+
+  const changeSettingsTab = useCallback(
+    (tab: ReaderSettingsTab) => {
+      if (typographyDraft) {
+        onAppearanceChange(typographyDraft);
+      }
+      setTypographyDraft(undefined);
+      setOverlay((current) =>
+        current.kind === "settings"
+          ? { ...current, page: "root", tab }
+          : current,
+      );
+    },
+    [onAppearanceChange, typographyDraft],
+  );
+
   const closePanels = useCallback(() => {
-    setTocVisible(false);
-    setSettingsVisible(false);
+    if (overlay.kind === "settings" && overlay.page === "typographyPreview") {
+      returnFromTypographyPreview();
+      return;
+    }
+    if (overlay.kind === "settings" && overlay.page === "fonts") {
+      setOverlay({ ...overlay, page: "root" });
+      return;
+    }
+    setOverlay({ kind: "none" });
     setTuningVisible(false);
-  }, []);
+  }, [overlay, returnFromTypographyPreview]);
   useAndroidReaderBack({
-    panelVisible: tocVisible || settingsVisible || tuningVisible,
+    // Native modal sheets own Android Back. Keeping the React Native handler
+    // active at the same time can consume one press twice (navigate within the
+    // sheet and then immediately close it).
+    enabled: overlay.kind === "none",
+    panelVisible: overlay.kind !== "none" || tuningVisible,
     onBack,
     onClosePanels: closePanels,
   });
@@ -193,7 +252,6 @@ export function ReaderScreen({
       }
       pendingLayoutRef.current = nextLayout;
       layoutTransitioningRef.current = true;
-      setSettingsVisible(false);
       setLayoutTransitioning(true);
       cancelLayoutFrame();
       layoutFrameRef.current = requestAnimationFrame(() => {
@@ -231,7 +289,7 @@ export function ReaderScreen({
     setNavigationTarget(position);
     setCurrentPosition(position);
     setNavigationGeneration((current) => current + 1);
-    setTocVisible(false);
+    setOverlay({ kind: "none" });
   }, []);
   const handleProgress = useCallback(
     (progress: ReaderProgress) => {
@@ -259,8 +317,8 @@ export function ReaderScreen({
     return [sectionTitle || opened.book.title];
   }, [activeNavigationPath, currentPosition, opened.book]);
   const toolbarHeaderEnabled =
-    appearance.progressDisplay === "header" ||
-    appearance.progressDisplay === "both";
+    displayedAppearance.progressDisplay === "header" ||
+    displayedAppearance.progressDisplay === "both";
   const loadResource = useCallback(
     (assetId: string) => opened.source.getResource(assetId),
     [opened.source],
@@ -270,9 +328,8 @@ export function ReaderScreen({
       return;
     }
     if (controlsVisible) {
-      setSettingsVisible(false);
       setTuningVisible(false);
-      setTocVisible(false);
+      setOverlay({ kind: "none" });
     }
     setControlsVisible((visible) => !visible);
   }, [controlsVisible, turning]);
@@ -280,18 +337,16 @@ export function ReaderScreen({
     setTurning(nextTurning);
     if (nextTurning) {
       setControlsVisible(false);
-      setSettingsVisible(false);
       setTuningVisible(false);
-      setTocVisible(false);
+      setOverlay({ kind: "none" });
     }
   }, []);
   const handleSelectionChange = useCallback((nextSelecting: boolean) => {
     setSelecting(nextSelecting);
     if (nextSelecting) {
       setControlsVisible(false);
-      setSettingsVisible(false);
       setTuningVisible(false);
-      setTocVisible(false);
+      setOverlay({ kind: "none" });
     }
   }, []);
 
@@ -333,7 +388,7 @@ export function ReaderScreen({
                   book={opened.book}
                   width={readerFrame.width}
                   height={readerFrame.height}
-                  appearance={appearance}
+                  appearance={displayedAppearance}
                   layout={readerFrame.layout}
                   pageTurnAnimation={pageTurnAnimation}
                   rapidPageTurnEnabled={rapidPageTurnEnabled}
@@ -376,37 +431,34 @@ export function ReaderScreen({
           pointerEvents="box-none"
           style={[styles.topControls, { top: insets.top }]}
         >
-          <UiButton
+          <ReaderChromeButton
             accessibilityLabel={t("reader.toolbar.backAccessibility")}
+            icon="back"
             label={t("reader.toolbar.library")}
-            leadingIcon="back"
             onPress={onBack}
-            style={styles.backButton}
-            textTone="accent"
             theme={theme}
-            variant="chrome"
+            tintColor={theme.accentStrong}
           />
           {toolbarHeaderEnabled ? (
             <View pointerEvents="none" style={styles.toolbarHeaderRow}>
               <ToolbarBreadcrumbCarousel
-                color={theme.controlText}
+                color={theme.decoration}
                 labels={toolbarNavigationLabels}
               />
             </View>
           ) : null}
-          <UiButton
+          <ReaderChromeButton
             accessibilityLabel={t("reader.toolbar.tocAccessibility")}
             disabled={navigationRows.length === 0}
-            iconOnly
+            icon="toc"
             label={t("reader.toolbar.toc")}
-            leadingIcon="toc"
             onPress={() => {
-              setSettingsVisible(false);
               setTuningVisible(false);
-              setTocVisible((visible) => !visible);
+              setOverlay((current) =>
+                current.kind === "toc" ? { kind: "none" } : { kind: "toc" },
+              );
             }}
             theme={theme}
-            variant="chrome"
           />
         </View>
       ) : null}
@@ -417,32 +469,34 @@ export function ReaderScreen({
           style={[styles.bottomControls, { bottom: insets.bottom }]}
         >
           <View pointerEvents="box-none" style={styles.controlGroup}>
-            <UiButton
+            <ReaderChromeButton
               accessibilityLabel={t("reader.toolbar.settingsAccessibility")}
-              iconOnly
+              icon="typography"
               label={t("reader.toolbar.settings")}
-              leadingIcon="settings"
               onPress={() => {
                 setTuningVisible(false);
-                setTocVisible(false);
-                setSettingsVisible((visible) => !visible);
+                setOverlay((current) =>
+                  current.kind === "settings"
+                    ? { kind: "none" }
+                    : {
+                        kind: "settings",
+                        page: "root",
+                        tab: "typography",
+                      },
+                );
               }}
               theme={theme}
-              variant="chrome"
             />
             {SHOW_PAGE_TURN_TUNING ? (
-              <UiButton
+              <ReaderChromeButton
                 accessibilityLabel={t("reader.toolbar.tuningAccessibility")}
-                iconOnly
+                icon="tuning"
                 label={t("reader.toolbar.tuning")}
-                leadingIcon="tuning"
                 onPress={() => {
-                  setSettingsVisible(false);
-                  setTocVisible(false);
+                  setOverlay({ kind: "none" });
                   setTuningVisible((visible) => !visible);
                 }}
                 theme={theme}
-                variant="chrome"
               />
             ) : null}
           </View>
@@ -461,39 +515,78 @@ export function ReaderScreen({
         />
       ) : null}
 
-      {!turning && !selecting && controlsVisible && settingsVisible ? (
-        <ReadingSettingsPanel
-          appearance={appearance}
-          fontFamilies={fontFamilies}
-          hasBookFonts={Object.keys(opened.book.fontFamilies ?? {}).length > 0}
-          layout={layout}
-          pageTurnAnimation={pageTurnAnimation}
-          rapidPageTurnEnabled={rapidPageTurnEnabled}
-          theme={theme}
-          bottom={
-            insets.bottom + uiSize.readerChrome + uiSize.readerChromePanelGap
+      <ReadingSettingsSheet
+        activeTab={overlay.kind === "settings" ? overlay.tab : "typography"}
+        appearance={displayedAppearance}
+        bottomInset={insets.bottom}
+        fontFamilies={fontFamilies}
+        hasBookFonts={Object.keys(opened.book.fontFamilies ?? {}).length > 0}
+        layout={layout}
+        page={overlay.kind === "settings" ? overlay.page : "root"}
+        pageTurnAnimation={pageTurnAnimation}
+        rapidPageTurnEnabled={rapidPageTurnEnabled}
+        theme={theme}
+        visible={overlay.kind === "settings"}
+        onAnimationChange={onPageTurnAnimationChange}
+        onAppearanceChange={onAppearanceChange}
+        onBackPress={closePanels}
+        onClose={() => {
+          if (
+            overlay.kind === "settings" &&
+            overlay.page === "typographyPreview"
+          ) {
+            closeTypographyPreview();
+            return;
           }
-          onAnimationChange={onPageTurnAnimationChange}
-          onRapidPageTurnEnabledChange={onRapidPageTurnEnabledChange}
-          onChange={onAppearanceChange}
-          onClose={() => setSettingsVisible(false)}
-          onDownloadFont={onDownloadFont}
-          onImportFont={onImportFont}
-          onLayoutChange={handleLayoutChange}
-          onRemoveFont={onRemoveFont}
-        />
-      ) : null}
+          setOverlay((current) =>
+            current.kind === "settings" ? { kind: "none" } : current,
+          );
+        }}
+        onDownloadFont={onDownloadFont}
+        onImportFont={onImportFont}
+        onLayoutChange={handleLayoutChange}
+        onPageChange={(page) =>
+          setOverlay((current) =>
+            current.kind === "settings" ? { ...current, page } : current,
+          )
+        }
+        onRapidPageTurnEnabledChange={onRapidPageTurnEnabledChange}
+        onRemoveFont={onRemoveFont}
+        onStartTypographyPreview={() => {
+          setTypographyDraft(appearance);
+          setOverlay((current) =>
+            current.kind === "settings"
+              ? { ...current, page: "typographyPreview" }
+              : current,
+          );
+        }}
+        onTabChange={changeSettingsTab}
+        onTypographyChange={(key, value) =>
+          setTypographyDraft((current) =>
+            current ? { ...current, [key]: value } : current,
+          )
+        }
+        onTypographyBack={returnFromTypographyPreview}
+        onTypographyReset={() =>
+          setTypographyDraft((current) =>
+            current ? resetReaderTypography(current) : current,
+          )
+        }
+      />
 
-      {!turning && !selecting && controlsVisible && tocVisible ? (
-        <TableOfContentsPanel
-          currentItemId={activeNavigationPath.at(-1)?.id}
-          rows={navigationRows}
-          theme={theme}
-          top={insets.top + uiSize.readerChrome + uiSize.readerChromePanelGap}
-          onClose={() => setTocVisible(false)}
-          onSelect={jumpTo}
-        />
-      ) : null}
+      <TableOfContentsPanel
+        bottomInset={insets.bottom}
+        currentItemId={activeNavigationPath.at(-1)?.id}
+        rows={navigationRows}
+        theme={theme}
+        visible={overlay.kind === "toc"}
+        onClose={() =>
+          setOverlay((current) =>
+            current.kind === "toc" ? { kind: "none" } : current,
+          )
+        }
+        onSelect={jumpTo}
+      />
     </View>
   );
 }
@@ -534,14 +627,13 @@ const styles = StyleSheet.create({
   readerStage: {
     alignItems: "center",
     flex: 1,
-    padding: Platform.OS === "web" ? 18 : 0,
+    padding: Platform.OS === "web" ? READER_STAGE_WEB_INSET : 0,
   },
   topControls: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
     left: Platform.OS === "web" ? 30 : 12,
-    pointerEvents: "box-none",
     position: "absolute",
     right: Platform.OS === "web" ? 30 : 12,
     zIndex: 20,
@@ -549,29 +641,26 @@ const styles = StyleSheet.create({
   bottomControls: {
     alignItems: "center",
     flexDirection: "row",
-    pointerEvents: "box-none",
     position: "absolute",
     right: Platform.OS === "web" ? 30 : 12,
     zIndex: 20,
   },
   toolbarHeaderRow: {
     alignItems: "center",
-    bottom: 0,
     flexDirection: "row",
+    height: PAGE_DECORATION_LINE_HEIGHT,
     justifyContent: "center",
-    left: Platform.OS === "web" ? 82 : 80,
+    left: uiSize.control + uiSpace.sm,
     pointerEvents: "none",
     position: "absolute",
-    right: Platform.OS === "web" ? 82 : 80,
-    top: 0,
+    right: uiSize.control + uiSpace.sm,
+    top:
+      PAGE_DECORATION_TOP_OFFSET +
+      (Platform.OS === "web" ? READER_STAGE_WEB_INSET : 0),
   },
   controlGroup: {
     flexDirection: "row",
     gap: uiSpace.sm,
     pointerEvents: "box-none",
-  },
-  backButton: {
-    paddingLeft: 9,
-    paddingRight: 12,
   },
 });

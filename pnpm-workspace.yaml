@@ -7,4 +7,5 @@ onlyBuiltDependencies:
   - esbuild
 
 patchedDependencies:
+  "@expo/ui@57.0.9": patches/@expo__ui@57.0.9.patch
   "@shopify/react-native-skia@2.6.2": patches/@shopify__react-native-skia@2.6.2.patch

@@ -3,16 +3,16 @@ import type { ReactNode } from "react";
 import {
   Platform,
   StyleSheet,
+  Text,
   View,
   type DimensionValue,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
 
-import { UiButton } from "./ui-button";
-import { UiText } from "./ui-text";
+import { ReaderChromeButton } from "./reader-chrome-button";
 import { uiShadow } from "./ui-shadow";
-import { uiRadius, uiSpace } from "./ui-tokens";
+import { uiRadius, uiSize, uiSpace, uiTypography } from "./ui-tokens";
 
 export interface ReaderFloatingPanelProps {
   readonly children: ReactNode;
@@ -66,12 +66,14 @@ export function ReaderFloatingPanel({
 export interface ReaderPanelHeaderProps {
   readonly title: string;
   readonly closeAccessibilityLabel: string;
+  readonly centerTitle?: boolean;
   readonly theme: ReaderTheme;
   readonly onClose: () => void;
   readonly style?: StyleProp<ViewStyle>;
 }
 
 export function ReaderPanelHeader({
+  centerTitle = false,
   closeAccessibilityLabel,
   onClose,
   style,
@@ -80,31 +82,49 @@ export function ReaderPanelHeader({
 }: ReaderPanelHeaderProps) {
   return (
     <View style={[styles.header, style]}>
-      <View style={styles.heading}>
-        <UiText variant="panelTitle" style={{ color: theme.text }}>
+      {centerTitle ? <View style={styles.headerSide} /> : null}
+      <View style={[styles.heading, centerTitle && styles.centeredHeading]}>
+        <Text
+          numberOfLines={centerTitle ? 1 : undefined}
+          style={[
+            uiTypography.sheetHeader,
+            { color: theme.text },
+            centerTitle && styles.centeredTitle,
+          ]}
+        >
           {title}
-        </UiText>
+        </Text>
       </View>
-      <UiButton
+      <ReaderChromeButton
         accessibilityLabel={closeAccessibilityLabel}
-        compact
-        iconOnly
+        icon="close"
         label={closeAccessibilityLabel}
-        leadingIcon="close"
         onPress={onClose}
-        textTone="muted"
         theme={theme}
-        variant="ghost"
+        tintColor={theme.secondaryText}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  centeredHeading: {
+    flex: 1,
+    paddingHorizontal: uiSpace.sm,
+  },
+  centeredTitle: {
+    textAlign: "center",
+    width: "100%",
+  },
   header: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
+    minHeight: uiSize.sheetHeader,
+  },
+  headerSide: {
+    height: uiSize.control,
+    width: uiSize.control,
   },
   heading: {
     flexShrink: 1,

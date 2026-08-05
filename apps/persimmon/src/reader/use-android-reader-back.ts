@@ -1,4 +1,5 @@
 export interface AndroidReaderBackOptions {
+  readonly enabled?: boolean;
   readonly panelVisible: boolean;
   readonly onBack: () => void;
   readonly onClosePanels: () => void;

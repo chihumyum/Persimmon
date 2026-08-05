@@ -12,7 +12,6 @@ import {
 
 import { UiIcon, type UiIconName } from "./ui-icon";
 import { UiText } from "./ui-text";
-import { uiShadow } from "./ui-shadow";
 import { uiRadius, uiSize } from "./ui-tokens";
 
 export type UiButtonVariant = "primary" | "secondary" | "ghost" | "chrome";
@@ -52,7 +51,7 @@ export function UiButton({
   const primary = variant === "primary";
   const chrome = variant === "chrome";
   const ghost = variant === "ghost";
-  const iconSize = chrome ? 16 : compact ? 17 : 19;
+  const iconSize = chrome ? 19 : compact ? 17 : 19;
   const textColor = primary
     ? theme.panelRaised
     : textTone === "accent"
@@ -99,19 +98,18 @@ export function UiButton({
             : ghost
               ? "transparent"
               : chrome
-                ? `${theme.panel}f2`
+                ? "transparent"
                 : theme.panelRaised,
           borderColor:
-            primary || ghost
-              ? "transparent"
-              : chrome
-                ? `${theme.border}e6`
-                : theme.border,
+            primary || ghost || chrome ? "transparent" : theme.border,
         },
-        chrome && uiShadow(theme, "chrome"),
         pressed && {
-          backgroundColor: primary ? theme.accentStrong : theme.panelMuted,
-          transform: [{ scale: 0.97 }],
+          backgroundColor: primary
+            ? theme.accentStrong
+            : chrome
+              ? `${theme.panelMuted}b8`
+              : theme.panelMuted,
+          transform: [{ scale: chrome ? 0.94 : 0.97 }],
         },
         (disabled || loading) && styles.disabled,
         style,
@@ -147,6 +145,7 @@ const styles = StyleSheet.create({
   },
   chrome: {
     borderRadius: uiRadius.pill,
+    borderWidth: 0,
     height: uiSize.readerChrome,
     minHeight: uiSize.readerChrome,
     minWidth: 42,

@@ -12,6 +12,23 @@ export type BookMenuRect = SelectionMenuRect;
 
 export type BookMenuAction = "details" | "sync" | "delete";
 
+export interface TableOfContentsPresentation {
+  readonly title: string;
+  readonly closeLabel: string;
+  readonly labels: readonly string[];
+  readonly depths: readonly number[];
+  readonly selectedIndex: number;
+  readonly colors: readonly [
+    background: number,
+    raised: number,
+    text: number,
+    secondaryText: number,
+    accent: number,
+    selected: number,
+  ];
+  readonly bottomInset: number;
+}
+
 interface PersimmonSelectionMenuNativeModule {
   show(
     text: string,
@@ -28,6 +45,16 @@ interface PersimmonSelectionMenuNativeModule {
     width: number,
     height: number,
   ): Promise<BookMenuAction | null>;
+  showTableOfContents(
+    title: string,
+    closeLabel: string,
+    labels: readonly string[],
+    depths: readonly number[],
+    selectedIndex: number,
+    colors: TableOfContentsPresentation["colors"],
+    bottomInset: number,
+  ): Promise<number | null>;
+  hideTableOfContents(): Promise<void>;
   hide(): Promise<void>;
 }
 
@@ -69,4 +96,27 @@ export async function showBookMenu(
       rect.height,
     )) ?? undefined
   );
+}
+
+export async function showTableOfContents(
+  presentation: TableOfContentsPresentation,
+): Promise<number | undefined> {
+  if (!nativeModule) {
+    return undefined;
+  }
+  return (
+    (await nativeModule.showTableOfContents(
+      presentation.title,
+      presentation.closeLabel,
+      presentation.labels,
+      presentation.depths,
+      presentation.selectedIndex,
+      presentation.colors,
+      presentation.bottomInset,
+    )) ?? undefined
+  );
+}
+
+export async function hideTableOfContents(): Promise<void> {
+  await nativeModule?.hideTableOfContents();
 }

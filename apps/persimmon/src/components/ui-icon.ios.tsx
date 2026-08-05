@@ -14,6 +14,7 @@ const IOS_ICON_NAMES = {
   layout: "rectangle.split.2x1",
   minus: "minus",
   more: "ellipsis",
+  reset: "arrow.counterclockwise",
   search: "magnifyingglass",
   singleColumn: "rectangle.portrait",
   settings: "gearshape",

@@ -1,18 +1,17 @@
 import type { ReaderTheme } from "@persimmon/reader-skia";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Image,
   Platform,
   Pressable,
   StyleSheet,
+  Text,
   View,
   type GestureResponderEvent,
 } from "react-native";
 import { useTranslation } from "react-i18next";
 
-import { UiIcon } from "../components/ui-icon";
-import { UiText as Text } from "../components/ui-text";
+import { LibraryNativeToolbarButton } from "../components/library-native-toolbar-button";
 import { uiRadius, uiSpace } from "../components/ui-tokens";
 import { formatPercentage } from "../i18n";
 import {
@@ -195,6 +194,7 @@ export function LibraryBookCard({
 }: LibraryBookCardProps) {
   const { t } = useTranslation();
   const longPressTriggered = useRef(false);
+  const moreAnchorRef = useRef<View>(null);
   const stageHeight = Math.round(width * 1.45);
   const status = readingStatusForEntry(entry);
   const isNew = isNewLibraryEntry(entry);
@@ -210,6 +210,16 @@ export function LibraryBookCard({
 
   const openContextMenu = (event: GestureResponderEvent) => {
     onContextMenu(entry, anchorFromEvent(event));
+  };
+  const openContextMenuFromButton = () => {
+    moreAnchorRef.current?.measureInWindow((x, y, measuredWidth, height) => {
+      onContextMenu(entry, {
+        x,
+        y,
+        width: Math.max(measuredWidth, 2),
+        height: Math.max(height, 2),
+      });
+    });
   };
 
   return (
@@ -242,11 +252,7 @@ export function LibraryBookCard({
             }, 0);
           }
         }}
-        style={({ pressed }) => [
-          styles.coverPressable,
-          { height: stageHeight },
-          pressed && styles.cardPressed,
-        ]}
+        style={[styles.coverPressable, { height: stageHeight }]}
       >
         <View
           style={[
@@ -261,16 +267,6 @@ export function LibraryBookCard({
             maximumWidth={width}
             theme={theme}
           />
-          {opening ? (
-            <View
-              style={[
-                styles.loadingOverlay,
-                { backgroundColor: `${theme.panelRaised}d9` },
-              ]}
-            >
-              <ActivityIndicator color={theme.accent} size="small" />
-            </View>
-          ) : null}
         </View>
       </Pressable>
 
@@ -315,20 +311,18 @@ export function LibraryBookCard({
             {progressLabel}
           </Text>
         )}
-        <Pressable
-          accessibilityLabel={t("library.card.moreAccessibility", {
-            title: entry.title,
-          })}
-          accessibilityRole="button"
-          hitSlop={8}
-          onPress={openContextMenu}
-          style={({ pressed }) => [
-            styles.moreButton,
-            pressed && { backgroundColor: theme.panelMuted },
-          ]}
-        >
-          <UiIcon color={theme.secondaryText} name="more" size={18} />
-        </Pressable>
+        <View collapsable={false} ref={moreAnchorRef} style={styles.moreButton}>
+          <LibraryNativeToolbarButton
+            accessibilityLabel={t("library.card.moreAccessibility", {
+              title: entry.title,
+            })}
+            compact
+            icon="more"
+            plain
+            onPress={openContextMenuFromButton}
+            theme={theme}
+          />
+        </View>
       </View>
     </View>
   );
@@ -336,16 +330,13 @@ export function LibraryBookCard({
 
 const styles = StyleSheet.create({
   author: {
+    fontFamily: Platform.select({ android: "sans-serif", ios: "System" }),
     fontSize: 12,
     lineHeight: 17,
     marginTop: 2,
   },
   card: {
     minWidth: 0,
-  },
-  cardPressed: {
-    opacity: 0.78,
-    transform: [{ scale: 0.985 }],
   },
   coverImage: {
     borderRadius: uiRadius.cover,
@@ -379,19 +370,10 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   fallbackTitle: {
+    fontFamily: Platform.select({ android: "sans-serif", ios: "System" }),
     fontSize: 17,
     fontWeight: "700",
     lineHeight: 23,
-  },
-  loadingOverlay: {
-    alignItems: "center",
-    borderRadius: uiRadius.cover,
-    bottom: 0,
-    justifyContent: "center",
-    left: 0,
-    position: "absolute",
-    right: 0,
-    top: 0,
   },
   metadataRow: {
     alignItems: "center",
@@ -405,11 +387,10 @@ const styles = StyleSheet.create({
   },
   moreButton: {
     alignItems: "center",
-    borderRadius: uiSpace.md,
-    height: 28,
+    height: 40,
     justifyContent: "center",
-    marginRight: -5,
-    width: 34,
+    marginRight: -7,
+    width: 40,
   },
   newBadge: {
     borderRadius: uiRadius.pill,
@@ -417,6 +398,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   newBadgeText: {
+    fontFamily: Platform.select({ android: "sans-serif", ios: "System" }),
     fontSize: 9,
     fontWeight: "700",
     letterSpacing: 0.3,
@@ -424,11 +406,13 @@ const styles = StyleSheet.create({
   },
   progress: {
     flex: 1,
+    fontFamily: Platform.select({ android: "sans-serif", ios: "System" }),
     fontSize: 11,
     fontWeight: "600",
     lineHeight: 16,
   },
   title: {
+    fontFamily: Platform.select({ android: "sans-serif", ios: "System" }),
     fontSize: 14,
     fontWeight: "600",
     lineHeight: 19,

@@ -27,6 +27,13 @@ export {
   type ReaderProgressDisplay,
 } from "./reader-appearance";
 export {
+  PAGE_DECORATION_FONT_SIZE,
+  PAGE_DECORATION_HEIGHT_MULTIPLIER,
+  PAGE_DECORATION_LETTER_SPACING,
+  PAGE_DECORATION_LINE_HEIGHT,
+  PAGE_DECORATION_TOP_OFFSET,
+} from "./page-decoration-metrics";
+export {
   DEFAULT_READER_UI_MESSAGES,
   LiveReader,
   type LiveReaderProps,

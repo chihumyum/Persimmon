@@ -4,12 +4,13 @@ import { BackHandler, Platform } from "react-native";
 import type { AndroidReaderBackOptions } from "./use-android-reader-back";
 
 export function useAndroidReaderBack({
+  enabled = true,
   panelVisible,
   onBack,
   onClosePanels,
 }: AndroidReaderBackOptions): void {
   useEffect(() => {
-    if (Platform.OS !== "android") {
+    if (Platform.OS !== "android" || !enabled) {
       return;
     }
     const subscription = BackHandler.addEventListener(
@@ -24,5 +25,5 @@ export function useAndroidReaderBack({
       },
     );
     return () => subscription.remove();
-  }, [onBack, onClosePanels, panelVisible]);
+  }, [enabled, onBack, onClosePanels, panelVisible]);
 }
