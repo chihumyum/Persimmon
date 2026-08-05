@@ -196,16 +196,6 @@ function SettingsRow({
   );
 }
 
-function fontSourceKey(
-  source: FontFamilyRecord["source"],
-): "bundled" | "downloaded" | "imported" {
-  return source === "bundled"
-    ? "bundled"
-    : source === "downloaded"
-      ? "downloaded"
-      : "imported";
-}
-
 interface FontPickerPageProps {
   readonly appearance: ReaderAppearanceSettings;
   readonly bottomInset: number;
@@ -339,26 +329,19 @@ function FontPickerPage({
                     pressed && { backgroundColor: theme.panelMuted },
                   ]}
                 >
-                  <View style={styles.rowCopy}>
-                    <Text
-                      numberOfLines={1}
-                      style={[
-                        styles.fontName,
-                        {
-                          color: selected
-                            ? theme.accentStrong
-                            : theme.controlText,
-                        },
-                      ]}
-                    >
-                      {family.displayName}
-                    </Text>
-                    <Text
-                      style={[styles.fontMeta, { color: theme.secondaryText }]}
-                    >
-                      {t(`reader.fonts.${fontSourceKey(family.source)}`)}
-                    </Text>
-                  </View>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.fontName,
+                      {
+                        color: selected
+                          ? theme.accentStrong
+                          : theme.controlText,
+                      },
+                    ]}
+                  >
+                    {family.displayName}
+                  </Text>
                   {selected ? (
                     <UiIcon color={theme.accentStrong} name="check" size={20} />
                   ) : null}
@@ -945,9 +928,6 @@ const styles = StyleSheet.create({
     gap: uiSpace.lg,
     paddingHorizontal: uiSpace.lg,
     paddingTop: uiSpace.sm,
-  },
-  fontMeta: {
-    ...uiTypography.optionDescription,
   },
   fontName: {
     flex: 1,

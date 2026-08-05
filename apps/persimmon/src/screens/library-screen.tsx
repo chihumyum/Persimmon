@@ -442,6 +442,7 @@ export function LibraryScreen({
           ? t("library.actions.syncNow")
           : t("library.actions.downloadFromCloud"),
         t("library.nativeMenu.delete"),
+        t("common.cancel"),
         !entry.builtIn,
         rect,
       );

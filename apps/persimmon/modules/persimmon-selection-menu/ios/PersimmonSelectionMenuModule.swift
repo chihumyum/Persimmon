@@ -558,119 +558,89 @@ private final class SelectionMenuAnchorView: UITextView, UIEditMenuInteractionDe
   }
 }
 
-private final class BookMenuAnchorView: UIView, UIEditMenuInteractionDelegate {
-  private lazy var editMenuInteraction = UIEditMenuInteraction(delegate: self)
-  private var menuActions: [(id: String, title: String, destructive: Bool)] = []
+private final class BookMenuPresenter: NSObject, UIAdaptivePresentationControllerDelegate {
+  private var alertController: UIAlertController?
   private var onSelection: ((String?) -> Void)?
-
-  override init(frame: CGRect) {
-    super.init(frame: frame)
-    backgroundColor = .clear
-    accessibilityElementsHidden = true
-    addInteraction(editMenuInteraction)
-  }
-
-  required init?(coder: NSCoder) {
-    fatalError("init(coder:) has not been implemented")
-  }
-
-  override var canBecomeFirstResponder: Bool {
-    true
-  }
-
-  override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
-    false
-  }
 
   func present(
     detailsLabel: String,
     syncLabel: String,
     deleteLabel: String,
+    cancelLabel: String,
     canDelete: Bool,
     rectInWindow: CGRect,
     from viewController: UIViewController,
     onSelection: @escaping (String?) -> Void
   ) {
     self.onSelection = onSelection
-    menuActions = [
-      (id: "details", title: detailsLabel, destructive: false),
-      (id: "sync", title: syncLabel, destructive: false)
-    ]
+    let alertController = UIAlertController(
+      title: nil,
+      message: nil,
+      preferredStyle: .actionSheet
+    )
+    alertController.addAction(
+      UIAlertAction(title: detailsLabel, style: .default) { [weak self] _ in
+        self?.finish(with: "details")
+      }
+    )
+    alertController.addAction(
+      UIAlertAction(title: syncLabel, style: .default) { [weak self] _ in
+        self?.finish(with: "sync")
+      }
+    )
     if canDelete {
-      menuActions.append((id: "delete", title: deleteLabel, destructive: true))
+      alertController.addAction(
+        UIAlertAction(title: deleteLabel, style: .destructive) { [weak self] _ in
+          self?.finish(with: "delete")
+        }
+      )
     }
+    alertController.addAction(
+      UIAlertAction(title: cancelLabel, style: .cancel) { [weak self] _ in
+        self?.finish(with: nil)
+      }
+    )
 
     let container = viewController.view!
     let localOrigin = container.convert(rectInWindow.origin, from: nil)
-    frame = CGRect(
+    let sourceRect = CGRect(
       origin: localOrigin,
       size: CGSize(
         width: max(1, rectInWindow.width),
         height: max(1, rectInWindow.height)
       )
     )
-    if superview !== container {
-      removeFromSuperview()
-      container.addSubview(self)
+    if let popover = alertController.popoverPresentationController {
+      popover.sourceView = container
+      popover.sourceRect = sourceRect
+      popover.permittedArrowDirections = [.up, .down]
     }
-    _ = becomeFirstResponder()
-    let configuration = UIEditMenuConfiguration(
-      identifier: nil,
-      sourcePoint: CGPoint(x: bounds.midX, y: bounds.midY)
-    )
-    editMenuInteraction.presentEditMenu(with: configuration)
+
+    self.alertController = alertController
+    viewController.present(alertController, animated: true)
+    alertController.presentationController?.delegate = self
   }
 
   func dismiss() {
-    editMenuInteraction.dismissMenu()
+    alertController?.dismiss(animated: false)
     finish(with: nil)
   }
 
   private func finish(with action: String?) {
     let completion = onSelection
     onSelection = nil
-    menuActions = []
-    resignFirstResponder()
-    removeFromSuperview()
+    alertController = nil
     completion?(action)
   }
 
-  func editMenuInteraction(
-    _ interaction: UIEditMenuInteraction,
-    menuFor configuration: UIEditMenuConfiguration,
-    suggestedActions: [UIMenuElement]
-  ) -> UIMenu? {
-    UIMenu(
-      children: menuActions.map { item in
-        UIAction(
-          title: item.title,
-          attributes: item.destructive ? .destructive : []
-        ) { [weak self] _ in
-          self?.finish(with: item.id)
-        }
-      }
-    )
-  }
-
-  func editMenuInteraction(
-    _ interaction: UIEditMenuInteraction,
-    targetRectFor configuration: UIEditMenuConfiguration
-  ) -> CGRect {
-    bounds
-  }
-
-  func editMenuInteraction(
-    _ interaction: UIEditMenuInteraction,
-    willDismissMenuFor configuration: UIEditMenuConfiguration,
-    animator: any UIEditMenuInteractionAnimating
-  ) {
+  func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
     finish(with: nil)
   }
 }
 
 public final class PersimmonSelectionMenuModule: Module {
   private var anchorView: SelectionMenuAnchorView?
-  private var bookMenuAnchorView: BookMenuAnchorView?
+  private var bookMenuPresenter: BookMenuPresenter?
   private var bookMenuPromise: Promise?
 
   public func definition() -> ModuleDefinition {
@@ -809,7 +779,7 @@ public final class PersimmonSelectionMenuModule: Module {
       else {
         return
       }
-      self.bookMenuAnchorView?.dismiss()
+      self.bookMenuPresenter?.dismiss()
       let anchorView = self.anchorView ?? SelectionMenuAnchorView()
       self.anchorView = anchorView
       anchorView.present(
@@ -834,20 +804,22 @@ public final class PersimmonSelectionMenuModule: Module {
         return
       }
       self.anchorView?.dismiss()
-      self.bookMenuAnchorView?.dismiss()
+      self.bookMenuPresenter?.dismiss()
       self.resolveBookMenu(nil)
       self.bookMenuPromise = promise
 
       let detailsLabel = labels.indices.contains(0) ? labels[0] : "Details"
       let syncLabel = labels.indices.contains(1) ? labels[1] : "Sync"
       let deleteLabel = labels.indices.contains(2) ? labels[2] : "Delete"
+      let cancelLabel = labels.indices.contains(3) ? labels[3] : "Cancel"
 
-      let anchorView = BookMenuAnchorView()
-      self.bookMenuAnchorView = anchorView
-      anchorView.present(
+      let presenter = BookMenuPresenter()
+      self.bookMenuPresenter = presenter
+      presenter.present(
         detailsLabel: detailsLabel,
         syncLabel: syncLabel,
         deleteLabel: deleteLabel,
+        cancelLabel: cancelLabel,
         canDelete: canDelete,
         rectInWindow: CGRect(x: x, y: y, width: width, height: height),
         from: viewController
@@ -858,7 +830,7 @@ public final class PersimmonSelectionMenuModule: Module {
 
     AsyncFunction("hide") {
       self.anchorView?.dismiss()
-      self.bookMenuAnchorView?.dismiss()
+      self.bookMenuPresenter?.dismiss()
       self.resolveBookMenu(nil)
     }.runOnQueue(.main)
 
@@ -866,8 +838,8 @@ public final class PersimmonSelectionMenuModule: Module {
       DispatchQueue.main.async {
         self.anchorView?.dismiss()
         self.anchorView = nil
-        self.bookMenuAnchorView?.dismiss()
-        self.bookMenuAnchorView = nil
+        self.bookMenuPresenter?.dismiss()
+        self.bookMenuPresenter = nil
         self.resolveBookMenu(nil)
       }
     }

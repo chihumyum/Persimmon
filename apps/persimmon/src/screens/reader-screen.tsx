@@ -128,6 +128,8 @@ export function ReaderScreen({
   const [selecting, setSelecting] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [overlay, setOverlay] = useState<ReaderOverlayState>({ kind: "none" });
+  const [lastSettingsTab, setLastSettingsTab] =
+    useState<ReaderSettingsTab>("typography");
   const [typographyDraft, setTypographyDraft] = useState<
     ReaderAppearanceSettings | undefined
   >();
@@ -170,6 +172,7 @@ export function ReaderScreen({
 
   const changeSettingsTab = useCallback(
     (tab: ReaderSettingsTab) => {
+      setLastSettingsTab(tab);
       if (typographyDraft) {
         onAppearanceChange(typographyDraft);
       }
@@ -481,7 +484,7 @@ export function ReaderScreen({
                     : {
                         kind: "settings",
                         page: "root",
-                        tab: "typography",
+                        tab: lastSettingsTab,
                       },
                 );
               }}
@@ -516,7 +519,7 @@ export function ReaderScreen({
       ) : null}
 
       <ReadingSettingsSheet
-        activeTab={overlay.kind === "settings" ? overlay.tab : "typography"}
+        activeTab={overlay.kind === "settings" ? overlay.tab : lastSettingsTab}
         appearance={displayedAppearance}
         bottomInset={insets.bottom}
         fontFamilies={fontFamilies}
