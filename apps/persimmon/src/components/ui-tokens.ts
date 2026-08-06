@@ -16,6 +16,22 @@ export const uiSpace = {
   xxxl: 32,
 } as const;
 
+export const uiBreakpoint = {
+  compact: 720,
+} as const;
+
+export const uiScreen = {
+  compactTopControlOffset: 50,
+  horizontalInset: 12,
+  regularTopControlOffset: 60,
+} as const;
+
+export function appTopControlOffsetForWidth(windowWidth: number): number {
+  return windowWidth < uiBreakpoint.compact
+    ? uiScreen.compactTopControlOffset
+    : uiScreen.regularTopControlOffset;
+}
+
 export const uiRadius = {
   cover: 4,
   small: 8,

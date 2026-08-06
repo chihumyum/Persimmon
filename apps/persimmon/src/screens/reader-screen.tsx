@@ -22,6 +22,7 @@ import {
   ActivityIndicator,
   StatusBar,
   StyleSheet,
+  useWindowDimensions,
   View,
   type LayoutChangeEvent,
 } from "react-native";
@@ -29,7 +30,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 
 import { ReaderChromeButton } from "../components/reader-chrome-button";
-import { uiSize, uiSpace } from "../components/ui-tokens";
+import {
+  appTopControlOffsetForWidth,
+  uiScreen,
+  uiSize,
+  uiSpace,
+} from "../components/ui-tokens";
 import type {
   LibraryBookSummary,
   OpenedLibraryBook,
@@ -115,6 +121,8 @@ export function ReaderScreen({
 }: ReaderScreenProps) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+  const topControlOffset = appTopControlOffsetForWidth(windowWidth);
   const theme = useMemo(
     () => resolveReaderTheme(appearance.theme, resolvedColorScheme),
     [appearance.theme, resolvedColorScheme],
@@ -418,10 +426,25 @@ export function ReaderScreen({
         </View>
       </View>
 
+      {!turning && !selecting && controlsVisible && toolbarHeaderEnabled ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.toolbarHeaderRow,
+            { top: insets.top + PAGE_DECORATION_TOP_OFFSET },
+          ]}
+        >
+          <ToolbarBreadcrumbCarousel
+            color={theme.decoration}
+            labels={toolbarNavigationLabels}
+          />
+        </View>
+      ) : null}
+
       {!turning && !selecting && controlsVisible ? (
         <View
           pointerEvents="box-none"
-          style={[styles.topControls, { top: insets.top }]}
+          style={[styles.topControls, { top: topControlOffset }]}
         >
           <ReaderChromeButton
             accessibilityLabel={t("reader.toolbar.backAccessibility")}
@@ -431,14 +454,6 @@ export function ReaderScreen({
             theme={theme}
             tintColor={theme.accentStrong}
           />
-          {toolbarHeaderEnabled ? (
-            <View pointerEvents="none" style={styles.toolbarHeaderRow}>
-              <ToolbarBreadcrumbCarousel
-                color={theme.decoration}
-                labels={toolbarNavigationLabels}
-              />
-            </View>
-          ) : null}
           <ReaderChromeButton
             accessibilityLabel={t("reader.toolbar.tocAccessibility")}
             disabled={navigationRows.length === 0}
@@ -618,16 +633,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
-    left: 12,
+    left: uiScreen.horizontalInset,
     position: "absolute",
-    right: 12,
+    right: uiScreen.horizontalInset,
     zIndex: 20,
   },
   bottomControls: {
     alignItems: "center",
     flexDirection: "row",
     position: "absolute",
-    right: 12,
+    right: uiScreen.horizontalInset,
     zIndex: 20,
   },
   toolbarHeaderRow: {
@@ -635,11 +650,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     height: PAGE_DECORATION_LINE_HEIGHT,
     justifyContent: "center",
-    left: uiSize.control + uiSpace.sm,
+    left: uiScreen.horizontalInset + uiSize.control + uiSpace.sm,
     pointerEvents: "none",
     position: "absolute",
-    right: uiSize.control + uiSpace.sm,
-    top: PAGE_DECORATION_TOP_OFFSET,
+    right: uiScreen.horizontalInset + uiSize.control + uiSpace.sm,
+    zIndex: 20,
   },
   controlGroup: {
     flexDirection: "row",

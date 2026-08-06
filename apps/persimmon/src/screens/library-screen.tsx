@@ -24,7 +24,12 @@ import { LibraryNativeFilterControl } from "../components/library-native-filter-
 import { LibraryNativeSortControl } from "../components/library-native-sort-control";
 import { LibraryNativeSyncNotice } from "../components/library-native-sync-notice";
 import { LibraryNativeToolbarButton } from "../components/library-native-toolbar-button";
-import { uiSpace } from "../components/ui-tokens";
+import {
+  appTopControlOffsetForWidth,
+  uiBreakpoint,
+  uiScreen,
+  uiSpace,
+} from "../components/ui-tokens";
 import type { AppLanguagePreference } from "../i18n";
 import {
   dismissGoogleDrivePrompt,
@@ -274,8 +279,9 @@ export function LibraryScreen({
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
-  const compact = windowWidth < 720;
-  const horizontalPadding = compact ? 18 : 30;
+  const compact = windowWidth < uiBreakpoint.compact;
+  const topControlOffset = appTopControlOffsetForWidth(windowWidth);
+  const horizontalPadding = uiScreen.horizontalInset;
   const gridGap = compact ? 13 : 25;
   const availableWidth = Math.min(1200, windowWidth - horizontalPadding * 2);
   const columnCount = compact
@@ -489,6 +495,7 @@ export function LibraryScreen({
           {
             maxWidth: 1200 + horizontalPadding * 2,
             paddingHorizontal: horizontalPadding,
+            paddingTop: topControlOffset,
           },
           compact && styles.contentCompact,
           floatingSyncBannerVisible && styles.contentWithFloatingSyncBanner,
@@ -679,12 +686,10 @@ const styles = StyleSheet.create({
   content: {
     alignSelf: "center",
     paddingBottom: 64,
-    paddingTop: 60,
     width: "100%",
   },
   contentCompact: {
     paddingBottom: 42,
-    paddingTop: 50,
   },
   contentWithFloatingSyncBanner: {
     paddingBottom: 132,

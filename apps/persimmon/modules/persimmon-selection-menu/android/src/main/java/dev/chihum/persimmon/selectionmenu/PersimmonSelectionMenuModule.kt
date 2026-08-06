@@ -66,6 +66,7 @@ private const val MENU_ITEM_BOOK_DETAILS = 0x40001
 private const val MENU_ITEM_BOOK_SYNC = 0x40002
 private const val MENU_ITEM_BOOK_DELETE = 0x40003
 private const val APP_CONTROL_DIAMETER_DP = 50f
+private const val APP_CONTROL_ICON_DP = 22f
 private const val APP_SHEET_HEADER_HEIGHT_DP = 66f
 private const val APP_SHEET_HEADER_FONT_SP = 20f
 private const val TABLE_OF_CONTENTS_ROW_HEIGHT_DP = 50f
@@ -856,12 +857,14 @@ class PersimmonSelectionMenuModule : Module() {
         contentDescription = closeLabel
         setImageResource(R.drawable.persimmon_close)
         setColorFilter(secondaryTextColor)
-        setPadding(dp(12f), dp(12f), dp(12f), dp(12f))
+        val iconInset = dp((APP_CONTROL_DIAMETER_DP - APP_CONTROL_ICON_DP) / 2f)
+        setPadding(iconInset, iconInset, iconInset, iconInset)
         background = circularRippleBackground(
           raisedColor,
-          ColorUtils.setAlphaComponent(textColor, 30)
+          ColorUtils.setAlphaComponent(secondaryTextColor, 30)
         )
-        elevation = dp(1f).toFloat()
+        elevation = 0f
+        stateListAnimator = null
       }
       header.addView(
         closeButton,

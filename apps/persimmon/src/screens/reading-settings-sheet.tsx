@@ -229,6 +229,7 @@ function FontPickerPage({
   const { t } = useTranslation();
   const [busyAction, setBusyAction] = useState<string | undefined>();
   const [error, setError] = useState<string | undefined>();
+  const [pressedFontId, setPressedFontId] = useState<string | undefined>();
   const busy = busyAction !== undefined;
   const selectableFonts = useMemo(
     () => fontFamilies.filter((family) => family.id !== BUILTIN_READER_MATH_ID),
@@ -324,7 +325,14 @@ function FontPickerPage({
                   style={[styles.divider, { backgroundColor: theme.border }]}
                 />
               ) : null}
-              <View style={styles.fontRow}>
+              <View
+                style={[
+                  styles.fontRow,
+                  (selected || pressedFontId === family.id) && {
+                    backgroundColor: theme.panelMuted,
+                  },
+                ]}
+              >
                 <Pressable
                   accessibilityLabel={t("reader.fonts.fontAccessibility", {
                     font: family.displayName,
@@ -333,10 +341,13 @@ function FontPickerPage({
                   accessibilityState={{ checked: selected }}
                   disabled={busy}
                   onPress={() => chooseFont(family.id)}
-                  style={({ pressed }) => [
-                    styles.fontChoice,
-                    pressed && { backgroundColor: theme.panelMuted },
-                  ]}
+                  onPressIn={() => setPressedFontId(family.id)}
+                  onPressOut={() =>
+                    setPressedFontId((current) =>
+                      current === family.id ? undefined : current,
+                    )
+                  }
+                  style={styles.fontChoice}
                 >
                   <Text
                     numberOfLines={1}
