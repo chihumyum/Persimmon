@@ -24,13 +24,13 @@ describe("app language preference", () => {
   });
 
   it("persists an explicit language override", async () => {
-    await saveAppLanguagePreference("en");
+    await saveAppLanguagePreference("ja");
 
-    await expect(loadAppLanguagePreference()).resolves.toBe("en");
+    await expect(loadAppLanguagePreference()).resolves.toBe("ja");
   });
 
   it("ignores unknown persisted values", async () => {
-    storage.set("@persimmon/app-language/v1", "fr");
+    storage.set("@persimmon/app-language/v1", "it");
 
     await expect(loadAppLanguagePreference()).resolves.toBe("system");
   });

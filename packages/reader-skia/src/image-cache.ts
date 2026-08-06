@@ -1,7 +1,4 @@
 import { Skia, type SkImage } from "@shopify/react-native-skia";
-import { Platform } from "react-native";
-
-import { releaseSkiaResources } from "./skia-resource-release";
 
 interface CacheEntry {
   readonly image: SkImage;
@@ -141,9 +138,6 @@ export class DecodedImageCache {
   }
 
   dispose(): void {
-    for (const entry of this.entries.values()) {
-      releaseSkiaResources(Platform.OS, entry.image, null);
-    }
     this.entries.clear();
     this.pending.clear();
     this.unavailable.clear();
@@ -162,7 +156,6 @@ export class DecodedImageCache {
       if (this.decodedBytes <= this.byteBudget) {
         break;
       }
-      releaseSkiaResources(Platform.OS, entry.image, null);
       this.entries.delete(assetId);
       this.decodedBytes -= entry.decodedBytes;
     }

@@ -1,6 +1,5 @@
 import type { PageTurnWorkletState } from "@persimmon/page-turn-core";
 import { useEffect, useMemo, useRef } from "react";
-import { Platform } from "react-native";
 import { useSharedValue, type SharedValue } from "react-native-reanimated";
 import { scheduleOnUI } from "react-native-worklets";
 
@@ -82,9 +81,6 @@ export function usePageTurnNativeSharedFrame(
   );
 
   useEffect(() => {
-    if (Platform.OS === "web") {
-      return;
-    }
     scheduleOnUI(
       (nextWidth: number, nextHeight: number, nextSpread: boolean) => {
         "worklet";

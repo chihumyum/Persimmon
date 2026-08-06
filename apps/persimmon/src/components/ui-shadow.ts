@@ -1,20 +1,8 @@
 import type { ReaderTheme } from "@persimmon/reader-skia";
-import { Platform, type ViewStyle } from "react-native";
+import type { ViewStyle } from "react-native";
 
 export type UiElevation = "chrome" | "floating" | "modal";
 export type UiBackdropStrength = "soft" | "standard";
-
-const WEB_SHADOW: Readonly<Record<UiElevation, string>> = {
-  chrome: "0 2px 9px",
-  floating: "0 8px 28px",
-  modal: "0 22px 70px",
-};
-
-const WEB_ALPHA: Readonly<Record<UiElevation, string>> = {
-  chrome: "1a",
-  floating: "2e",
-  modal: "47",
-};
 
 export function uiBackdropColor(
   theme: ReaderTheme,
@@ -32,12 +20,6 @@ export function uiShadow(
   theme: ReaderTheme,
   elevation: UiElevation,
 ): ViewStyle {
-  if (Platform.OS === "web") {
-    return {
-      boxShadow: `${WEB_SHADOW[elevation]} ${theme.shadow}${WEB_ALPHA[elevation]}`,
-    } as ViewStyle;
-  }
-
   switch (elevation) {
     case "chrome":
       return {

@@ -1,4 +1,14 @@
-export const SUPPORTED_LANGUAGES = ["zh-Hans", "en"] as const;
+export const SUPPORTED_LANGUAGES = [
+  "zh-Hans",
+  "zh-Hant",
+  "en",
+  "ja",
+  "ko",
+  "es",
+  "fr",
+  "de",
+  "pt-BR",
+] as const;
 
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
 
@@ -19,11 +29,42 @@ export function resolveSupportedLanguage(
     if (!tag) {
       continue;
     }
-    if (tag === "zh" || tag.startsWith("zh-hans") || tag.startsWith("zh-cn")) {
+    if (
+      tag === "zh" ||
+      tag.startsWith("zh-hans") ||
+      tag.startsWith("zh-cn") ||
+      tag.startsWith("zh-sg")
+    ) {
       return "zh-Hans";
+    }
+    if (
+      tag.startsWith("zh-hant") ||
+      tag.startsWith("zh-tw") ||
+      tag.startsWith("zh-hk") ||
+      tag.startsWith("zh-mo")
+    ) {
+      return "zh-Hant";
     }
     if (tag === "en" || tag.startsWith("en-")) {
       return "en";
+    }
+    if (tag === "ja" || tag.startsWith("ja-")) {
+      return "ja";
+    }
+    if (tag === "ko" || tag.startsWith("ko-")) {
+      return "ko";
+    }
+    if (tag === "es" || tag.startsWith("es-")) {
+      return "es";
+    }
+    if (tag === "fr" || tag.startsWith("fr-")) {
+      return "fr";
+    }
+    if (tag === "de" || tag.startsWith("de-")) {
+      return "de";
+    }
+    if (tag === "pt" || tag.startsWith("pt-")) {
+      return "pt-BR";
     }
   }
   return FALLBACK_LANGUAGE;

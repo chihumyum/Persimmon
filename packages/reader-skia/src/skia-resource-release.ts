@@ -2,18 +2,6 @@ interface DisposableSkiaResource {
   dispose(): void;
 }
 
-export function releaseSkiaResources(
-  platform: string,
-  image: DisposableSkiaResource | null,
-  surface: DisposableSkiaResource | null,
-): void {
-  if (platform !== "web") {
-    return;
-  }
-  image?.dispose();
-  surface?.dispose();
-}
-
 /**
  * Resources created only for synchronous measurement are never submitted to a
  * declarative Canvas or native pager. They have no replaying display-list
@@ -35,9 +23,18 @@ export function releaseTransientSkiaResources(
  * be released deterministically instead of waiting for a memory-pressure GC.
  */
 export function releaseRetiredSkiaResources(
+  platform: string,
   resource: DisposableSkiaResource | null,
   secondary: DisposableSkiaResource | null = null,
 ): void {
+  // iOS may replay a retired declarative Canvas display list after React's
+  // paint grace period while the next reader generation is already shaping.
+  // Dropping JS ownership is sufficient: Skia keeps the native objects alive
+  // until its final display-list reference is gone. Explicit disposal here
+  // turns a rapid typography change into a UI-worklet use-after-release.
+  if (platform === "ios") {
+    return;
+  }
   resource?.dispose();
   secondary?.dispose();
 }
@@ -51,11 +48,9 @@ export function releaseRetiredSkiaResources(
 export function releaseCapturedPageResources(
   platform: string,
   image: DisposableSkiaResource | null,
-  surface: DisposableSkiaResource | null,
+  _surface: DisposableSkiaResource | null,
 ): void {
   if (platform === "android") {
     image?.dispose();
-    return;
   }
-  releaseSkiaResources(platform, image, surface);
 }

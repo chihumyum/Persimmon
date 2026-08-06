@@ -1,5 +1,4 @@
 import { requireNativeModule } from "expo";
-import { Platform } from "react-native";
 
 export interface SelectionMenuRect {
   readonly x: number;
@@ -63,12 +62,9 @@ interface PersimmonSelectionMenuNativeModule {
   hide(): Promise<void>;
 }
 
-const nativeModule =
-  Platform.OS === "web"
-    ? null
-    : requireNativeModule<PersimmonSelectionMenuNativeModule>(
-        "PersimmonSelectionMenu",
-      );
+const nativeModule = requireNativeModule<PersimmonSelectionMenuNativeModule>(
+  "PersimmonSelectionMenu",
+);
 
 export async function showSelectionMenu(
   text: string,
@@ -89,9 +85,6 @@ export async function showBookMenu(
   canDelete: boolean,
   rect: BookMenuRect,
 ): Promise<BookMenuAction | undefined> {
-  if (!nativeModule) {
-    return undefined;
-  }
   return (
     (await nativeModule.showBookMenu(
       [detailsLabel, syncLabel, deleteLabel, cancelLabel],
@@ -107,9 +100,6 @@ export async function showBookMenu(
 export async function showTableOfContents(
   presentation: TableOfContentsPresentation,
 ): Promise<number | undefined> {
-  if (!nativeModule) {
-    return undefined;
-  }
   return (
     (await nativeModule.showTableOfContents(
       presentation.title,

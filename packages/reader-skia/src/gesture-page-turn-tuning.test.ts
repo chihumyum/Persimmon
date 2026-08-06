@@ -55,8 +55,5 @@ describe("gesture page turn tuning", () => {
     expect(
       normalizeGesturePageTurnTuningForPlatform(undefined, "android"),
     ).toEqual(DEFAULT_GESTURE_PAGE_TURN_TUNING);
-    expect(normalizeGesturePageTurnTuningForPlatform(undefined, "web")).toEqual(
-      DEFAULT_GESTURE_PAGE_TURN_TUNING,
-    );
   });
 });

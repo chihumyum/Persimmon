@@ -9,8 +9,28 @@
         "expo-localization",
         {
           "supportedLocales": {
-            "ios": ["zh-Hans", "en"],
-            "android": ["zh-Hans", "en"]
+            "ios": [
+              "zh-Hans",
+              "zh-Hant",
+              "en",
+              "ja",
+              "ko",
+              "es",
+              "fr",
+              "de",
+              "pt-BR"
+            ],
+            "android": [
+              "zh-Hans",
+              "zh-Hant",
+              "en",
+              "ja",
+              "ko",
+              "es",
+              "fr",
+              "de",
+              "pt-BR"
+            ]
           }
         }
       ]

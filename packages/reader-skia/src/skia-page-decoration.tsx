@@ -26,10 +26,7 @@ import {
 } from "./page-progress-decoration";
 import { afterSkiaPaint } from "./skia-lifecycle";
 import { DEFAULT_READER_THEME, type ReaderTheme } from "./reader-theme";
-import {
-  releaseRetiredSkiaResources,
-  releaseSkiaResources,
-} from "./skia-resource-release";
+import { releaseRetiredSkiaResources } from "./skia-resource-release";
 
 interface PageDecorationText {
   readonly paragraph: SkParagraph;
@@ -124,12 +121,9 @@ export function createSkiaPageDecoration({
     }
     disposed = true;
     if (retired) {
-      releaseRetiredSkiaResources(headerTitle, footerPage);
-      releaseRetiredSkiaResources(footerPercentage);
-      return;
+      releaseRetiredSkiaResources(Platform.OS, headerTitle, footerPage);
+      releaseRetiredSkiaResources(Platform.OS, footerPercentage);
     }
-    releaseSkiaResources(Platform.OS, headerTitle, footerPage);
-    releaseSkiaResources(Platform.OS, footerPercentage, null);
   };
 
   return {

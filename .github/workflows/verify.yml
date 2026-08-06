@@ -17,6 +17,4 @@ jobs:
           node-version: 22.23.1
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium webkit
       - run: pnpm verify
-      - run: pnpm test:e2e

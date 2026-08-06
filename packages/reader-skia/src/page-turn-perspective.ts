@@ -70,46 +70,6 @@ export function pageTurnPerspectiveCorrectProgress(
 }
 
 /**
- * d(physical progress) / d(projected progress), used to retain sub-pixel
- * texture interpolation between lookup cells on Web.
- */
-export function pageTurnPerspectiveProgressDerivative(
-  screenProgress: number,
-  startDepth: number,
-  endDepth: number,
-): number {
-  "worklet";
-  const startScale = pageTurnPerspectiveScale(startDepth);
-  const endScale = pageTurnPerspectiveScale(endDepth);
-  const denominator =
-    (1 - screenProgress) * startScale + screenProgress * endScale;
-  return denominator <= 0.000001
-    ? 1
-    : (startScale * endScale) / (denominator * denominator);
-}
-
-/**
- * Caps the in-cell material slope the lookup renderers use for sub-pixel
- * texture interpolation.
- *
- * Where the paper turns away from the viewer its projected segment collapses,
- * so the raw slope `derivative / (segments * deltaX)` diverges: one lookup cell
- * would sweep several profile segments of texture into a single column and
- * smear the silhouette. One profile segment per half cell is the most a cell
- * can honestly resolve, and beyond that the flat cell value is the better
- * answer.
- */
-export function limitPageTurnMaterialSlope(
-  slope: number,
-  segmentCount: number,
-  halfCellBookX: number,
-): number {
-  "worklet";
-  const limit = 1 / Math.max(0.000000001, segmentCount * halfCellBookX);
-  return Math.min(limit, Math.max(-limit, slope));
-}
-
-/**
  * Inverse pinhole projection for the vertical texture coordinate. The screen
  * center stays fixed while raised paper grows equally beyond the top and
  * bottom of the viewport.

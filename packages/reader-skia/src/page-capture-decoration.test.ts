@@ -39,7 +39,7 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("react-native", () => ({ Platform: { OS: "web" } }));
+vi.mock("react-native", () => ({ Platform: { OS: "android" } }));
 vi.mock("@shopify/react-native-skia", () => ({
   ClipOp: { Intersect: 0 },
   Skia: {

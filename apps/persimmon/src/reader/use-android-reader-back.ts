@@ -5,6 +5,4 @@ export interface AndroidReaderBackOptions {
   readonly onClosePanels: () => void;
 }
 
-export function useAndroidReaderBack(
-  _options: AndroidReaderBackOptions,
-): void {}
+export { useAndroidReaderBack } from "./use-android-reader-back.native";

@@ -1,8 +1,15 @@
 import i18next, { type TOptions } from "i18next";
 import { initReactI18next } from "react-i18next";
 
+import { de } from "./locales/de";
 import { en } from "./locales/en";
+import { es } from "./locales/es";
+import { fr } from "./locales/fr";
+import { ja } from "./locales/ja";
+import { ko } from "./locales/ko";
+import { ptBR } from "./locales/pt-BR";
 import { zhHans } from "./locales/zh-Hans";
+import { zhHant } from "./locales/zh-Hant";
 import {
   FALLBACK_LANGUAGE,
   resolveSupportedLanguage,
@@ -15,8 +22,15 @@ void i18next.use(initReactI18next).init({
   interpolation: { escapeValue: false },
   lng: FALLBACK_LANGUAGE,
   resources: {
+    de: { translation: de },
     en: { translation: en },
+    es: { translation: es },
+    fr: { translation: fr },
+    ja: { translation: ja },
+    ko: { translation: ko },
+    "pt-BR": { translation: ptBR },
     "zh-Hans": { translation: zhHans },
+    "zh-Hant": { translation: zhHant },
   },
   returnNull: false,
 });

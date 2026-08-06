@@ -20,7 +20,6 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
-  Platform,
   StatusBar,
   StyleSheet,
   View,
@@ -29,7 +28,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 
-import { AsyncSkia } from "../../components/async-skia";
 import { ReaderChromeButton } from "../components/reader-chrome-button";
 import { uiSize, uiSpace } from "../components/ui-tokens";
 import type {
@@ -58,7 +56,6 @@ import {
 
 const ReaderSurface = React.lazy(() => import("../reader/reader-surface"));
 const SHOW_PAGE_TURN_TUNING = false;
-const READER_STAGE_WEB_INSET = 18;
 
 interface Viewport {
   readonly width: number;
@@ -366,11 +363,7 @@ export function ReaderScreen({
       <View style={styles.readerStage}>
         <View
           onLayout={measureReader}
-          style={[
-            styles.readerPage,
-            { backgroundColor: theme.paper },
-            layout === "spread" && styles.readerSpread,
-          ]}
+          style={[styles.readerPage, { backgroundColor: theme.paper }]}
         >
           {readerFrame ? (
             <Suspense
@@ -385,35 +378,31 @@ export function ReaderScreen({
                 </View>
               }
             >
-              <AsyncSkia>
-                <ReaderSurface
-                  key={`${opened.book.revisionId}:${navigationGeneration}`}
-                  book={opened.book}
-                  width={readerFrame.width}
-                  height={readerFrame.height}
-                  appearance={displayedAppearance}
-                  layout={readerFrame.layout}
-                  pageTurnAnimation={pageTurnAnimation}
-                  rapidPageTurnEnabled={rapidPageTurnEnabled}
-                  theme={theme}
-                  topInset={insets.top}
-                  bottomInset={insets.bottom}
-                  toolbarVisible={controlsVisible}
-                  gesturePageTurnTuning={pageTurnTuning.gesture}
-                  initialPosition={
-                    currentPosition ??
-                    navigationTarget ??
-                    entry.locator?.position
-                  }
-                  fontFamilies={fontFamilies}
-                  loadFontFace={loadFontFace}
-                  loadResource={loadResource}
-                  onCenterPress={handleCenterPress}
-                  onProgress={handleProgress}
-                  onSelectionChange={handleSelectionChange}
-                  onTurningChange={handleTurningChange}
-                />
-              </AsyncSkia>
+              <ReaderSurface
+                key={`${opened.book.revisionId}:${navigationGeneration}`}
+                book={opened.book}
+                width={readerFrame.width}
+                height={readerFrame.height}
+                appearance={displayedAppearance}
+                layout={readerFrame.layout}
+                pageTurnAnimation={pageTurnAnimation}
+                rapidPageTurnEnabled={rapidPageTurnEnabled}
+                theme={theme}
+                topInset={insets.top}
+                bottomInset={insets.bottom}
+                toolbarVisible={controlsVisible}
+                gesturePageTurnTuning={pageTurnTuning.gesture}
+                initialPosition={
+                  currentPosition ?? navigationTarget ?? entry.locator?.position
+                }
+                fontFamilies={fontFamilies}
+                loadFontFace={loadFontFace}
+                loadResource={loadResource}
+                onCenterPress={handleCenterPress}
+                onProgress={handleProgress}
+                onSelectionChange={handleSelectionChange}
+                onTurningChange={handleTurningChange}
+              />
             </Suspense>
           ) : null}
           {readerFrame && layoutTransitioning ? (
@@ -601,12 +590,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   readerPage: {
-    ...(Platform.OS === "web"
-      ? { boxShadow: "0 10px 24px rgba(61, 48, 38, 0.12)" }
-      : {}),
-    borderRadius: Platform.OS === "web" ? 12 : 0,
+    borderRadius: 0,
     flex: 1,
-    maxWidth: 920,
     overflow: "hidden",
     width: "100%",
   },
@@ -620,9 +605,6 @@ const styles = StyleSheet.create({
     top: 0,
     zIndex: 5,
   },
-  readerSpread: {
-    maxWidth: 1280,
-  },
   readerScreen: {
     backgroundColor: "#e8e1d8",
     flex: 1,
@@ -630,22 +612,22 @@ const styles = StyleSheet.create({
   readerStage: {
     alignItems: "center",
     flex: 1,
-    padding: Platform.OS === "web" ? READER_STAGE_WEB_INSET : 0,
+    padding: 0,
   },
   topControls: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
-    left: Platform.OS === "web" ? 30 : 12,
+    left: 12,
     position: "absolute",
-    right: Platform.OS === "web" ? 30 : 12,
+    right: 12,
     zIndex: 20,
   },
   bottomControls: {
     alignItems: "center",
     flexDirection: "row",
     position: "absolute",
-    right: Platform.OS === "web" ? 30 : 12,
+    right: 12,
     zIndex: 20,
   },
   toolbarHeaderRow: {
@@ -657,9 +639,7 @@ const styles = StyleSheet.create({
     pointerEvents: "none",
     position: "absolute",
     right: uiSize.control + uiSpace.sm,
-    top:
-      PAGE_DECORATION_TOP_OFFSET +
-      (Platform.OS === "web" ? READER_STAGE_WEB_INSET : 0),
+    top: PAGE_DECORATION_TOP_OFFSET,
   },
   controlGroup: {
     flexDirection: "row",

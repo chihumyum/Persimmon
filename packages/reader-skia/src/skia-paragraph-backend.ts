@@ -18,11 +18,13 @@ import {
   type SkTextStyle,
   type SkTypefaceFontProvider,
 } from "@shopify/react-native-skia";
+import { Platform } from "react-native";
 
 import { normalizeUtf16Boundary } from "./utf16";
 import { DEFAULT_READER_THEME, type ReaderTheme } from "./reader-theme";
 import { afterSkiaPaint } from "./skia-lifecycle";
 import { SkiaParagraphHandleCache } from "./skia-paragraph-handle-cache";
+import { releaseRetiredSkiaResources } from "./skia-resource-release";
 
 // A radius-ten spread stock graph covers at most 42 physical pages. Keeping
 // 1,024 paragraphs leaves ample room for short one-line CJK blocks without
@@ -194,9 +196,8 @@ export function retireLazySkiaParagraph(
 /**
  * Production ParagraphLayoutBackend for the shared paginator.
  *
- * RN Skia 2.6.2 normalizes public Paragraph indexes to UTF-16 on both
- * CanvasKit and native Skia. That is deliberately the same coordinate system
- * used by BookIR.
+ * RN Skia 2.6.2 normalizes public native Paragraph indexes to UTF-16. That is
+ * deliberately the same coordinate system used by BookIR.
  */
 export function createSkiaParagraphBackend(
   fontProvider: SkTypefaceFontProvider,
@@ -206,7 +207,7 @@ export function createSkiaParagraphBackend(
   const handles = new SkiaParagraphHandleCache<SkParagraph>(
     MATERIALIZED_PARAGRAPH_LIMIT,
     (paragraph) => {
-      afterSkiaPaint(() => paragraph.dispose());
+      afterSkiaPaint(() => releaseRetiredSkiaResources(Platform.OS, paragraph));
     },
   );
   let paragraphInstance = 0;

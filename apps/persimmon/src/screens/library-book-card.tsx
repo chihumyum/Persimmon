@@ -115,12 +115,10 @@ function BookCover({
       style={[
         styles.coverShadow,
         size,
-        Platform.OS === "web"
-          ? { boxShadow: `0 9px 18px ${theme.shadow}2a` }
-          : {
-              elevation: 5,
-              shadowColor: theme.shadow,
-            },
+        {
+          elevation: 5,
+          shadowColor: theme.shadow,
+        },
       ]}
     >
       {cover ? (

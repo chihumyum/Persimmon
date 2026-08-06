@@ -19,11 +19,7 @@ interface PaintReadyPageTurn {
  */
 export function pageTurnsReadyForPaint<T extends PaintReadyPageTurn>(
   turns: readonly T[],
-  native: boolean,
 ): T[] {
-  if (!native) {
-    return [...turns];
-  }
   const ready: T[] = [];
   for (const turn of turns) {
     if (

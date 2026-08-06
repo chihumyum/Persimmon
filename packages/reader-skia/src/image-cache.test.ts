@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import { DecodedImageCache } from "./image-cache";
 
-vi.mock("react-native", () => ({ Platform: { OS: "web" } }));
 vi.mock("@shopify/react-native-skia", () => ({
   Skia: {
     Data: {

@@ -38,7 +38,6 @@ export function UiIcon({
       importantForAccessibility="no"
       name={{
         android: MATERIAL_ICON_NAMES[name],
-        web: MATERIAL_ICON_NAMES[name],
       }}
       pointerEvents="none"
       resizeMode="scaleAspectFit"

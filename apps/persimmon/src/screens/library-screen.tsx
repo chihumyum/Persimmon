@@ -430,10 +430,6 @@ export function LibraryScreen({
     entry: LibraryBookSummary,
     rect: BookMenuRect,
   ) => {
-    if (Platform.OS === "web") {
-      setDetailsEntry(entry);
-      return;
-    }
     let action: BookMenuAction | undefined;
     try {
       action = await showBookMenu(
@@ -675,12 +671,12 @@ const styles = StyleSheet.create({
   content: {
     alignSelf: "center",
     paddingBottom: 64,
-    paddingTop: Platform.OS === "web" ? 44 : 60,
+    paddingTop: 60,
     width: "100%",
   },
   contentCompact: {
     paddingBottom: 42,
-    paddingTop: Platform.OS === "web" ? 30 : 50,
+    paddingTop: 50,
   },
   contentWithFloatingSyncBanner: {
     paddingBottom: 132,

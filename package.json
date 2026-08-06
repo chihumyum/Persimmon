@@ -26,7 +26,6 @@
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit -p tsconfig.scripts.json && pnpm -r typecheck",
     "test": "vitest run",
-    "test:e2e": "playwright test",
     "test:epubs": "tsx scripts/validate-private-epubs.ts",
     "corpus:gutenberg": "tsx scripts/download-gutenberg-corpus.ts",
     "test:epubs:corpus": "tsx scripts/validate-epub-corpus.ts",
@@ -36,7 +35,6 @@
   "devDependencies": {
     "@eslint/js": "9.39.1",
     "@persimmon/epub-import": "workspace:*",
-    "@playwright/test": "1.61.1",
     "@types/node": "22.20.1",
     "eslint": "9.39.1",
     "eslint-config-prettier": "10.1.8",

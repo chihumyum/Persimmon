@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { DecodedImageStatus } from "./image-cache";
 import { pageImagesSettledForCapture } from "./page-capture";
 
-vi.mock("react-native", () => ({ Platform: { OS: "web" } }));
+vi.mock("react-native", () => ({ Platform: { OS: "android" } }));
 vi.mock("@shopify/react-native-skia", () => ({
   ClipOp: { Intersect: 0 },
   Skia: {},

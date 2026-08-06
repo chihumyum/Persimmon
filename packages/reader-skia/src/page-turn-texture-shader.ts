@@ -1,7 +1,9 @@
-import { PAGE_TURN_SEGMENT_COUNT } from "./page-turn-mesh-data";
+import { DEFAULT_PAGE_PROFILE_POINTS } from "@persimmon/page-turn-core";
 import { NATIVE_PAGE_PROFILE_RUNS } from "./page-turn-native-frame";
 import type { PageTurnFace } from "./page-turn-stack";
 import { DEFAULT_READER_THEME } from "./reader-theme";
+
+const PAGE_TURN_SEGMENT_COUNT = DEFAULT_PAGE_PROFILE_POINTS - 1;
 
 function shaderPaperRgb(hexColor: string): string {
   const match = /^#([0-9a-f]{6})$/i.exec(hexColor);
@@ -155,89 +157,6 @@ ${
 `;
 }
 
-export function pageTurnPaperEffectKey(
-  sampleCount: number,
-  twoSided: boolean,
-  face: PageTurnFace | "both",
-  paperColor = DEFAULT_READER_THEME.paper,
-): string {
-  return `${sampleCount}:${twoSided ? "two-sided" : `one-sided:${paperColor.toLowerCase()}`}:${face}`;
-}
-
-export function pageTurnPaperShader(
-  sampleCount: number,
-  twoSided: boolean,
-  face: PageTurnFace | "both",
-  paperColor = DEFAULT_READER_THEME.paper,
-): string {
-  return `
-uniform shader paperTexture;
-${twoSided ? "uniform shader backTexture;" : ""}
-uniform float2 pageSize;
-uniform float2 imageSize;
-${twoSided ? "uniform float2 backImageSize;" : ""}
-uniform float4 geometry;
-uniform float4 perspective;
-uniform float4 mapping[${sampleCount}];
-
-float4 readPageMap(int cell) {
-${pageTurnLookupSelector(sampleCount, 0, sampleCount, "  ")}
-}
-
-float perspectiveScale(float depth) {
-  return min(
-    perspective.z,
-    perspective.y / max(0.001, perspective.y - max(0.0, depth))
-  );
-}
-
-half4 main(float2 position) {
-  float bookX = (position.x - geometry.x) / geometry.y;
-  float lookupX = clamp(
-    (bookX - geometry.z) / geometry.w,
-    0.0,
-    0.999999
-  );
-  int cell = int(floor(lookupX * ${sampleCount}.0));
-  float4 pageMap = readPageMap(cell);
-  if (abs(pageMap.w) < 0.5) {
-    return half4(0.0);
-  }
-${pageTurnFaceGuard("pageMap.w", face)}
-
-  float cellCenter =
-    geometry.z +
-    (float(cell) + 0.5) / ${sampleCount}.0 * geometry.w;
-  float material = clamp(
-    pageMap.x + pageMap.y * (bookX - cellCenter),
-    0.0,
-    1.0
-  );
-  float visibleDepth = max(0.0, abs(pageMap.w) - 1.0);
-  float sourceY =
-    0.5 + (position.y / pageSize.y - 0.5) /
-    perspectiveScale(visibleDepth);
-  if (pageMap.w < 0.0) {
-    ${
-      twoSided
-        ? `float sourceX = (1.0 - material) * backImageSize.x;
-    half4 paper =
-      backTexture.eval(float2(sourceX, sourceY * backImageSize.y));
-    return half4(paper.rgb * pageMap.z, 1.0);`
-        : `return half4(
-      ${shaderPaperRgb(paperColor)} * pageMap.z,
-      1.0
-    );`
-    }
-  }
-  float sourceX = material * imageSize.x;
-  half4 paper =
-    paperTexture.eval(float2(sourceX, sourceY * imageSize.y));
-  return half4(paper.rgb * pageMap.z, 1.0);
-}
-`;
-}
-
 function nativeProfileSelector(
   start: number,
   end: number,
@@ -272,24 +191,4 @@ function pageTurnFaceGuard(
   }`;
   }
   return "";
-}
-
-function pageTurnLookupSelector(
-  sampleCount: number,
-  start: number,
-  end: number,
-  indent: string,
-): string {
-  if (end - start === 1) {
-    return `${indent}return mapping[${start}];`;
-  }
-  const middle = Math.floor((start + end) * 0.5);
-  const nestedIndent = `${indent}  `;
-  return [
-    `${indent}if (cell < ${middle}) {`,
-    pageTurnLookupSelector(sampleCount, start, middle, nestedIndent),
-    `${indent}} else {`,
-    pageTurnLookupSelector(sampleCount, middle, end, nestedIndent),
-    `${indent}}`,
-  ].join("\n");
 }

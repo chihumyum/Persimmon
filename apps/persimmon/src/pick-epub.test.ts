@@ -3,13 +3,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const documentPicker = vi.hoisted(() => ({
   getDocumentAsync: vi.fn(),
 }));
+const fileBytes = vi.hoisted(
+  () =>
+    new Map<string, Uint8Array>([
+      ["first.epub", new Uint8Array([1, 2])],
+      ["second.epub", new Uint8Array([3, 4])],
+    ]),
+);
 
 vi.mock("expo-document-picker", () => documentPicker);
 vi.mock("expo-file-system", () => ({
-  File: class {},
-}));
-vi.mock("react-native", () => ({
-  Platform: { OS: "web" },
+  File: class {
+    constructor(private readonly uri: string) {}
+
+    async bytes() {
+      return fileBytes.get(this.uri);
+    }
+  },
 }));
 
 import { pickEpubs } from "./pick-epub";
@@ -20,17 +30,13 @@ describe("pickEpubs", () => {
   });
 
   it("enables multiple selection and exposes every selected EPUB", async () => {
-    const firstBytes = new Uint8Array([1, 2]);
-    const secondBytes = new Uint8Array([3, 4]);
     documentPicker.getDocumentAsync.mockResolvedValue({
       assets: [
         {
-          file: { arrayBuffer: async () => firstBytes.buffer },
           name: "first.epub",
           uri: "first.epub",
         },
         {
-          file: { arrayBuffer: async () => secondBytes.buffer },
           name: "second.epub",
           uri: "second.epub",
         },
@@ -50,8 +56,12 @@ describe("pickEpubs", () => {
       "first.epub",
       "second.epub",
     ]);
-    await expect(picked[0]?.readBytes()).resolves.toEqual(firstBytes);
-    await expect(picked[1]?.readBytes()).resolves.toEqual(secondBytes);
+    await expect(picked[0]?.readBytes()).resolves.toEqual(
+      fileBytes.get("first.epub"),
+    );
+    await expect(picked[1]?.readBytes()).resolves.toEqual(
+      fileBytes.get("second.epub"),
+    );
   });
 
   it("returns an empty selection when the picker is cancelled", async () => {

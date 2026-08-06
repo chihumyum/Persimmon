@@ -2,16 +2,12 @@ import { requireNativeView } from "expo";
 import type { ReaderTheme } from "@persimmon/reader-skia";
 import type { ComponentType } from "react";
 import {
-  Platform,
-  Pressable,
   processColor,
   StyleSheet,
   type NativeSyntheticEvent,
   type ViewProps,
-  View,
 } from "react-native";
 
-import { UiText as Text } from "./ui-text";
 import { uiTypography } from "./ui-tokens";
 
 interface NativeReaderTypographyPickerProps extends ViewProps {
@@ -32,13 +28,11 @@ interface NativeReaderTypographyPickerProps extends ViewProps {
   ) => void;
 }
 
-const NativeReaderTypographyPickerView: ComponentType<NativeReaderTypographyPickerProps> | null =
-  Platform.OS === "web"
-    ? null
-    : requireNativeView<NativeReaderTypographyPickerProps>(
-        "PersimmonSelectionMenu",
-        "PersimmonReaderTypographyPickerView",
-      );
+const NativeReaderTypographyPickerView: ComponentType<NativeReaderTypographyPickerProps> =
+  requireNativeView<NativeReaderTypographyPickerProps>(
+    "PersimmonSelectionMenu",
+    "PersimmonReaderTypographyPickerView",
+  );
 
 interface ReaderNativeTypographyPickerProps {
   readonly accessibilityLabels: readonly string[];
@@ -55,31 +49,6 @@ export function ReaderNativeTypographyPicker({
   theme,
   onChange,
 }: ReaderNativeTypographyPickerProps) {
-  if (!NativeReaderTypographyPickerView) {
-    return (
-      <View style={styles.fallbackRow}>
-        {columns.map((values, component) => {
-          const selectedIndex = selectedIndices[component] ?? 0;
-          return (
-            <Pressable
-              accessibilityLabel={accessibilityLabels[component]}
-              accessibilityRole="adjustable"
-              key={accessibilityLabels[component] ?? component}
-              onPress={() =>
-                onChange(component, (selectedIndex + 1) % values.length)
-              }
-              style={styles.fallbackColumn}
-            >
-              <Text style={{ color: theme.controlText }}>
-                {values[selectedIndex]}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    );
-  }
-
   return (
     <NativeReaderTypographyPickerView
       accessibilityLabel={accessibilityLabels.join(", ")}
@@ -102,15 +71,6 @@ export function ReaderNativeTypographyPicker({
 }
 
 const styles = StyleSheet.create({
-  fallbackColumn: {
-    alignItems: "center",
-    flex: 1,
-    justifyContent: "center",
-  },
-  fallbackRow: {
-    flex: 1,
-    flexDirection: "row",
-  },
   native: {
     height: 210,
     width: "100%",

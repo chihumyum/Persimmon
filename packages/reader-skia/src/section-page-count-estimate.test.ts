@@ -67,12 +67,6 @@ describe("estimateSectionPageCount", () => {
       }),
     );
 
-    expect(shouldResolveExactPublicationPageCounts("android", sections)).toBe(
-      false,
-    );
-    expect(shouldResolveExactPublicationPageCounts("ios", sections)).toBe(
-      false,
-    );
-    expect(shouldResolveExactPublicationPageCounts("web", sections)).toBe(true);
+    expect(shouldResolveExactPublicationPageCounts(sections)).toBe(false);
   });
 });

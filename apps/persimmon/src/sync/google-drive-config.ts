@@ -7,7 +7,6 @@ export const GOOGLE_DRIVE_APPDATA_SCOPE =
   "https://www.googleapis.com/auth/drive.appdata";
 
 interface GoogleDrivePublicConfig {
-  readonly webClientId?: string;
   readonly iosClientId?: string;
   readonly androidClientId?: string;
 }
@@ -19,9 +18,6 @@ function readConfig(): GoogleDrivePublicConfig {
   }
   const config = value as Record<string, unknown>;
   return {
-    ...(typeof config.webClientId === "string"
-      ? { webClientId: config.webClientId }
-      : {}),
     ...(typeof config.iosClientId === "string"
       ? { iosClientId: config.iosClientId }
       : {}),
@@ -43,8 +39,6 @@ export const googleDrivePublicConfig = readConfig();
 
 export function isGoogleDriveConfigured(): boolean {
   switch (Platform.OS) {
-    case "web":
-      return hasClientId(googleDrivePublicConfig.webClientId);
     case "ios":
       return hasClientId(googleDrivePublicConfig.iosClientId);
     case "android":

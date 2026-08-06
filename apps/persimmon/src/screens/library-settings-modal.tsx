@@ -204,7 +204,14 @@ export function LibrarySettingsModal({
   const languageOptions = [
     { value: "system", label: t("language.options.system") },
     { value: "zh-Hans", label: t("language.options.zhHans") },
+    { value: "zh-Hant", label: t("language.options.zhHant") },
     { value: "en", label: t("language.options.english") },
+    { value: "ja", label: t("language.options.japanese") },
+    { value: "ko", label: t("language.options.korean") },
+    { value: "es", label: t("language.options.spanish") },
+    { value: "fr", label: t("language.options.french") },
+    { value: "de", label: t("language.options.german") },
+    { value: "pt-BR", label: t("language.options.portugueseBrazil") },
   ] as const;
   const themeOptions = [
     { value: "warm", label: t("appearance.themes.warm") },

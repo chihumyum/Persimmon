@@ -17,7 +17,6 @@ import {
   type SkTypefaceFontProvider,
 } from "@shopify/react-native-skia";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Platform } from "react-native";
 
 import { translate } from "../i18n";
 import {
@@ -25,27 +24,9 @@ import {
   type PreparedReaderFont,
 } from "./reader-font-transition";
 
-const READER_SERIF_FONT: DataModule =
-  Platform.OS === "web"
-    ? {
-        __esModule: true,
-        default: NotoSerifSC_400Regular as unknown as string,
-      }
-    : NotoSerifSC_400Regular;
-const READER_SANS_FONT: DataModule =
-  Platform.OS === "web"
-    ? {
-        __esModule: true,
-        default: NotoSansSC_400Regular as unknown as string,
-      }
-    : NotoSansSC_400Regular;
-const READER_SYMBOL_FONT: DataModule =
-  Platform.OS === "web"
-    ? {
-        __esModule: true,
-        default: NotoSansMath_400Regular as unknown as string,
-      }
-    : NotoSansMath_400Regular;
+const READER_SERIF_FONT: DataModule = NotoSerifSC_400Regular;
+const READER_SANS_FONT: DataModule = NotoSansSC_400Regular;
+const READER_SYMBOL_FONT: DataModule = NotoSansMath_400Regular;
 
 export const READER_SERIF_FAMILY_NAME = "Noto Serif SC";
 export const READER_SANS_FAMILY_NAME = "Noto Sans SC";

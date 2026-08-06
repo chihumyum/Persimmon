@@ -15,7 +15,7 @@ import {
   type PageTurnTuning,
 } from "@persimmon/page-turn-core";
 import { Gesture } from "react-native-gesture-handler";
-import { PixelRatio, Platform } from "react-native";
+import { PixelRatio } from "react-native";
 import {
   startMapper,
   stopMapper,
@@ -270,9 +270,6 @@ export function useNativePageTurnDriver({
   });
 
   useEffect(() => {
-    if (Platform.OS === "web") {
-      return;
-    }
     // Reanimated's native gesture handler polls for `global.__mapperRun` when
     // no mapper registry exists yet. Every gesture event starts another poll,
     // so rapid tapping can accumulate thousands of permanent UI-runtime frame
@@ -287,7 +284,7 @@ export function useNativePageTurnDriver({
   }, []);
 
   useEffect(() => {
-    if (!__DEV__ || Platform.OS === "web" || benchmark === undefined) {
+    if (!__DEV__ || benchmark === undefined) {
       return;
     }
     scheduleOnUI(
@@ -333,7 +330,7 @@ export function useNativePageTurnDriver({
   const benchmarkFrameCallback = useFrameCallback(advanceBenchmarkFrame, false);
 
   useEffect(() => {
-    const active = __DEV__ && Platform.OS !== "web" && benchmark !== undefined;
+    const active = __DEV__ && benchmark !== undefined;
     benchmarkFrameCallback.setActive(active);
     return () => {
       benchmarkFrameCallback.setActive(false);
@@ -488,9 +485,8 @@ export function useNativePageTurnDriver({
     // existing fallback command is still settling. Otherwise this single
     // callback keeps Worklets' global display-link loop alive forever.
     const active =
-      Platform.OS !== "web" &&
-      (command !== undefined ||
-        (canStartInteractive && !nativePagerGestureInputEnabled));
+      command !== undefined ||
+      (canStartInteractive && !nativePagerGestureInputEnabled);
     driverFrameCallback.setActive(active);
     return () => {
       driverFrameCallback.setActive(false);
@@ -505,7 +501,7 @@ export function useNativePageTurnDriver({
   const programmaticTurnId =
     command?.ready && !command.interactive ? command.id : undefined;
   useEffect(() => {
-    if (Platform.OS === "web" || !programmaticTurnId || !command) {
+    if (!programmaticTurnId || !command) {
       return;
     }
     scheduleOnUI(
@@ -523,7 +519,7 @@ export function useNativePageTurnDriver({
   }, [command, frame, programmaticTurnId, state]);
 
   useEffect(() => {
-    if (Platform.OS === "web" || command) {
+    if (command) {
       return;
     }
     scheduleOnUI(() => {

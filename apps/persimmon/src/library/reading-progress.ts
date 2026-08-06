@@ -61,7 +61,7 @@ export function sameBookLocator(
 /**
  * Accepts both the original locator-only records and the richer V2 progress
  * snapshots. Keeping this migration at the repository boundary lets the UI
- * consume one stable summary shape on Web and Native.
+ * consume one stable summary shape across iOS and Android.
  */
 export function readingProgressFromStored(
   value: unknown,

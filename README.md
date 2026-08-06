@@ -37,7 +37,7 @@ Cloud 凭证创建和双设备验收见
 - `packages/epub-import`：受限 ZIP / OPF / XHTML / CSS 编译；
 - `packages/layout`：平台无关的段落测量接口、分页与位置索引；
 - `packages/page-turn-core`：连续曲率几何、手势判定与回弹运动学；
-- `packages/reader-skia`：SkParagraph、Skia 页面、图片缓存与翻页网格。
+- `packages/reader-skia`：SkParagraph、Skia 页面、图片缓存与原生翻页 shader。
 
 ## Development
 

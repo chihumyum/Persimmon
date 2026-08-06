@@ -7,7 +7,6 @@ import {
 } from "@persimmon/layout";
 import {
   MIN_PRESSED_EDGE_X,
-  NaturalPageTurnController,
   anchoredGestureFingerX,
   gestureLiftRotationForFingerX,
   gestureTurnSpeedScale,
@@ -20,7 +19,6 @@ import {
   Fill,
   Rect,
   useCanvasRef,
-  type SkImage,
   type SkParagraph,
   type SkTypefaceFontProvider,
 } from "@shopify/react-native-skia";
@@ -31,7 +29,6 @@ import {
   type GestureType,
 } from "react-native-gesture-handler";
 import {
-  PanResponder,
   PixelRatio,
   Platform,
   Pressable,
@@ -39,8 +36,6 @@ import {
   StyleSheet,
   Text,
   View,
-  type GestureResponderEvent,
-  type PanResponderGestureState,
 } from "react-native";
 
 import {
@@ -78,33 +73,8 @@ import {
 } from "./page-capture-rasterizer";
 import { selectPageCaptureQuality } from "./page-capture-quality";
 import { buildPageCapturePlan } from "./page-capture-plan";
-import {
-  PageTurnMesh,
-  buildWebPageTurnRenderFrame,
-  preparePageTurnRenderer,
-  type PageTurnMeshHandle,
-} from "./page-turn-mesh";
-import {
-  packPageTurnProfile,
-  summarizePageTurnShadow,
-} from "./page-turn-shader";
-import {
-  PAGE_TURN_MAX_PERSPECTIVE_SCALE,
-  pageTurnCameraBookXForLayout,
-} from "./page-turn-perspective";
-import {
-  bookXForGestureTravel,
-  normalPageTurnDirectionForTouch,
-  pageTurnStartBookXForTouch,
-} from "./page-turn-gesture-direction";
-import {
-  PAGE_RIFFLE_ARMED,
-  PAGE_RIFFLE_INWARD,
-  PAGE_RIFFLE_INTERVAL_MS,
-  PAGE_RIFFLE_MINIMUM_HOLD_MS,
-  pageRiffleCandidateForTouch,
-  pageRiffleGestureDisposition,
-} from "./page-turn-riffle";
+import { PageTurnMesh } from "./page-turn-mesh";
+import { PAGE_TURN_MAX_PERSPECTIVE_SCALE } from "./page-turn-perspective";
 import {
   PAGE_TURN_LANE_HARD_LIMIT,
   burstPageTurnPlaybackSpeed,
@@ -115,10 +85,7 @@ import {
   pageTurnBackgroundSlots,
   pageTurnsReadyForPaint,
 } from "./page-turn-background";
-import {
-  pageTurnXScale,
-  shouldDrawPageTurnShadow,
-} from "./page-turn-direction";
+import { shouldDrawPageTurnShadow } from "./page-turn-direction";
 import {
   pageTurnCaptureAddresses,
   type PageTurnCaptureAddresses,
@@ -406,32 +373,6 @@ const NATIVE_PAGER_FALLBACK_MAXIMUM_CONCURRENT_TAP_TURNS = 1;
 const PAGE_CAPTURE_MAX_DIRECTIONAL_VIEWS = 12;
 const PAGE_CAPTURE_MIN_DIRECTIONAL_VIEWS = 3;
 
-interface RunningPageTurn {
-  readonly turnId: string;
-  readonly direction: 1 | -1;
-  readonly controller: NaturalPageTurnController;
-  readonly settlingIncomingPage: boolean;
-  animationFrame: number;
-  previousFrameTime: number;
-}
-
-interface PendingPageGesture {
-  startLocalX: number;
-  startLocalY: number;
-  startTime: number;
-  lastDx: number;
-  lastTime: number;
-  throwVelocity: number;
-  throwAcceleration: number;
-}
-
-interface QueuedPageGestureMove {
-  readonly localX: number;
-  readonly localY: number;
-  readonly eventTime: number;
-  readonly dx: number;
-}
-
 type TextSelectionEndpoint = "anchor" | "focus";
 
 interface PendingSelectionHandleDrag {
@@ -563,9 +504,7 @@ function LazyReaderEngine({
     [automaticPageTurnTuning],
   );
   const nativePagerCompositorSupported =
-    (Platform.OS === "android" || Platform.OS === "ios") &&
-    pageTurnAnimation === "natural" &&
-    nativePagerCompositorAvailable();
+    pageTurnAnimation === "natural" && nativePagerCompositorAvailable();
   const pagesPerView = layout === "spread" ? 2 : 1;
   const physicalPageWidth = layout === "spread" ? width * 0.5 : width;
   const progressPresentation: PageProgressPresentation = toolbarVisible
@@ -752,7 +691,7 @@ function LazyReaderEngine({
       ? resolvedSectionPageCounts.counts
       : estimatedSectionPageCounts;
   useEffect(() => {
-    if (!shouldResolveExactPublicationPageCounts(Platform.OS, book.sections)) {
+    if (!shouldResolveExactPublicationPageCounts(book.sections)) {
       return;
     }
     let cancelled = false;
@@ -1137,12 +1076,6 @@ function LazyReaderEngine({
     }
   }, [clearNoteReturnAnchor, jumpToPosition, noteReturnAnchor]);
 
-  useEffect(() => {
-    if (Platform.OS === "web" && pageTurnAnimation === "natural") {
-      preparePageTurnRenderer(width, layout === "spread", theme.paper);
-    }
-  }, [layout, pageTurnAnimation, theme.paper, width]);
-
   useEffect(
     () => () => {
       turnCaptureLeasesRef.current.clear();
@@ -1310,63 +1243,6 @@ function LazyReaderEngine({
     },
     [onSelectionChange, onSelectionMenuDismiss, onTurningChange],
   );
-  const runningTurnRef = useRef<RunningPageTurn | undefined>(undefined);
-  const pendingGestureRef = useRef<PendingPageGesture | undefined>(undefined);
-  const rapidPageTurnDirectionRef = useRef<1 | -1 | 0>(0);
-  const rapidPageTurnTimerRef = useRef<
-    ReturnType<typeof setInterval> | undefined
-  >(undefined);
-  const rapidPageTurnHoldTimerRef = useRef<
-    ReturnType<typeof setTimeout> | undefined
-  >(undefined);
-  const queuedGestureMoveRef = useRef<QueuedPageGestureMove | undefined>(
-    undefined,
-  );
-  const gestureMoveFrameRef = useRef(0);
-  const webPageTurnMeshRefs = useRef(
-    new Map<
-      string,
-      Partial<Record<PageTurnFace | "both", PageTurnMeshHandle>>
-    >(),
-  );
-  const webPageTurnFrames = useRef(
-    new Map<string, ReturnType<typeof buildWebPageTurnRenderFrame>>(),
-  );
-  useEffect(() => {
-    const activeTurnIds = new Set(activeTurns.map((turn) => turn.id));
-    for (const turnId of webPageTurnFrames.current.keys()) {
-      if (!activeTurnIds.has(turnId)) {
-        webPageTurnFrames.current.delete(turnId);
-      }
-    }
-  }, [activeTurns]);
-  const registerWebPageTurnMesh = useCallback(
-    (
-      turnId: string,
-      face: PageTurnFace | "both",
-      handle: PageTurnMeshHandle | null,
-    ) => {
-      const current = webPageTurnMeshRefs.current.get(turnId);
-      if (handle) {
-        const handles = current ?? {};
-        handles[face] = handle;
-        webPageTurnMeshRefs.current.set(turnId, handles);
-        const latestFrame = webPageTurnFrames.current.get(turnId);
-        if (latestFrame) {
-          handle.updateFrame(latestFrame);
-        }
-        return;
-      }
-      if (!current) {
-        return;
-      }
-      delete current[face];
-      if (Object.keys(current).length === 0) {
-        webPageTurnMeshRefs.current.delete(turnId);
-      }
-    },
-    [],
-  );
   const readerViewRef = useRef<View>(null);
   const readerCanvasRef = useCanvasRef();
   const [nativePagerCanvasId, setNativePagerCanvasId] = useState<number>();
@@ -1478,97 +1354,6 @@ function LazyReaderEngine({
     },
     [],
   );
-  const publishTurnFrame = useCallback(
-    (
-      turnId: string,
-      controller: NaturalPageTurnController,
-      turnDirection: 1 | -1,
-      settlingIncomingPage = false,
-    ) => {
-      const xScale = pageTurnXScale(turnDirection);
-      const incomingPageProgress = settlingIncomingPage
-        ? controller.getIncomingPageProgress()
-        : undefined;
-      const packed = packPageTurnProfile(controller.getPoints(), xScale);
-      const summary = summarizePageTurnShadow(
-        controller.getPoints(),
-        controller.getMetrics(),
-        xScale,
-        pageTurnCameraBookXForLayout(layout === "spread"),
-        incomingPageProgress,
-      );
-      const frame = buildWebPageTurnRenderFrame(
-        packed,
-        [summary.center, summary.width, summary.strength, summary.direction],
-        width,
-        layout === "spread",
-        turnDirection,
-        incomingPageProgress,
-      );
-      webPageTurnFrames.current.set(turnId, frame);
-      const handles = webPageTurnMeshRefs.current.get(turnId);
-      handles?.back?.updateFrame(frame);
-      handles?.front?.updateFrame(frame);
-      handles?.both?.updateFrame(frame);
-    },
-    [layout, width],
-  );
-  const stopRunningTurn = useCallback(() => {
-    const running = runningTurnRef.current;
-    if (running?.animationFrame) {
-      cancelAnimationFrame(running.animationFrame);
-    }
-    runningTurnRef.current = undefined;
-  }, []);
-  const animateRunningTurn = useCallback(
-    (running: RunningPageTurn) => {
-      stopRunningTurn();
-      runningTurnRef.current = running;
-
-      const tick = (now: number) => {
-        if (runningTurnRef.current !== running) {
-          return;
-        }
-        let remainingTime = Math.min(
-          0.25,
-          Math.max(0, (now - running.previousFrameTime) / 1000),
-        );
-        running.previousFrameTime = now;
-        // Keep the physical solver's stable 50 ms step without stretching a
-        // turn when a native or headless frame is late. Rendering skips to the
-        // newest solved state while the motion still tracks wall-clock time.
-        while (remainingTime > 0) {
-          const step = Math.min(0.05, remainingTime);
-          running.controller.advance(step);
-          remainingTime -= step;
-        }
-        publishTurnFrame(
-          running.turnId,
-          running.controller,
-          running.direction,
-          running.settlingIncomingPage,
-        );
-
-        if (running.controller.getPhase() === "completed") {
-          runningTurnRef.current = undefined;
-          settleTurn(running.turnId);
-          return;
-        }
-        if (!running.controller.needsAnimationFrame()) {
-          runningTurnRef.current = undefined;
-          cancelInteractiveTurn(running.turnId);
-          return;
-        }
-        running.animationFrame = requestAnimationFrame(tick);
-      };
-
-      running.animationFrame = requestAnimationFrame(tick);
-    },
-    [cancelInteractiveTurn, publishTurnFrame, settleTurn, stopRunningTurn],
-  );
-
-  useEffect(() => stopRunningTurn, [stopRunningTurn]);
-
   const requestProgrammaticTurn = useCallback(
     (
       requestedDirection: 1 | -1,
@@ -1678,46 +1463,8 @@ function LazyReaderEngine({
       requestProgrammaticTurn(direction, requestedAtMs, "rapid"),
     [requestProgrammaticTurn],
   );
-  const stopRapidPageTurn = useCallback(() => {
-    rapidPageTurnDirectionRef.current = 0;
-    if (rapidPageTurnHoldTimerRef.current !== undefined) {
-      clearTimeout(rapidPageTurnHoldTimerRef.current);
-      rapidPageTurnHoldTimerRef.current = undefined;
-    }
-    if (rapidPageTurnTimerRef.current !== undefined) {
-      clearInterval(rapidPageTurnTimerRef.current);
-      rapidPageTurnTimerRef.current = undefined;
-    }
-  }, []);
-  const startRapidPageTurn = useCallback(
-    (direction: 1 | -1) => {
-      if (
-        rapidPageTurnDirectionRef.current === direction &&
-        (rapidPageTurnHoldTimerRef.current !== undefined ||
-          rapidPageTurnTimerRef.current !== undefined)
-      ) {
-        return;
-      }
-      stopRapidPageTurn();
-      rapidPageTurnDirectionRef.current = direction;
-      rapidPageTurnHoldTimerRef.current = setTimeout(() => {
-        rapidPageTurnHoldTimerRef.current = undefined;
-        if (rapidPageTurnDirectionRef.current !== direction) {
-          return;
-        }
-        requestRapidTurn(direction, Date.now());
-        rapidPageTurnTimerRef.current = setInterval(() => {
-          if (rapidPageTurnDirectionRef.current === direction) {
-            requestRapidTurn(direction, Date.now());
-          }
-        }, PAGE_RIFFLE_INTERVAL_MS);
-      }, PAGE_RIFFLE_MINIMUM_HOLD_MS);
-    },
-    [requestRapidTurn, stopRapidPageTurn],
-  );
-  useEffect(() => stopRapidPageTurn, [stopRapidPageTurn]);
   useEffect(() => {
-    if (!__DEV__ || Platform.OS === "web") {
+    if (!__DEV__) {
       return;
     }
     const benchmarkGlobal = globalThis as typeof globalThis &
@@ -1930,25 +1677,20 @@ function LazyReaderEngine({
       if (input.interactive) {
         const interactiveTurnId =
           nativeInteractiveTurnIdRef.current ??
-          runningTurnRef.current?.turnId ??
           (driverTurnRef.current?.interactive
             ? driverTurnRef.current.id
             : undefined);
         if (!interactiveTurnId) {
           return false;
         }
-        if (Platform.OS === "web") {
-          stopRunningTurn();
-        } else {
-          handedOffTurnIdsRef.current.add(interactiveTurnId);
-          nativeInteractiveTurnIdRef.current = undefined;
-        }
+        handedOffTurnIdsRef.current.add(interactiveTurnId);
+        nativeInteractiveTurnIdRef.current = undefined;
         mutateReaderState((current) =>
           handoffScheduledInteractivePageTurn(
             current,
             interactiveTurnId,
             release,
-            Platform.OS !== "web",
+            true,
           ),
         );
         return true;
@@ -1969,7 +1711,6 @@ function LazyReaderEngine({
       pageTurnAnimation,
       readerGenerationIsCurrent,
       requestTurn,
-      stopRunningTurn,
       turnScheduler,
     ],
   );
@@ -1996,441 +1737,6 @@ function LazyReaderEngine({
     },
     [mutateReaderState, readerGenerationIsCurrent, turnScheduler],
   );
-  const beginInteractiveTurn = useCallback(
-    (
-      requestedDirection: 1 | -1,
-      startBookX: number,
-      startBookY: number,
-      eventTime: number,
-    ) => {
-      const currentReaderState = readerStateRef.current;
-      if (
-        currentReaderState.turns.some(
-          (turn) => turn.interactive || turn.handoffPending,
-        ) ||
-        currentReaderState.turns.length >=
-          turnConcurrency.maximumConcurrentTurns
-      ) {
-        return false;
-      }
-      const scheduled = beginScheduledInteractivePageTurn(
-        currentReaderState,
-        requestedDirection,
-        turnScheduler,
-        Date.now(),
-      );
-      if (scheduled === currentReaderState) {
-        return false;
-      }
-      const active = scheduled.turns.at(-1);
-      if (!active?.interactive) {
-        return false;
-      }
-      const controller = new NaturalPageTurnController(
-        gestureTuningForCore(gesturePageTurnTuning),
-      );
-      const settlingIncomingPage =
-        layout === "single" && requestedDirection === -1;
-      const beganGesture = settlingIncomingPage
-        ? controller.beginSettlingPageDrag(eventTime)
-        : controller.beginDrag(startBookX, startBookY, eventTime);
-      if (!beganGesture) {
-        return false;
-      }
-      stopRunningTurn();
-      runningTurnRef.current = {
-        turnId: active.id,
-        direction: requestedDirection,
-        controller,
-        settlingIncomingPage,
-        animationFrame: 0,
-        previousFrameTime: eventTime * 1000,
-      };
-      publishTurnFrame(
-        active.id,
-        controller,
-        requestedDirection,
-        settlingIncomingPage,
-      );
-      mutateReaderState(() => scheduled);
-      return true;
-    },
-    [
-      gesturePageTurnTuning,
-      mutateReaderState,
-      publishTurnFrame,
-      layout,
-      stopRunningTurn,
-      turnConcurrency.maximumConcurrentTurns,
-      turnScheduler,
-    ],
-  );
-  const updateInteractiveTurn = useCallback(
-    (localX: number, localY: number, eventTime: number, gestureDx: number) => {
-      const running = runningTurnRef.current;
-      const pending = pendingGestureRef.current;
-      if (!running || !pending) {
-        return;
-      }
-      const startBookX = pageTurnStartBookXForTouch(
-        pending.startLocalX,
-        running.direction,
-        layout === "spread",
-        physicalPageWidth,
-        width,
-      );
-      // The reference surface is a two-page spread, so one physical page is
-      // half of its interaction width. Preserve that hand travel in this
-      // single-page viewport; otherwise the finger can never cross the virtual
-      // spine far enough to exercise the roll hinge on a phone.
-      const bookX = bookXForGestureTravel(
-        startBookX,
-        localX - pending.startLocalX,
-        running.direction,
-        physicalPageWidth,
-      );
-      const bookY = clampUnit(localY / height);
-      const travel = running.direction === 1 ? -gestureDx : gestureDx;
-      const turnProgress = clampUnit(
-        travel / ((layout === "spread" ? physicalPageWidth : width) * 0.72),
-      );
-      if (running.settlingIncomingPage) {
-        running.controller.moveSettlingPageDrag(turnProgress, eventTime);
-      } else {
-        running.controller.moveDrag(bookX, bookY, eventTime);
-      }
-      publishTurnFrame(
-        running.turnId,
-        running.controller,
-        running.direction,
-        running.settlingIncomingPage,
-      );
-    },
-    [height, layout, physicalPageWidth, publishTurnFrame, width],
-  );
-  const applyQueuedGestureMove = useCallback(() => {
-    const queued = queuedGestureMoveRef.current;
-    queuedGestureMoveRef.current = undefined;
-    if (!queued) {
-      return;
-    }
-    updateInteractiveTurn(
-      queued.localX,
-      queued.localY,
-      queued.eventTime,
-      queued.dx,
-    );
-  }, [updateInteractiveTurn]);
-  const queueInteractiveTurnMove = useCallback(
-    (move: QueuedPageGestureMove) => {
-      queuedGestureMoveRef.current = move;
-      if (gestureMoveFrameRef.current) {
-        return;
-      }
-      gestureMoveFrameRef.current = requestAnimationFrame(() => {
-        gestureMoveFrameRef.current = 0;
-        applyQueuedGestureMove();
-      });
-    },
-    [applyQueuedGestureMove],
-  );
-  const flushInteractiveTurnMove = useCallback(() => {
-    if (gestureMoveFrameRef.current) {
-      cancelAnimationFrame(gestureMoveFrameRef.current);
-      gestureMoveFrameRef.current = 0;
-    }
-    applyQueuedGestureMove();
-  }, [applyQueuedGestureMove]);
-  const clearQueuedGestureMove = useCallback(() => {
-    if (gestureMoveFrameRef.current) {
-      cancelAnimationFrame(gestureMoveFrameRef.current);
-      gestureMoveFrameRef.current = 0;
-    }
-    queuedGestureMoveRef.current = undefined;
-  }, []);
-  useEffect(() => clearQueuedGestureMove, [clearQueuedGestureMove]);
-  const finishInteractiveTurn = useCallback(
-    (eventTime: number) => {
-      const running = runningTurnRef.current;
-      if (!running) {
-        return;
-      }
-      if (running.settlingIncomingPage) {
-        running.controller.endSettlingPageDrag(eventTime);
-      } else {
-        running.controller.endDrag(eventTime);
-      }
-      publishTurnFrame(
-        running.turnId,
-        running.controller,
-        running.direction,
-        running.settlingIncomingPage,
-      );
-      running.previousFrameTime = eventTime * 1000;
-      animateRunningTurn(running);
-    },
-    [animateRunningTurn, publishTurnFrame],
-  );
-  const cancelGestureTurn = useCallback(() => {
-    clearQueuedGestureMove();
-    const running = runningTurnRef.current;
-    if (!running) {
-      return;
-    }
-    running.controller.cancelDrag();
-    stopRunningTurn();
-    cancelInteractiveTurn(running.turnId);
-  }, [cancelInteractiveTurn, clearQueuedGestureMove, stopRunningTurn]);
-  const pagePanResponder = useMemo(() => {
-    const shouldClaimHorizontalDrag = (
-      gesture: PanResponderGestureState,
-    ): boolean =>
-      Math.abs(gesture.dx) > 6 && Math.abs(gesture.dx) > Math.abs(gesture.dy);
-
-    return PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (
-        _event: GestureResponderEvent,
-        gesture: PanResponderGestureState,
-      ) => Platform.OS === "web" && shouldClaimHorizontalDrag(gesture),
-      onMoveShouldSetPanResponderCapture: (
-        _event: GestureResponderEvent,
-        gesture: PanResponderGestureState,
-      ) => Platform.OS === "web" && shouldClaimHorizontalDrag(gesture),
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: (
-        event: GestureResponderEvent,
-        gesture: PanResponderGestureState,
-      ) => {
-        const origin = readerOriginRef.current;
-        pendingGestureRef.current = {
-          startLocalX: gesture.x0 - origin.x,
-          startLocalY: gesture.y0 - origin.y,
-          startTime: eventTimeSeconds(event),
-          lastDx: 0,
-          lastTime: eventTimeSeconds(event),
-          throwVelocity: 0,
-          throwAcceleration: 0,
-        };
-      },
-      onPanResponderMove: (
-        event: GestureResponderEvent,
-        gesture: PanResponderGestureState,
-      ) => {
-        const pending = pendingGestureRef.current;
-        if (pending) {
-          updatePendingGestureKinematics(
-            pending,
-            gesture.dx,
-            eventTimeSeconds(event),
-            physicalPageWidth,
-          );
-        }
-        if (rapidPageTurnTimerRef.current !== undefined) {
-          return;
-        }
-        const riffleCandidate = pending
-          ? pageRiffleCandidateForTouch(pending.startLocalX, width)
-          : undefined;
-        if (rapidPageTurnEnabled && pending && riffleCandidate !== undefined) {
-          const disposition = pageRiffleGestureDisposition({
-            direction: riffleCandidate.direction,
-            startEdgeDistance: riffleCandidate.startEdgeDistance,
-            translationX: gesture.dx,
-            translationY: gesture.dy,
-            interactionWidth: width,
-            minimumHorizontalTravel: 8,
-          });
-          if (disposition !== PAGE_RIFFLE_INWARD) {
-            if (disposition === PAGE_RIFFLE_ARMED) {
-              startRapidPageTurn(riffleCandidate.direction);
-            } else if (rapidPageTurnHoldTimerRef.current !== undefined) {
-              stopRapidPageTurn();
-            }
-            return;
-          }
-          if (rapidPageTurnHoldTimerRef.current !== undefined) {
-            stopRapidPageTurn();
-          }
-        }
-        if (
-          pageTurnAnimation === "natural" &&
-          !runningTurnRef.current &&
-          pending &&
-          Math.abs(gesture.dx) > 6 &&
-          Math.abs(gesture.dx) > Math.abs(gesture.dy)
-        ) {
-          const requestedDirection = normalPageTurnDirectionForTouch(
-            pending.startLocalX,
-            gesture.dx,
-            layout === "spread",
-            width,
-          );
-          if (requestedDirection === undefined) {
-            return;
-          }
-          const startBookX = pageTurnStartBookXForTouch(
-            pending.startLocalX,
-            requestedDirection,
-            layout === "spread",
-            physicalPageWidth,
-            width,
-          );
-          beginInteractiveTurn(
-            requestedDirection,
-            startBookX,
-            clampUnit(pending.startLocalY / height),
-            pending.startTime,
-          );
-        }
-        queueInteractiveTurnMove({
-          localX: gesture.moveX - readerOriginRef.current.x,
-          localY: gesture.moveY - readerOriginRef.current.y,
-          eventTime: eventTimeSeconds(event),
-          dx: gesture.dx,
-        });
-      },
-      onPanResponderRelease: (
-        event: GestureResponderEvent,
-        gesture: PanResponderGestureState,
-      ) => {
-        flushInteractiveTurnMove();
-        const running = runningTurnRef.current;
-        const pending = pendingGestureRef.current;
-        pendingGestureRef.current = undefined;
-        const riffleCandidate = pending
-          ? pageRiffleCandidateForTouch(pending.startLocalX, width)
-          : undefined;
-        const reservedRapidPageTurnGesture =
-          rapidPageTurnEnabled &&
-          riffleCandidate !== undefined &&
-          pageRiffleGestureDisposition({
-            direction: riffleCandidate.direction,
-            startEdgeDistance: riffleCandidate.startEdgeDistance,
-            translationX: gesture.dx,
-            translationY: gesture.dy,
-            interactionWidth: width,
-            minimumHorizontalTravel: 8,
-          }) !== PAGE_RIFFLE_INWARD;
-        stopRapidPageTurn();
-        if (reservedRapidPageTurnGesture) {
-          return;
-        }
-        if (running?.controller.getPhase() === "drag") {
-          const startBookX = pending
-            ? pageTurnStartBookXForTouch(
-                pending.startLocalX,
-                running.direction,
-                layout === "spread",
-                physicalPageWidth,
-                width,
-              )
-            : undefined;
-          const handedOff =
-            pending && startBookX !== undefined
-              ? requestGestureTurn({
-                  direction: running.direction,
-                  interactive: true,
-                  startBookX,
-                  currentBookX: bookXForGestureTravel(
-                    startBookX,
-                    gesture.dx,
-                    running.direction,
-                    physicalPageWidth,
-                  ),
-                  throwVelocity: pending.throwVelocity,
-                  throwAcceleration: pending.throwAcceleration,
-                  turnProgress: clampUnit(
-                    Math.abs(gesture.dx) /
-                      Math.max(1, physicalPageWidth * 0.72),
-                  ),
-                  settlingIncomingPage:
-                    layout === "single" && running.direction === -1,
-                })
-              : false;
-          if (!handedOff) {
-            finishInteractiveTurn(eventTimeSeconds(event));
-          }
-        } else if (
-          pending &&
-          Math.abs(gesture.dx) > 1 &&
-          Math.abs(gesture.dx) > Math.abs(gesture.dy)
-        ) {
-          const direction = normalPageTurnDirectionForTouch(
-            pending.startLocalX,
-            gesture.dx,
-            layout === "spread",
-            width,
-          );
-          if (direction === undefined) {
-            return;
-          }
-          const startBookX = pageTurnStartBookXForTouch(
-            pending.startLocalX,
-            direction,
-            layout === "spread",
-            physicalPageWidth,
-            width,
-          );
-          requestGestureTurn({
-            direction,
-            interactive: false,
-            startBookX,
-            currentBookX: bookXForGestureTravel(
-              startBookX,
-              gesture.dx,
-              direction,
-              physicalPageWidth,
-            ),
-            throwVelocity: pending.throwVelocity,
-            throwAcceleration: pending.throwAcceleration,
-            turnProgress: clampUnit(
-              Math.abs(gesture.dx) / Math.max(1, physicalPageWidth * 0.72),
-            ),
-            settlingIncomingPage: layout === "single" && direction === -1,
-          });
-        } else if (
-          Platform.OS !== "web" &&
-          pending &&
-          Math.abs(gesture.dx) < 8 &&
-          Math.abs(gesture.dy) < 8 &&
-          pending.startLocalX <= width * 0.24
-        ) {
-          requestTurn(-1);
-        } else if (
-          Platform.OS !== "web" &&
-          pending &&
-          Math.abs(gesture.dx) < 8 &&
-          Math.abs(gesture.dy) < 8 &&
-          pending.startLocalX >= width * 0.76
-        ) {
-          requestTurn(1);
-        }
-      },
-      onPanResponderTerminate: () => {
-        pendingGestureRef.current = undefined;
-        stopRapidPageTurn();
-        cancelGestureTurn();
-      },
-    });
-  }, [
-    beginInteractiveTurn,
-    cancelGestureTurn,
-    finishInteractiveTurn,
-    flushInteractiveTurnMove,
-    height,
-    layout,
-    pageTurnAnimation,
-    physicalPageWidth,
-    queueInteractiveTurnMove,
-    rapidPageTurnEnabled,
-    requestGestureTurn,
-    requestTurn,
-    startRapidPageTurn,
-    stopRapidPageTurn,
-    width,
-  ]);
-
   const settledAddresses = useMemo(
     () => addressesForView(readerState.settled),
     [addressesForView, readerState.settled],
@@ -3157,7 +2463,7 @@ function LazyReaderEngine({
   ]);
 
   useEffect(() => {
-    if (!__DEV__ || Platform.OS === "web" || pageTurnAnimation === "none") {
+    if (!__DEV__ || pageTurnAnimation === "none") {
       return;
     }
     const interval = setInterval(() => {
@@ -3249,13 +2555,10 @@ function LazyReaderEngine({
     return prefix;
   }, [activeTurns, textureReadyForTurn]);
   const renderableTurns = useMemo(
-    () => pageTurnsReadyForPaint(texturePreparedTurns, Platform.OS !== "web"),
+    () => pageTurnsReadyForPaint(texturePreparedTurns),
     [texturePreparedTurns],
   );
   useEffect(() => {
-    if (Platform.OS === "web") {
-      return;
-    }
     const turnIds = renderableTurns
       .filter(
         (turn) =>
@@ -3430,11 +2733,7 @@ function LazyReaderEngine({
   const selectionLongPressGesture = useMemo(
     () =>
       Gesture.LongPress()
-        .enabled(
-          Platform.OS !== "web" &&
-            !transitionReady &&
-            nativePagerDirectActiveCount === 0,
-        )
+        .enabled(!transitionReady && nativePagerDirectActiveCount === 0)
         .minDuration(420)
         .maxDistance(12)
         .runOnJS(true)
@@ -3458,8 +2757,7 @@ function LazyReaderEngine({
     () =>
       Gesture.Tap()
         .enabled(
-          Platform.OS !== "web" &&
-            selectingText &&
+          selectingText &&
             !transitionReady &&
             nativePagerDirectActiveCount === 0,
         )
@@ -3485,7 +2783,7 @@ function LazyReaderEngine({
   const createSelectionHandleGesture = useCallback(
     (endpoint: TextSelectionEndpoint) =>
       Gesture.Pan()
-        .enabled(Platform.OS !== "web" && textSelection !== undefined)
+        .enabled(textSelection !== undefined)
         .minDistance(1)
         .runOnJS(true)
         .onBegin((event) => {
@@ -4516,7 +3814,6 @@ function LazyReaderEngine({
 
   const readerContent = (
     <View
-      {...(Platform.OS === "web" ? pagePanResponder.panHandlers : {})}
       ref={readerViewRef}
       onLayout={measureReaderOrigin}
       style={[styles.container, { backgroundColor: theme.paper }]}
@@ -4553,25 +3850,6 @@ function LazyReaderEngine({
               "background",
               appearance.progressDisplay,
             )}
-            {Platform.OS === "web"
-              ? retainedPaperTurns
-                  .filter((turn) => !turn.completed && !turn.interactive)
-                  .map((turn) => (
-                    <AutomaticWebPageTurnDriver
-                      key={`driver:${turn.id}`}
-                      automaticPageTurnTuning={automaticPageTurnTuning}
-                      gesturePageTurnTuning={gesturePageTurnTuning}
-                      onComplete={settleTurn}
-                      onFrame={publishTurnFrame}
-                      playbackSpeed={
-                        programmaticPlaybackSpeeds.get(turn.id) ??
-                        automaticPageTurnTuning.playbackSpeed
-                      }
-                      spread={layout === "spread"}
-                      turn={turn}
-                    />
-                  ))
-              : null}
             {paperPaintPasses.map(({ turn, face }) => {
               const texture = turnTextures.get(turn.id);
               if (!texture?.frontImage) {
@@ -4584,27 +3862,6 @@ function LazyReaderEngine({
                 !turn.handoffPending
               ) {
                 return null;
-              }
-              if (Platform.OS === "web") {
-                return (
-                  <WebPageTurnFaceMesh
-                    key={`${turn.id}:${face}`}
-                    automaticPageTurnTuning={automaticPageTurnTuning}
-                    backImage={texture.backImage ?? undefined}
-                    drawShadow={shouldDrawPageTurnShadow(turn.direction, face)}
-                    face={face}
-                    gesturePageTurnTuning={gesturePageTurnTuning}
-                    height={height}
-                    onRef={(handle) =>
-                      registerWebPageTurnMesh(turn.id, face, handle)
-                    }
-                    paperColor={theme.paper}
-                    paperImage={texture.frontImage}
-                    spread={layout === "spread"}
-                    turn={turn}
-                    width={width}
-                  />
-                );
               }
               return (
                 <PageTurnMesh
@@ -4628,50 +3885,6 @@ function LazyReaderEngine({
           </>
         )}
       </Canvas>
-
-      <View
-        pointerEvents={Platform.OS === "web" ? "auto" : "none"}
-        style={[
-          styles.edge,
-          styles.leftEdge,
-          previousDisabled && styles.disabledEdge,
-        ]}
-      >
-        <Pressable
-          accessibilityLabel={uiMessages.previousPage}
-          accessibilityRole="button"
-          disabled={previousDisabled || Platform.OS !== "web"}
-          onPress={() => requestTurn(-1)}
-          style={styles.edgePressable}
-        />
-      </View>
-      <View
-        pointerEvents={Platform.OS === "web" ? "auto" : "none"}
-        style={[
-          styles.edge,
-          styles.rightEdge,
-          nextDisabled && styles.disabledEdge,
-        ]}
-      >
-        <Pressable
-          accessibilityLabel={uiMessages.nextPage}
-          accessibilityRole="button"
-          disabled={nextDisabled || Platform.OS !== "web"}
-          onPress={() => requestTurn(1)}
-          style={styles.edgePressable}
-        />
-      </View>
-
-      {Platform.OS === "web" ? (
-        <View style={styles.centerTapArea}>
-          <Pressable
-            accessibilityLabel={uiMessages.toggleTools}
-            accessibilityRole="button"
-            onPress={onCenterPress}
-            style={styles.edgePressable}
-          />
-        </View>
-      ) : null}
 
       {!transitionReady && anchorSelectionHandle && focusSelectionHandle ? (
         <>
@@ -4836,13 +4049,9 @@ function LazyReaderEngine({
     ) : null;
   return (
     <View style={[styles.container, { backgroundColor: theme.paper }]}>
-      {Platform.OS === "web" ? (
-        readerContent
-      ) : (
-        <GestureDetector gesture={nativeReaderGesture}>
-          {readerContent}
-        </GestureDetector>
-      )}
+      <GestureDetector gesture={nativeReaderGesture}>
+        {readerContent}
+      </GestureDetector>
       {linkOverlay}
     </View>
   );
@@ -4893,197 +4102,6 @@ function TextSelectionHandleView({
   );
 }
 
-interface WebPageTurnFaceMeshProps {
-  readonly turn: ScheduledPageTurn;
-  readonly automaticPageTurnTuning: AutomaticPageTurnTuning;
-  readonly gesturePageTurnTuning: GesturePageTurnTuning;
-  readonly paperImage: SkImage;
-  readonly backImage?: SkImage;
-  readonly paperColor: string;
-  readonly width: number;
-  readonly height: number;
-  readonly spread: boolean;
-  readonly face: PageTurnFace | "both";
-  readonly drawShadow: boolean;
-  readonly onRef: (handle: PageTurnMeshHandle | null) => void;
-}
-
-function WebPageTurnFaceMesh({
-  turn,
-  automaticPageTurnTuning,
-  gesturePageTurnTuning,
-  paperImage,
-  backImage,
-  paperColor,
-  width,
-  height,
-  spread,
-  face,
-  drawShadow,
-  onRef,
-}: WebPageTurnFaceMeshProps) {
-  const initialProfile = useMemo(
-    () =>
-      initialWebPageTurnProfile(
-        turn,
-        spread,
-        automaticPageTurnTuning,
-        gesturePageTurnTuning,
-      ),
-    [automaticPageTurnTuning, gesturePageTurnTuning, spread, turn],
-  );
-  const initialIncomingPageProgress =
-    !spread && turn.direction === -1
-      ? turn.motion === "gesture"
-        ? (turn.gestureRelease?.settlingProgress ?? 0)
-        : 0
-      : undefined;
-
-  return (
-    <PageTurnMesh
-      ref={onRef}
-      backImage={backImage}
-      drawShadow={drawShadow}
-      face={face}
-      height={height}
-      initialProfile={initialProfile}
-      incomingPageProgress={initialIncomingPageProgress}
-      paperColor={paperColor}
-      paperImage={paperImage}
-      direction={turn.direction}
-      spread={spread}
-      width={width}
-    />
-  );
-}
-
-interface AutomaticWebPageTurnDriverProps {
-  readonly turn: ScheduledPageTurn;
-  readonly automaticPageTurnTuning: AutomaticPageTurnTuning;
-  readonly playbackSpeed: number;
-  readonly gesturePageTurnTuning: GesturePageTurnTuning;
-  readonly spread: boolean;
-  readonly onComplete: (turnId: string) => void;
-  readonly onFrame: (
-    turnId: string,
-    controller: NaturalPageTurnController,
-    direction: 1 | -1,
-    settlingIncomingPage?: boolean,
-  ) => void;
-}
-
-/**
- * Web keeps one controller per visible paper and broadcasts each solved frame
- * to both face passes. The geometry and lookup are therefore computed once,
- * even though concurrent spread pages require interleaved back/front drawing.
- */
-function AutomaticWebPageTurnDriver({
-  turn,
-  automaticPageTurnTuning,
-  playbackSpeed,
-  gesturePageTurnTuning,
-  spread,
-  onComplete,
-  onFrame,
-}: AutomaticWebPageTurnDriverProps) {
-  const playbackSpeedRef = useRef(playbackSpeed);
-  playbackSpeedRef.current = playbackSpeed;
-  useEffect(() => {
-    const gestureRelease =
-      turn.motion === "gesture" ? turn.gestureRelease : undefined;
-    const controller = new NaturalPageTurnController(
-      gestureRelease
-        ? gestureTuningForCore(gesturePageTurnTuning)
-        : automaticTuningForCore(automaticPageTurnTuning),
-      AUTOMATIC_PAGE_TURN_MAXIMUM_RELEASE_X,
-    );
-    const settlingIncomingPage = !spread && turn.direction === -1;
-    const publish = () =>
-      onFrame(turn.id, controller, turn.direction, settlingIncomingPage);
-    publish();
-
-    let previousFrameTime = performanceNow();
-    let animationFrame = 0;
-    let started = false;
-    const tick = (now: number) => {
-      if (!started) {
-        if (Date.now() < turn.startAtMs) {
-          previousFrameTime = now;
-          animationFrame = requestAnimationFrame(tick);
-          return;
-        }
-        started = true;
-        if (gestureRelease) {
-          controller.playReleasedGesture(gestureRelease, settlingIncomingPage);
-        } else if (settlingIncomingPage) {
-          controller.playSettlingPage();
-        } else {
-          controller.play();
-        }
-        previousFrameTime = now;
-      }
-      let remainingTime = Math.min(
-        0.25,
-        Math.max(0, (now - previousFrameTime) / 1000),
-      );
-      previousFrameTime = now;
-      while (remainingTime > 0) {
-        const step = Math.min(0.05, remainingTime);
-        controller.advance(
-          step * (gestureRelease ? 1 : playbackSpeedRef.current),
-        );
-        remainingTime -= step;
-      }
-      publish();
-      if (controller.getPhase() === "completed") {
-        onComplete(turn.id);
-        return;
-      }
-      animationFrame = requestAnimationFrame(tick);
-    };
-    animationFrame = requestAnimationFrame(tick);
-    return () => {
-      cancelAnimationFrame(animationFrame);
-    };
-  }, [
-    automaticPageTurnTuning,
-    gesturePageTurnTuning,
-    onComplete,
-    onFrame,
-    spread,
-    turn.direction,
-    turn.gestureRelease,
-    turn.id,
-    turn.motion,
-    turn.startAtMs,
-  ]);
-
-  return null;
-}
-
-function initialWebPageTurnProfile(
-  turn: ScheduledPageTurn,
-  spread: boolean,
-  automaticPageTurnTuning: AutomaticPageTurnTuning,
-  gesturePageTurnTuning: GesturePageTurnTuning,
-): number[] {
-  if (turn.motion === "gesture" && turn.gestureRelease) {
-    const controller = new NaturalPageTurnController(
-      gestureTuningForCore(gesturePageTurnTuning),
-    );
-    controller.playReleasedGesture(
-      turn.gestureRelease,
-      !spread && turn.direction === -1,
-    );
-    return packPageTurnProfile(controller.getPoints(), turn.direction);
-  }
-  return initialPageTurnProfile(
-    turn,
-    spread ? "spread" : "single",
-    automaticPageTurnTuning,
-  );
-}
-
 export function LiveReader({
   book,
   fontProvider,
@@ -5113,13 +4131,7 @@ export function LiveReader({
 }: LiveReaderProps) {
   // Decoded resources belong to the open book, not to one pagination
   // generation. Retain them while geometry-dependent caches are replaced.
-  const imageCache = useMemo(
-    () =>
-      new DecodedImageCache(
-        Platform.OS === "web" ? 64 * 1024 * 1024 : 32 * 1024 * 1024,
-      ),
-    [],
-  );
+  const imageCache = useMemo(() => new DecodedImageCache(32 * 1024 * 1024), []);
   useEffect(() => () => imageCache.dispose(), [imageCache]);
   const anchorRef = useRef(initialPosition);
   const handleProgress = useCallback(
@@ -5260,10 +4272,6 @@ function StagedLazyReaderEngine(desired: LazyReaderEngineProps) {
   return <LazyReaderEngine key={rendered.readerGeneration} {...rendered} />;
 }
 
-function eventTimeSeconds(event: GestureResponderEvent): number {
-  return event.timeStamp / 1000;
-}
-
 function performanceNow(): number {
   return globalThis.performance?.now() ?? Date.now();
 }
@@ -5298,75 +4306,6 @@ function sampleDurationStats(samples: readonly number[]): {
   return { averageMs, p95Ms: sorted[p95Index]! };
 }
 
-function clampUnit(value: number): number {
-  return Math.min(1, Math.max(0, value));
-}
-
-function updatePendingGestureKinematics(
-  pending: PendingPageGesture,
-  dx: number,
-  time: number,
-  physicalPageWidth: number,
-): void {
-  const deltaTime = Math.max(0.001, time - pending.lastTime);
-  const direction = dx < 0 ? 1 : -1;
-  const deltaX = dx - pending.lastDx;
-  const throwVelocity = Math.max(
-    0,
-    (direction === 1 ? -deltaX : deltaX) /
-      deltaTime /
-      Math.max(1, physicalPageWidth),
-  );
-  const instantaneousAcceleration = Math.min(
-    20,
-    Math.max(-20, (throwVelocity - pending.throwVelocity) / deltaTime),
-  );
-  const accelerationBlend = 1 - Math.exp(-deltaTime / 0.06);
-  pending.throwAcceleration +=
-    (instantaneousAcceleration - pending.throwAcceleration) * accelerationBlend;
-  pending.throwVelocity = throwVelocity;
-  pending.lastDx = dx;
-  pending.lastTime = time;
-}
-
-function initialPageTurnProfile(
-  turn: ScheduledPageTurn,
-  layout: ReaderLayoutMode,
-  tuning: AutomaticPageTurnTuning,
-): number[] {
-  return layout === "single" && turn.direction === -1
-    ? incomingPageRaisedProfile(tuning, AUTOMATIC_PAGE_TURN_MAXIMUM_RELEASE_X)
-    : pageTurnProfileAtRest(
-        turn.direction,
-        tuning,
-        AUTOMATIC_PAGE_TURN_MAXIMUM_RELEASE_X,
-      );
-}
-
-function pageTurnProfileAtRest(
-  direction: 1 | -1,
-  tuning: AutomaticPageTurnTuning,
-  maximumReleaseX: number,
-): number[] {
-  const controller = new NaturalPageTurnController(
-    automaticTuningForCore(tuning),
-    maximumReleaseX,
-  );
-  return packPageTurnProfile(controller.getPoints(), direction);
-}
-
-function incomingPageRaisedProfile(
-  tuning: AutomaticPageTurnTuning,
-  maximumReleaseX: number,
-): number[] {
-  const controller = new NaturalPageTurnController(
-    automaticTuningForCore(tuning),
-    maximumReleaseX,
-  );
-  controller.playSettlingPage();
-  return packPageTurnProfile(controller.getPoints(), -1);
-}
-
 const styles = StyleSheet.create({
   canvas: {
     flex: 1,
@@ -5374,32 +4313,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     overflow: "hidden",
-  },
-  centerTapArea: {
-    bottom: 0,
-    left: "24%",
-    position: "absolute",
-    right: "24%",
-    top: 0,
-  },
-  disabledEdge: {
-    pointerEvents: "none",
-  },
-  edge: {
-    bottom: 0,
-    position: "absolute",
-    top: 0,
-    width: "24%",
-  },
-  edgePressable: {
-    bottom: 0,
-    left: 0,
-    ...(Platform.OS === "web"
-      ? { outlineColor: "transparent", outlineWidth: 0 }
-      : {}),
-    position: "absolute",
-    right: 0,
-    top: 0,
   },
   linkHit: {
     backgroundColor: "transparent",
@@ -5417,9 +4330,6 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     zIndex: 12,
-  },
-  leftEdge: {
-    left: 0,
   },
   noteReturnButton: {
     alignItems: "center",
@@ -5443,15 +4353,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     overflow: "hidden",
     position: "absolute",
-    ...(Platform.OS === "web"
-      ? { boxShadow: "0 3px 12px rgba(61, 48, 38, 0.14)" }
-      : {
-          elevation: 3,
-          shadowColor: "#3d3026",
-          shadowOffset: { width: 0, height: 3 },
-          shadowOpacity: 0.14,
-          shadowRadius: 6,
-        }),
+    elevation: 3,
+    shadowColor: "#3d3026",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.14,
+    shadowRadius: 6,
   },
   noteReturnControlsCompact: {
     right: 16,
@@ -5504,9 +4410,6 @@ const styles = StyleSheet.create({
   },
   accessibilityProgressTop: {
     top: 0,
-  },
-  rightEdge: {
-    right: 0,
   },
   selectionHandleKnob: {
     backgroundColor: "#2277e6",

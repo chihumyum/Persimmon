@@ -12,9 +12,6 @@ export interface PickedFont {
 async function bytesOf(
   asset: DocumentPicker.DocumentPickerAsset,
 ): Promise<Uint8Array> {
-  if (asset.file) {
-    return new Uint8Array(await asset.file.arrayBuffer());
-  }
   return new ExpoFile(asset.uri).bytes();
 }
 

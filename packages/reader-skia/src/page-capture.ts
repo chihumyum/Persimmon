@@ -233,16 +233,16 @@ export function recordPageCapture(
 }
 
 /**
- * Synchronous compatibility path used by Web and focused unit tests. Native
- * sustained turning uses page-capture-rasterizer.native.ts instead.
+ * Synchronous fallback used on iOS and by focused unit tests. Android
+ * sustained turning uses dedicated raster Worklet runtimes.
  */
 export function rasterizeRecordedPageCapture(
   recording: RecordedPageCapture,
 ): CapturedPage | null {
-  const surface =
-    Platform.OS === "web"
-      ? Skia.Surface.Make(recording.pixelWidth, recording.pixelHeight)
-      : Skia.Surface.MakeOffscreen(recording.pixelWidth, recording.pixelHeight);
+  const surface = Skia.Surface.MakeOffscreen(
+    recording.pixelWidth,
+    recording.pixelHeight,
+  );
   if (!surface) {
     return null;
   }
@@ -303,7 +303,11 @@ export function capturedPageFromImage(
     retainedImage = null;
     surface = null;
     if (retired) {
-      releaseRetiredSkiaResources(imageToRelease, surfaceToRelease);
+      releaseRetiredSkiaResources(
+        Platform.OS,
+        imageToRelease,
+        surfaceToRelease,
+      );
       return;
     }
     releaseCapturedPageResources(Platform.OS, imageToRelease, surfaceToRelease);

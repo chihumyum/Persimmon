@@ -9,12 +9,8 @@ import type { PageLayoutSpec, TypographyPreset } from "@persimmon/layout";
 export const NATIVE_EXACT_PUBLICATION_BLOCK_LIMIT = 64;
 
 export function shouldResolveExactPublicationPageCounts(
-  platform: string,
   sections: readonly SectionIR[],
 ): boolean {
-  if (platform === "web") {
-    return true;
-  }
   return (
     sections.reduce((total, section) => total + section.blocks.length, 0) <=
     NATIVE_EXACT_PUBLICATION_BLOCK_LIMIT

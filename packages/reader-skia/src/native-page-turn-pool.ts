@@ -65,16 +65,4 @@ type FixedLengthArray<
   ? Result
   : FixedLengthArray<Value, Length, readonly [...Result, Value]>;
 
-/**
- * The Web renderer owns one reference controller per paper and never consumes
- * native shared frames. Keeping this platform stub free of worklet imports also
- * prevents native UI-runtime closures from entering the Web module graph.
- */
-export function useNativePageTurnPool(
-  _options: NativePageTurnPoolOptions,
-): NativePageTurnPool {
-  return {
-    frames: [] as unknown as NativePageTurnPool["frames"],
-    authorizeStart: () => {},
-  };
-}
+export { useNativePageTurnPool } from "./native-page-turn-pool.native";

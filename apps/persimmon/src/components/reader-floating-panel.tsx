@@ -1,7 +1,6 @@
 import type { ReaderTheme } from "@persimmon/reader-skia";
 import type { ReactNode } from "react";
 import {
-  Platform,
   StyleSheet,
   Text,
   View,
@@ -134,7 +133,7 @@ const styles = StyleSheet.create({
     borderRadius: uiRadius.panel,
     borderWidth: StyleSheet.hairlineWidth,
     position: "absolute",
-    right: Platform.OS === "web" ? 30 : uiSpace.md,
+    right: uiSpace.md,
     zIndex: 26,
   },
 });

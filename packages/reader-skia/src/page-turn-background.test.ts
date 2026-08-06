@@ -20,9 +20,8 @@ describe("page-turn burst background", () => {
     };
     const ready = { ...waiting, laneReady: true };
 
-    expect(pageTurnsReadyForPaint([waiting], true)).toEqual([]);
-    expect(pageTurnsReadyForPaint([ready], true)).toEqual([ready]);
-    expect(pageTurnsReadyForPaint([waiting], false)).toEqual([waiting]);
+    expect(pageTurnsReadyForPaint([waiting])).toEqual([]);
+    expect(pageTurnsReadyForPaint([ready])).toEqual([ready]);
   });
 
   it("does not paint a later lane before an earlier native lane", () => {
@@ -34,7 +33,7 @@ describe("page-turn burst background", () => {
     };
     const ready = { ...waiting, laneReady: true };
 
-    expect(pageTurnsReadyForPaint([waiting, ready], true)).toEqual([]);
+    expect(pageTurnsReadyForPaint([waiting, ready])).toEqual([]);
   });
 
   it("keeps an interactive frame visible while it hands off", () => {
@@ -50,7 +49,7 @@ describe("page-turn burst background", () => {
       interactive: false,
     };
 
-    expect(pageTurnsReadyForPaint([interactive, handoff], true)).toEqual([
+    expect(pageTurnsReadyForPaint([interactive, handoff])).toEqual([
       interactive,
       handoff,
     ]);
