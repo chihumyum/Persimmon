@@ -15,13 +15,13 @@ import android.content.pm.ResolveInfo
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.Rect
-import android.graphics.Paint
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.os.Build
 import android.util.TypedValue
 import android.view.ActionMode
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
@@ -29,11 +29,9 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.textclassifier.TextClassification
 import android.view.textclassifier.TextClassificationManager
-import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
-import android.widget.NumberPicker
 import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.core.graphics.ColorUtils
@@ -42,6 +40,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.LinearSnapHelper
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -53,7 +52,9 @@ import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.viewevent.EventDispatcher
 import expo.modules.kotlin.views.ExpoView
 import java.util.concurrent.Executors
+import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 private const val MENU_ITEM_SHARE = 0x10001
@@ -67,6 +68,7 @@ private const val MENU_ITEM_BOOK_DELETE = 0x40003
 private const val APP_CONTROL_DIAMETER_DP = 50f
 private const val APP_SHEET_HEADER_HEIGHT_DP = 66f
 private const val APP_SHEET_HEADER_FONT_SP = 20f
+private const val TABLE_OF_CONTENTS_ROW_HEIGHT_DP = 50f
 
 class PersimmonReaderChromeTouchView(
   context: Context,
@@ -117,11 +119,302 @@ class PersimmonReaderChromeTouchView(
   }
 }
 
+private class PersimmonWheelPicker(context: Context) : RecyclerView(context) {
+  private companion object {
+    const val ITEM_HEIGHT_DP = 36f
+    const val CENTER_TEXT_SIZE_SP = 20f
+    const val DISTANT_SCALE = 0.72f
+    const val DISTANT_ALPHA = 0.24f
+    const val TRANSFORM_DISTANCE_IN_ROWS = 2.25f
+    const val SETTLE_DELAY_MS = 180L
+  }
+
+  private inner class WheelViewHolder(val label: TextView) : ViewHolder(label)
+
+  private val itemHeight = dp(ITEM_HEIGHT_DP)
+  private val wheelLayoutManager = LinearLayoutManager(context, VERTICAL, false)
+  private val snapHelper = LinearSnapHelper()
+  private var values = emptyList<String>()
+  private var selectedIndex = 0
+  private var textColor = Color.BLACK
+  private var touchActive = false
+  private var userInteractionPending = false
+  private var lastHapticIndex = RecyclerView.NO_POSITION
+  private var settleRunnable: Runnable? = null
+
+  var onSettledSelection: ((Int) -> Unit)? = null
+
+  private val wheelAdapter = object : Adapter<WheelViewHolder>() {
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): WheelViewHolder {
+      val label = TextView(parent.context).apply {
+        gravity = Gravity.CENTER
+        includeFontPadding = false
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, CENTER_TEXT_SIZE_SP)
+        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, itemHeight)
+      }
+      return WheelViewHolder(label)
+    }
+
+    override fun onBindViewHolder(holder: WheelViewHolder, position: Int) {
+      holder.label.apply {
+        text = values[position]
+        setTextColor(textColor)
+        isSelected = position == selectedIndex
+        setOnClickListener {
+          scrollToIndex(position, animated = true, userInitiated = true)
+        }
+      }
+    }
+
+    override fun getItemCount(): Int = values.size
+  }
+
+  init {
+    layoutManager = wheelLayoutManager
+    adapter = wheelAdapter
+    itemAnimator = null
+    clipToPadding = false
+    isVerticalScrollBarEnabled = false
+    isNestedScrollingEnabled = false
+    overScrollMode = View.OVER_SCROLL_NEVER
+    isHapticFeedbackEnabled = true
+    snapHelper.attachToRecyclerView(this)
+
+    addOnScrollListener(object : OnScrollListener() {
+      override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+        updateChildTransforms()
+        if (userInteractionPending) {
+          performSelectionHapticIfNeeded()
+        }
+      }
+
+      override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+        updateChildTransforms()
+        if (newState == SCROLL_STATE_IDLE) {
+          post(::scheduleSettledSelection)
+        } else {
+          cancelSettledSelection()
+        }
+      }
+    })
+  }
+
+  override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+    // Claim the gesture before RecyclerView dispatches ACTION_DOWN to its
+    // clickable row TextView. An OnTouchListener on RecyclerView is too late
+    // for that path, which lets the surrounding BottomSheet steal long drags.
+    when (event.actionMasked) {
+      MotionEvent.ACTION_DOWN -> {
+        parent?.requestDisallowInterceptTouchEvent(true)
+        touchActive = true
+        userInteractionPending = true
+        lastHapticIndex = nearestIndex()
+        cancelSettledSelection()
+      }
+      MotionEvent.ACTION_MOVE -> {
+        parent?.requestDisallowInterceptTouchEvent(true)
+      }
+      MotionEvent.ACTION_UP,
+      MotionEvent.ACTION_CANCEL -> {
+        touchActive = false
+        post {
+          parent?.requestDisallowInterceptTouchEvent(false)
+          scheduleSettledSelection()
+        }
+      }
+    }
+    return super.dispatchTouchEvent(event)
+  }
+
+  override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
+    super.onSizeChanged(width, height, oldWidth, oldHeight)
+    val verticalPadding = max(0, (height - itemHeight) / 2)
+    if (paddingTop != verticalPadding || paddingBottom != verticalPadding) {
+      setPadding(paddingLeft, verticalPadding, paddingRight, verticalPadding)
+    }
+    post {
+      centerSelectedIndex()
+      updateChildTransforms()
+    }
+  }
+
+  override fun onDetachedFromWindow() {
+    cancelSettledSelection()
+    super.onDetachedFromWindow()
+  }
+
+  fun updateValues(nextValues: List<String>, requestedIndex: Int) {
+    if (values == nextValues) {
+      setSelectedIndex(requestedIndex)
+      return
+    }
+    values = nextValues
+    selectedIndex = boundedIndex(requestedIndex)
+    isEnabled = values.isNotEmpty()
+    wheelAdapter.notifyDataSetChanged()
+    post {
+      centerSelectedIndex()
+      updateChildTransforms()
+    }
+  }
+
+  fun setSelectedIndex(nextIndex: Int) {
+    val boundedIndex = boundedIndex(nextIndex)
+    if (selectedIndex == boundedIndex && nearestIndex() == boundedIndex) {
+      return
+    }
+    val previousIndex = selectedIndex
+    selectedIndex = boundedIndex
+    notifySelectionChanged(previousIndex, selectedIndex)
+    post {
+      centerSelectedIndex()
+      updateChildTransforms()
+    }
+  }
+
+  fun updateTextColor(color: Int) {
+    if (textColor == color) {
+      return
+    }
+    textColor = color
+    wheelAdapter.notifyDataSetChanged()
+    post(::updateChildTransforms)
+  }
+
+  private fun scrollToIndex(index: Int, animated: Boolean, userInitiated: Boolean) {
+    if (values.isEmpty()) {
+      return
+    }
+    val boundedIndex = boundedIndex(index)
+    if (userInitiated) {
+      userInteractionPending = true
+      lastHapticIndex = nearestIndex()
+      cancelSettledSelection()
+    }
+    if (!animated || height == 0) {
+      selectedIndex = boundedIndex
+      centerSelectedIndex()
+      updateChildTransforms()
+      if (userInitiated) {
+        scheduleSettledSelection()
+      }
+      return
+    }
+
+    val target = wheelLayoutManager.findViewByPosition(boundedIndex)
+    if (target != null) {
+      val distance = childCenter(target) - height / 2f
+      smoothScrollBy(0, distance.roundToInt())
+    } else {
+      smoothScrollToPosition(boundedIndex)
+    }
+  }
+
+  private fun centerSelectedIndex() {
+    if (values.isEmpty() || height == 0) {
+      return
+    }
+    wheelLayoutManager.scrollToPositionWithOffset(
+      selectedIndex,
+      0
+    )
+  }
+
+  private fun updateChildTransforms() {
+    if (height == 0 || childCount == 0) {
+      return
+    }
+    val pickerCenter = height / 2f
+    val maximumDistance = itemHeight * TRANSFORM_DISTANCE_IN_ROWS
+    for (childIndex in 0 until childCount) {
+      val child = getChildAt(childIndex)
+      val distance = abs(childCenter(child) - pickerCenter)
+      val progress = min(1f, distance / maximumDistance)
+      val scale = 1f - ((1f - DISTANT_SCALE) * progress)
+      child.scaleX = scale
+      child.scaleY = scale
+      child.alpha = 1f - ((1f - DISTANT_ALPHA) * progress)
+    }
+  }
+
+  private fun performSelectionHapticIfNeeded() {
+    val nearestIndex = nearestIndex()
+    if (nearestIndex == RecyclerView.NO_POSITION || nearestIndex == lastHapticIndex) {
+      return
+    }
+    lastHapticIndex = nearestIndex
+    performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+  }
+
+  private fun scheduleSettledSelection() {
+    cancelSettledSelection()
+    if (
+      !userInteractionPending ||
+      touchActive ||
+      scrollState != SCROLL_STATE_IDLE
+    ) {
+      return
+    }
+    val runnable = Runnable {
+      settleRunnable = null
+      if (touchActive || scrollState != SCROLL_STATE_IDLE) {
+        scheduleSettledSelection()
+        return@Runnable
+      }
+      val settledIndex = nearestIndex()
+      if (settledIndex == RecyclerView.NO_POSITION) {
+        return@Runnable
+      }
+      userInteractionPending = false
+      val previousIndex = selectedIndex
+      selectedIndex = settledIndex
+      notifySelectionChanged(previousIndex, selectedIndex)
+      updateChildTransforms()
+      if (previousIndex != settledIndex) {
+        onSettledSelection?.invoke(settledIndex)
+      }
+    }
+    settleRunnable = runnable
+    postDelayed(runnable, SETTLE_DELAY_MS)
+  }
+
+  private fun cancelSettledSelection() {
+    settleRunnable?.let(::removeCallbacks)
+    settleRunnable = null
+  }
+
+  private fun nearestIndex(): Int {
+    val snapView = snapHelper.findSnapView(wheelLayoutManager) ?: return RecyclerView.NO_POSITION
+    return getChildAdapterPosition(snapView)
+  }
+
+  private fun notifySelectionChanged(previousIndex: Int, nextIndex: Int) {
+    if (previousIndex in values.indices) {
+      wheelAdapter.notifyItemChanged(previousIndex)
+    }
+    if (nextIndex in values.indices) {
+      wheelAdapter.notifyItemChanged(nextIndex)
+    }
+  }
+
+  private fun boundedIndex(index: Int): Int =
+    if (values.isEmpty()) 0 else index.coerceIn(values.indices)
+
+  private fun childCenter(child: View): Float = (child.top + child.bottom) / 2f
+
+  private fun dp(value: Float): Int =
+    (value * resources.displayMetrics.density).roundToInt()
+}
+
 class PersimmonReaderTypographyPickerView(
   context: Context,
   appContext: AppContext
 ) : ExpoView(context, appContext) {
   private val componentCount = 4
+  private val onValueChange by EventDispatcher<Map<String, Int>>()
+  private val values = MutableList<List<String>>(componentCount) { emptyList() }
+  private val requestedIndices = MutableList(componentCount) { 0 }
+  private var updatingFromProps = false
   private val labelViews = List(componentCount) {
     TextView(context).apply {
       gravity = Gravity.CENTER
@@ -133,60 +426,18 @@ class PersimmonReaderTypographyPickerView(
       setHorizontallyScrolling(false)
     }
   }
-  private val numberPickers = List(componentCount) { component ->
-    NumberPicker(context).apply {
-      descendantFocusability = NumberPicker.FOCUS_BLOCK_DESCENDANTS
-      isHapticFeedbackEnabled = true
-      isSoundEffectsEnabled = true
-      wrapSelectorWheel = false
-      setOnValueChangedListener { _, _, nextIndex ->
+  private val wheelPickers = List(componentCount) { component ->
+    PersimmonWheelPicker(context).apply {
+      onSettledSelection = { nextIndex ->
         requestedIndices[component] = nextIndex
         if (!updatingFromProps) {
-          pendingUserIndices[component] = nextIndex
-          scheduleSettledValue(component)
+          onValueChange(mapOf("component" to component, "index" to nextIndex))
         }
-      }
-      setOnScrollListener { _, scrollState ->
-        scrollStates[component] = scrollState
-        if (scrollState == NumberPicker.OnScrollListener.SCROLL_STATE_IDLE) {
-          scheduleSettledValue(component)
-        } else {
-          cancelSettledValue(component)
-        }
-      }
-      setOnTouchListener { pickerView, event ->
-        when (event.actionMasked) {
-          MotionEvent.ACTION_DOWN,
-          MotionEvent.ACTION_MOVE -> {
-            pickerView.parent?.requestDisallowInterceptTouchEvent(true)
-            touchActive[component] = true
-            cancelSettledValue(component)
-          }
-          MotionEvent.ACTION_UP,
-          MotionEvent.ACTION_CANCEL -> {
-            touchActive[component] = false
-            scheduleSettledValue(component)
-            pickerView.post {
-              pickerView.parent?.requestDisallowInterceptTouchEvent(false)
-            }
-          }
-        }
-        false
       }
     }
   }
   private val labelRow = LinearLayout(context)
   private val pickerRow = LinearLayout(context)
-  private val onValueChange by EventDispatcher<Map<String, Int>>()
-  private val values = MutableList<List<String>>(componentCount) { emptyList() }
-  private val requestedIndices = MutableList(componentCount) { 0 }
-  private val pendingUserIndices = MutableList<Int?>(componentCount) { null }
-  private val scrollStates = MutableList(componentCount) {
-    NumberPicker.OnScrollListener.SCROLL_STATE_IDLE
-  }
-  private val touchActive = MutableList(componentCount) { false }
-  private val settleRunnables = MutableList<Runnable?>(componentCount) { null }
-  private var updatingFromProps = false
 
   override val shouldUseAndroidLayout = true
 
@@ -201,7 +452,7 @@ class PersimmonReaderTypographyPickerView(
         LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f)
       )
     }
-    numberPickers.forEach { picker ->
+    wheelPickers.forEach { picker ->
       pickerRow.addView(
         picker,
         LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f)
@@ -219,38 +470,6 @@ class PersimmonReaderTypographyPickerView(
 
   private fun dp(value: Float): Int =
     (value * resources.displayMetrics.density).roundToInt()
-
-  private fun cancelSettledValue(component: Int) {
-    val runnable = settleRunnables.getOrNull(component) ?: return
-    numberPickers[component].removeCallbacks(runnable)
-    settleRunnables[component] = null
-  }
-
-  private fun scheduleSettledValue(component: Int) {
-    cancelSettledValue(component)
-    if (
-      scrollStates.getOrNull(component) !=
-        NumberPicker.OnScrollListener.SCROLL_STATE_IDLE ||
-      touchActive.getOrNull(component) == true
-    ) {
-      return
-    }
-    val runnable = Runnable {
-      settleRunnables[component] = null
-      val settledIndex = pendingUserIndices[component] ?: return@Runnable
-      pendingUserIndices[component] = null
-      if (!updatingFromProps) {
-        onValueChange(mapOf("component" to component, "index" to settledIndex))
-      }
-    }
-    settleRunnables[component] = runnable
-    numberPickers[component].postDelayed(runnable, 180L)
-  }
-
-  override fun onDetachedFromWindow() {
-    settleRunnables.indices.forEach(::cancelSettledValue)
-    super.onDetachedFromWindow()
-  }
 
   fun updateLabels(nextLabels: List<String>) {
     labelViews.indices.forEach { component ->
@@ -274,14 +493,8 @@ class PersimmonReaderTypographyPickerView(
       return
     }
     values[component] = nextValues
-    val picker = numberPickers[component]
     updatingFromProps = true
-    picker.displayedValues = null
-    picker.minValue = 0
-    picker.maxValue = max(0, nextValues.lastIndex)
-    picker.displayedValues = nextValues.ifEmpty { listOf("") }.toTypedArray()
-    picker.isEnabled = nextValues.isNotEmpty()
-    picker.value = requestedIndices[component].coerceIn(0, max(0, nextValues.lastIndex))
+    wheelPickers[component].updateValues(nextValues, requestedIndices[component])
     updatingFromProps = false
   }
 
@@ -293,41 +506,14 @@ class PersimmonReaderTypographyPickerView(
         return@forEach
       }
       val boundedIndex = nextIndex.coerceIn(0, values[component].lastIndex)
-      val picker = numberPickers[component]
-      if (picker.value != boundedIndex) {
-        updatingFromProps = true
-        picker.value = boundedIndex
-        updatingFromProps = false
-      }
+      updatingFromProps = true
+      wheelPickers[component].setSelectedIndex(boundedIndex)
+      updatingFromProps = false
     }
   }
 
   fun updateTextColor(color: Int) {
-    numberPickers.forEach { picker ->
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        picker.textColor = color
-      }
-      picker.findViewById<EditText>(
-        resources.getIdentifier("numberpicker_input", "id", "android")
-      )?.apply {
-        setTextColor(color)
-        textSize = 18f
-      }
-      runCatching {
-        NumberPicker::class.java.getDeclaredField("mSelectorWheelPaint").apply {
-          isAccessible = true
-          (get(picker) as? Paint)?.apply {
-            this.color = color
-            textSize = TypedValue.applyDimension(
-              TypedValue.COMPLEX_UNIT_SP,
-              14f,
-              resources.displayMetrics
-            )
-          }
-        }
-      }
-      picker.invalidate()
-    }
+    wheelPickers.forEach { it.updateTextColor(color) }
   }
 
 }
@@ -711,7 +897,7 @@ class PersimmonSelectionMenuModule : Module() {
             includeFontPadding = false
             gravity = Gravity.CENTER_VERTICAL
             maxLines = 2
-            minimumHeight = dp(58f)
+            minimumHeight = dp(TABLE_OF_CONTENTS_ROW_HEIGHT_DP)
             isClickable = true
             isFocusable = true
             layoutParams = RecyclerView.LayoutParams(
@@ -732,7 +918,7 @@ class PersimmonSelectionMenuModule : Module() {
               "sans-serif",
               if (selected) Typeface.BOLD else Typeface.NORMAL
             )
-            setPadding(dp(16f + depth * 19f), dp(8f), dp(10f), dp(8f))
+            setPadding(dp(16f + depth * 19f), dp(4f), dp(10f), dp(4f))
             background = roundedRippleBackground(
               if (selected) selectedColor else Color.TRANSPARENT,
               ColorUtils.setAlphaComponent(textColor, 24),
@@ -828,7 +1014,7 @@ class PersimmonSelectionMenuModule : Module() {
           rows.post {
             layoutManager.scrollToPositionWithOffset(
               selectedIndex,
-              max(0, (rows.height - dp(58f)) / 2)
+              max(0, (rows.height - dp(TABLE_OF_CONTENTS_ROW_HEIGHT_DP)) / 2)
             )
           }
         }

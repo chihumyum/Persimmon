@@ -25,6 +25,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useTranslation } from "react-i18next";
@@ -58,11 +59,9 @@ import { resetReadingAppearance } from "../reader/reader-settings-category";
 import type { ReaderTypographyKey } from "../reader/reader-typography-preview";
 import { ReadingPageSettings } from "./reading-layout-panel";
 
-const SETTINGS_SNAP_POINTS: (string | number)[] = [
-  `${Math.round(uiSheet.readerSettingsTypographyHeightRatio * 100)}%`,
-  `${Math.round(uiSheet.readerSettingsRootHeightRatio * 100)}%`,
-  `${Math.round(uiSheet.readerSettingsFontHeightRatio * 100)}%`,
-];
+// The compact landscape fraction can be shorter than the fixed native wheel.
+// Keep room for the 66 pt header, 210 pt picker, and 58 pt reset footer.
+const MINIMUM_TYPOGRAPHY_SHEET_HEIGHT = 350;
 const CONTENT_EXIT_DURATION_MS = 80;
 const CONTENT_ENTER_DURATION_MS = 160;
 
@@ -82,10 +81,19 @@ function snapIndexForPage(page: ReaderSettingsPage): number {
   }
 }
 
-function androidHeightRatioForPage(page: ReaderSettingsPage): number {
+function androidHeightRatioForPage(
+  page: ReaderSettingsPage,
+  windowHeight: number,
+): number {
   switch (page) {
     case "typographyPreview":
-      return uiSheet.readerSettingsTypographyHeightRatio;
+      return Math.min(
+        0.92,
+        Math.max(
+          uiSheet.readerSettingsTypographyHeightRatio,
+          MINIMUM_TYPOGRAPHY_SHEET_HEIGHT / windowHeight,
+        ),
+      );
     case "root":
       return uiSheet.readerSettingsRootHeightRatio;
     case "fonts":
@@ -455,6 +463,18 @@ export function ReadingSettingsSheet({
   onTypographyReset,
 }: ReadingSettingsSheetProps) {
   const { t } = useTranslation();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const settingsSnapPoints = useMemo<(string | number)[]>(() => {
+    const isLargeLandscape =
+      windowWidth > windowHeight && Math.min(windowWidth, windowHeight) >= 600;
+    return [
+      isLargeLandscape
+        ? MINIMUM_TYPOGRAPHY_SHEET_HEIGHT
+        : `${Math.round(uiSheet.readerSettingsTypographyHeightRatio * 100)}%`,
+      `${Math.round(uiSheet.readerSettingsRootHeightRatio * 100)}%`,
+      `${Math.round(uiSheet.readerSettingsFontHeightRatio * 100)}%`,
+    ];
+  }, [windowHeight, windowWidth]);
   const [closingPage, setClosingPage] = useState(page);
   const contentPage = visible ? page : closingPage;
   const [displayedContent, setDisplayedContent] =
@@ -806,10 +826,10 @@ export function ReadingSettingsSheet({
   return (
     <ReaderBottomSheet
       allowsUserResizing={uiSheet.readerSettingsAllowsUserResizing}
-      androidHeightRatio={androidHeightRatioForPage(contentPage)}
+      androidHeightRatio={androidHeightRatioForPage(contentPage, windowHeight)}
       dismissible
       snapIndex={snapIndexForPage(contentPage)}
-      snapPoints={SETTINGS_SNAP_POINTS}
+      snapPoints={settingsSnapPoints}
       testID="reader-settings-sheet"
       theme={theme}
       visible={visible}

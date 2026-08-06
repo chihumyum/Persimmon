@@ -105,7 +105,7 @@ export function TableOfContentsPanel({
           closeAccessibilityLabel={t("reader.toc.closeAccessibility")}
           theme={theme}
           title={t("reader.toc.title")}
-          style={[styles.header, { borderBottomColor: theme.border }]}
+          style={styles.header}
           onClose={() => setSheetVisible(false)}
         />
         <ScrollView
@@ -173,7 +173,6 @@ export function TableOfContentsPanel({
 
 const styles = StyleSheet.create({
   header: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
     minHeight: uiSize.sheetHeader,
     paddingHorizontal: uiSize.optionHorizontalInset,
   },
@@ -181,9 +180,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: uiRadius.control,
     flexDirection: "row",
-    minHeight: 58,
+    minHeight: 50,
     paddingRight: 10,
-    paddingVertical: 8,
+    paddingVertical: 4,
   },
   rows: {
     paddingHorizontal: uiSpace.md,

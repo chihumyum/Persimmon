@@ -237,6 +237,72 @@ describe("importEpub", () => {
     ).toEqual([]);
   });
 
+  it("binds body fragment anchors to the first readable block", () => {
+    const bytes = fixtureBytes({
+      packageXml: `<?xml version="1.0" encoding="utf-8"?>
+        <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+          <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <dc:title>Body anchors</dc:title>
+          </metadata>
+          <manifest>
+            <item id="directory" href="directory.xhtml" media-type="application/xhtml+xml"/>
+            <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+            <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+          </manifest>
+          <spine>
+            <itemref idref="directory"/>
+            <itemref idref="chapter"/>
+          </spine>
+        </package>`,
+      resources: {
+        "EPUB/directory.xhtml": `<?xml version="1.0"?>
+          <html xmlns="http://www.w3.org/1999/xhtml">
+            <body><p><a href="chapter.xhtml#chapter-body">Chapter</a></p></body>
+          </html>`,
+        "EPUB/chapter.xhtml": `<?xml version="1.0"?>
+          <html xmlns="http://www.w3.org/1999/xhtml">
+            <body id="chapter-body"><h1>Chapter</h1><p>Body</p></body>
+          </html>`,
+        "EPUB/nav.xhtml": `<?xml version="1.0"?>
+          <html xmlns="http://www.w3.org/1999/xhtml"
+                xmlns:epub="http://www.idpf.org/2007/ops">
+            <body>
+              <nav epub:type="toc">
+                <ol><li><a href="chapter.xhtml#chapter-body">Chapter</a></li></ol>
+              </nav>
+            </body>
+          </html>`,
+      },
+    });
+
+    const result = importEpub(bytes);
+    const directory = result.book.sections[0]!;
+    const chapter = result.book.sections[1]!;
+    const directoryRun =
+      directory.blocks[0]?.kind === "paragraph"
+        ? directory.blocks[0].runs[0]
+        : undefined;
+    const expectedTarget = {
+      sectionId: chapter.id,
+      blockId: chapter.blocks[0]!.id,
+      offset: 0,
+    };
+
+    expect(directoryRun?.link).toMatchObject({
+      kind: "internal",
+      label: "Chapter",
+      target: expectedTarget,
+    });
+    expect(result.book.navigation?.[0]?.target).toEqual(expectedTarget);
+    expect(
+      result.warnings.filter(
+        (warning) =>
+          warning.code === "internal-link-skipped" ||
+          warning.code === "navigation-target-fallback",
+      ),
+    ).toEqual([]);
+  });
+
   it("applies the safe EPUB author-style whitelist and skips hidden content", () => {
     const bytes = fixtureBytes({
       packageXml: minimalPackage(

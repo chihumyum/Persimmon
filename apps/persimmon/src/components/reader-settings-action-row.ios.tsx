@@ -17,6 +17,7 @@ import {
   foregroundStyle,
   frame,
   lineLimit,
+  multilineTextAlignment,
   padding,
   shapes,
 } from "@expo/ui/swift-ui/modifiers";
@@ -34,6 +35,7 @@ function ActionContent({
   title,
   tone = "default",
   value,
+  wrapsValue = false,
 }: Omit<ReaderSettingsActionRowProps, "accessibilityLabel" | "onPress">) {
   const rowHeight = description
     ? uiSize.optionRowWithDescription
@@ -55,7 +57,20 @@ function ActionContent({
         contentShape(shapes.rectangle()),
       ]}
     >
-      <VStack alignment="leading" spacing={2}>
+      <VStack
+        alignment="leading"
+        modifiers={
+          wrapsValue
+            ? [
+                frame({
+                  width: uiSize.optionLabelColumn,
+                  alignment: "leading",
+                }),
+              ]
+            : undefined
+        }
+        spacing={2}
+      >
         <Text
           modifiers={[
             font({
@@ -63,7 +78,7 @@ function ActionContent({
               weight: "medium",
             }),
             foregroundStyle(titleColor),
-            lineLimit(2),
+            lineLimit(wrapsValue ? 1 : 2),
           ]}
         >
           {title}
@@ -86,7 +101,13 @@ function ActionContent({
           modifiers={[
             font({ size: uiTypography.optionValue.fontSize }),
             foregroundStyle(theme.secondaryText),
-            lineLimit(1),
+            lineLimit(wrapsValue ? 2 : 1),
+            ...(wrapsValue
+              ? [
+                  frame({ maxWidth: 10_000, alignment: "trailing" }),
+                  multilineTextAlignment("trailing"),
+                ]
+              : []),
           ]}
         >
           {value}
@@ -114,6 +135,7 @@ export function ReaderSettingsActionRow({
   title,
   tone = "default",
   value,
+  wrapsValue = false,
   onPress,
 }: ReaderSettingsActionRowProps) {
   const rowHeight = description
@@ -129,6 +151,7 @@ export function ReaderSettingsActionRow({
       title={title}
       tone={tone}
       value={value}
+      wrapsValue={wrapsValue}
     />
   );
 

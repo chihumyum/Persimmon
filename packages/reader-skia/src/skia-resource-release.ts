@@ -18,9 +18,10 @@ export function releaseTransientSkiaResources(
 
 /**
  * A retired render generation has already been removed from React and given
- * two paint opportunities to drain Skia's previous display list. At that
- * point no platform may still replay these owners, so their native handles can
- * be released deterministically instead of waiting for a memory-pressure GC.
+ * two paint opportunities to drain Skia's previous display list. Android and
+ * web can then release their JS-owned handles deterministically. iOS keeps the
+ * handles on Skia's native ownership path because its UI scheduler can still
+ * replay the retired display list after that grace period.
  */
 export function releaseRetiredSkiaResources(
   platform: string,

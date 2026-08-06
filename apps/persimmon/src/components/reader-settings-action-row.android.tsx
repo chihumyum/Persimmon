@@ -13,6 +13,7 @@ import {
   padding,
   size,
   weight,
+  width,
 } from "@expo/ui/jetpack-compose/modifiers";
 import { StyleSheet } from "react-native";
 
@@ -30,6 +31,7 @@ export function ReaderSettingsActionRow({
   title,
   tone = "default",
   value,
+  wrapsValue = false,
   onPress,
 }: ReaderSettingsActionRowProps) {
   const rowHeight = description
@@ -54,19 +56,24 @@ export function ReaderSettingsActionRow({
         modifiers={[
           fillMaxWidth(),
           height(rowHeight),
+          ...(onPress && !disabled ? [clickable(onPress)] : []),
           padding(
             uiSize.optionHorizontalInset,
             0,
             uiSize.optionHorizontalInset,
             0,
           ),
-          ...(onPress && !disabled ? [clickable(onPress)] : []),
         ]}
       >
-        <Column modifiers={[weight(1)]} verticalArrangement="center">
+        <Column
+          modifiers={
+            wrapsValue ? [width(uiSize.optionLabelColumn)] : [weight(1)]
+          }
+          verticalArrangement="center"
+        >
           <Text
             color={titleColor}
-            maxLines={2}
+            maxLines={wrapsValue ? 1 : 2}
             style={uiTypography.optionLabel}
           >
             {title}
@@ -84,8 +91,12 @@ export function ReaderSettingsActionRow({
         {value ? (
           <Text
             color={theme.secondaryText}
-            maxLines={1}
-            style={uiTypography.optionValue}
+            maxLines={wrapsValue ? 2 : 1}
+            modifiers={wrapsValue ? [weight(1)] : undefined}
+            style={{
+              ...uiTypography.optionValue,
+              ...(wrapsValue ? { textAlign: "end" } : {}),
+            }}
           >
             {value}
           </Text>

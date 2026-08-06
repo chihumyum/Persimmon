@@ -426,6 +426,23 @@ export function LibraryScreen({
     onSyncBook(entry);
   };
 
+  const handleBookMenuAction = (
+    entry: LibraryBookSummary,
+    action: BookMenuAction,
+  ) => {
+    switch (action) {
+      case "sync":
+        syncBook(entry);
+        break;
+      case "delete":
+        onDelete(entry);
+        break;
+      case "details":
+        setDetailsEntry(entry);
+        break;
+    }
+  };
+
   const openBookMenu = async (
     entry: LibraryBookSummary,
     rect: BookMenuRect,
@@ -446,18 +463,8 @@ export function LibraryScreen({
       setDetailsEntry(entry);
       return;
     }
-    switch (action) {
-      case "sync":
-        syncBook(entry);
-        break;
-      case "delete":
-        onDelete(entry);
-        break;
-      case "details":
-        setDetailsEntry(entry);
-        break;
-      case undefined:
-        break;
+    if (action) {
+      handleBookMenuAction(entry, action);
     }
   };
 
@@ -514,7 +521,7 @@ export function LibraryScreen({
               loading={importing}
               onPress={onImport}
               theme={theme}
-              tintColor={theme.accentStrong}
+              tintColor={importing ? theme.accentStrong : theme.controlText}
             />
           </View>
         </View>
@@ -592,6 +599,7 @@ export function LibraryScreen({
                   onContextMenu={(selectedEntry, rect) => {
                     void openBookMenu(selectedEntry, rect);
                   }}
+                  onMenuAction={handleBookMenuAction}
                   onOpen={() => onOpen(entry.id)}
                 />
               </View>

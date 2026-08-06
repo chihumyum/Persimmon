@@ -1,6 +1,6 @@
 import type { ReaderTheme } from "@persimmon/reader-skia";
 import Constants from "expo-constants";
-import { Children, Fragment, type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import {
   Alert,
   Linking,
@@ -18,6 +18,7 @@ import { LibraryNativeSheet } from "../components/library-native-sheet";
 import { ReaderSettingsActionRow } from "../components/reader-settings-action-row";
 import { ReaderSettingsMenuRow } from "../components/reader-settings-menu-row";
 import { ReaderSettingsSwitchRow } from "../components/reader-settings-switch-row";
+import { SettingsCard } from "../components/settings-card";
 import { formatTime, translate, type AppLanguagePreference } from "../i18n";
 import {
   licensesDocument,
@@ -26,14 +27,11 @@ import {
 } from "../legal/legal-content";
 import type { ReaderColorMode, ReaderThemeName } from "../library/types";
 import type { GoogleDriveSyncStatus } from "../sync/types";
-import {
-  uiRadius,
-  uiSize,
-  uiSpace,
-  uiTypography,
-} from "../components/ui-tokens";
+import { uiSize, uiSpace, uiTypography } from "../components/ui-tokens";
 import { type DataClearTarget } from "./app-data-settings-section";
 import { SettingsDocumentSurface } from "./settings-document-modal";
+
+const DEVELOPER_WEBSITE_URL = "https://chihum.dev";
 
 export function syncDescription(status: GoogleDriveSyncStatus): string {
   switch (status.phase) {
@@ -99,32 +97,12 @@ function SettingsSection({
   readonly theme: ReaderTheme;
   readonly title: string;
 }) {
-  const rows = Children.toArray(children);
   return (
     <View style={styles.section}>
       <Text style={[styles.sectionTitle, { color: theme.secondaryText }]}>
         {title}
       </Text>
-      <View
-        style={[
-          styles.sectionCard,
-          {
-            backgroundColor: theme.panelRaised,
-            borderColor: theme.border,
-          },
-        ]}
-      >
-        {rows.map((row, index) => (
-          <Fragment key={`${title}-${index}`}>
-            {index > 0 ? (
-              <View
-                style={[styles.divider, { backgroundColor: theme.border }]}
-              />
-            ) : null}
-            {row}
-          </Fragment>
-        ))}
-      </View>
+      <SettingsCard theme={theme}>{children}</SettingsCard>
       {footer ? (
         <Text
           style={[
@@ -196,6 +174,9 @@ export function LibrarySettingsModal({
   const { i18n, t } = useTranslation();
   const { bottom: bottomInset } = useSafeAreaInsets();
   const [legalDocument, setLegalDocument] = useState<LegalDocument>();
+  const settingsScrollRef = useRef<ScrollView>(null);
+  const settingsScrollOffsetRef = useRef(0);
+  const restoreSettingsScrollRef = useRef(false);
   const colorModeOptions = [
     { value: "system", label: t("appearance.colorModes.system") },
     { value: "light", label: t("appearance.colorModes.light") },
@@ -244,6 +225,17 @@ export function LibrarySettingsModal({
     "accountEmail" in syncStatus && syncStatus.accountEmail
       ? syncStatus.accountEmail
       : "Google Drive";
+
+  const restoreSettingsScrollPosition = () => {
+    if (!restoreSettingsScrollRef.current) {
+      return;
+    }
+    settingsScrollRef.current?.scrollTo({
+      animated: false,
+      y: settingsScrollOffsetRef.current,
+    });
+    restoreSettingsScrollRef.current = false;
+  };
 
   const confirmClearLocalData = () => {
     Alert.alert(
@@ -299,6 +291,16 @@ export function LibrarySettingsModal({
       );
     }
   };
+  const openDeveloperWebsite = async () => {
+    try {
+      await Linking.openURL(DEVELOPER_WEBSITE_URL);
+    } catch {
+      Alert.alert(
+        t("settings.developer.websiteFailedTitle"),
+        t("settings.developer.websiteFailedMessage"),
+      );
+    }
+  };
 
   if (legalDocument) {
     return (
@@ -309,7 +311,10 @@ export function LibrarySettingsModal({
         theme={theme}
         title={legalDocument.title}
         visible={visible}
-        onBack={() => setLegalDocument(undefined)}
+        onBack={() => {
+          restoreSettingsScrollRef.current = true;
+          setLegalDocument(undefined);
+        }}
         onClose={onClose}
       >
         <SettingsDocumentSurface document={legalDocument} theme={theme} />
@@ -331,8 +336,14 @@ export function LibrarySettingsModal({
           styles.settingsList,
           { paddingBottom: bottomInset + uiSpace.xxl },
         ]}
+        ref={settingsScrollRef}
         showsVerticalScrollIndicator={false}
         style={[styles.host, { backgroundColor: theme.panel }]}
+        scrollEventThrottle={16}
+        onContentSizeChange={restoreSettingsScrollPosition}
+        onScroll={({ nativeEvent }) => {
+          settingsScrollOffsetRef.current = nativeEvent.contentOffset.y;
+        }}
       >
         <SettingsSection theme={theme} title={t("appearance.section")}>
           <ReaderSettingsMenuRow<ReaderColorMode>
@@ -486,6 +497,14 @@ export function LibrarySettingsModal({
             title={t("settings.about.version")}
             value={versionLabel}
           />
+          <ReaderSettingsActionRow
+            accessibilityLabel={t("settings.developer.websiteAccessibility")}
+            showsChevron
+            theme={theme}
+            title={t("settings.developer.label")}
+            tone="accent"
+            onPress={() => void openDeveloperWebsite()}
+          />
         </SettingsSection>
       </ScrollView>
     </LibraryNativeSheet>
@@ -493,21 +512,12 @@ export function LibrarySettingsModal({
 }
 
 const styles = StyleSheet.create({
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    marginHorizontal: uiSize.dividerHorizontalInset,
-  },
   host: {
     flex: 1,
     width: "100%",
   },
   section: {
     gap: uiSpace.sm,
-  },
-  sectionCard: {
-    borderRadius: uiRadius.card,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: "hidden",
   },
   sectionFooter: {
     ...uiTypography.optionDescription,

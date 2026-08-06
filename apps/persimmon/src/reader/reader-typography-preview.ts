@@ -2,26 +2,17 @@ import {
   DEFAULT_READER_APPEARANCE,
   type ReaderAppearanceSettings,
 } from "../library/types";
+import {
+  READER_TYPOGRAPHY_CONTROLS,
+  type ReaderTypographyControl,
+  type ReaderTypographyKey,
+} from "../library/reader-typography-controls";
 
-export type ReaderTypographyKey =
-  | "fontSize"
-  | "lineHeight"
-  | "paragraphSpacing"
-  | "horizontalMargin";
-
-export interface ReaderTypographyControl {
-  readonly key: ReaderTypographyKey;
-  readonly maximum: number;
-  readonly minimum: number;
-  readonly step: number;
-}
-
-export const READER_TYPOGRAPHY_CONTROLS: readonly ReaderTypographyControl[] = [
-  { key: "fontSize", minimum: 16, maximum: 32, step: 1 },
-  { key: "lineHeight", minimum: 1.25, maximum: 2.1, step: 0.05 },
-  { key: "paragraphSpacing", minimum: 0, maximum: 2, step: 0.1 },
-  { key: "horizontalMargin", minimum: 16, maximum: 72, step: 4 },
-] as const;
+export {
+  READER_TYPOGRAPHY_CONTROLS,
+  type ReaderTypographyControl,
+  type ReaderTypographyKey,
+} from "../library/reader-typography-controls";
 
 const TYPOGRAPHY_KEYS = READER_TYPOGRAPHY_CONTROLS.map(
   (control) => control.key,

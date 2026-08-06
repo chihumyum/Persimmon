@@ -1,11 +1,14 @@
-import { FieldGroup, Host } from "@expo/ui";
 import type { ReaderTheme } from "@persimmon/reader-skia";
 import { useEffect, useState } from "react";
-import { StyleSheet } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 import { useTranslation } from "react-i18next";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { LibraryNativeSheet } from "../components/library-native-sheet";
-import { LibraryNativeActionRow } from "../components/library-native-settings-row";
+import { ReaderSettingsActionRow } from "../components/reader-settings-action-row";
+import { SettingsCard } from "../components/settings-card";
+import { UiText as Text } from "../components/ui-text";
+import { uiSize, uiSpace } from "../components/ui-tokens";
 import { formatByteCount, formatDate, formatPercentage } from "../i18n";
 import { readingProgressPercent } from "../library/library-view";
 import type { LibraryBookSummary } from "../library/repository";
@@ -39,6 +42,7 @@ export function BookDetailsModal({
   onSync,
 }: BookDetailsModalProps) {
   const { t } = useTranslation();
+  const { bottom: bottomInset } = useSafeAreaInsets();
   const [displayEntry, setDisplayEntry] = useState(entry);
 
   useEffect(() => {
@@ -56,73 +60,82 @@ export function BookDetailsModal({
       visible={Boolean(entry)}
       onClose={onClose}
     >
-      <Host
-        colorScheme={theme.colorScheme}
-        seedColor={theme.accent}
-        style={styles.host}
-        useViewportSizeMeasurement
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: bottomInset + uiSpace.xxl },
+        ]}
+        showsVerticalScrollIndicator={false}
+        style={[styles.host, { backgroundColor: theme.panel }]}
       >
-        <FieldGroup
-          style={{
-            backgroundColor: theme.panel,
-          }}
-        >
-          <FieldGroup.Section>
-            <LibraryNativeActionRow
-              description={displayEntry.author ?? t("common.unknownAuthor")}
-              theme={theme}
-              title={displayEntry.title}
-            />
-          </FieldGroup.Section>
+        <View style={styles.identity}>
+          <Text
+            accessibilityRole="header"
+            numberOfLines={2}
+            style={{ color: theme.text }}
+            variant="panelTitle"
+          >
+            {displayEntry.title}
+          </Text>
+          <Text
+            numberOfLines={1}
+            style={{ color: theme.secondaryText }}
+            variant="optionDescription"
+          >
+            {displayEntry.author ?? t("common.unknownAuthor")}
+          </Text>
+        </View>
 
-          <FieldGroup.Section>
-            <LibraryNativeActionRow
-              theme={theme}
-              title={t("library.details.progress")}
-              value={
-                displayEntry.locator
-                  ? formatPercentage(readingProgressPercent(displayEntry))
-                  : t("library.details.notStarted")
-              }
-            />
-            <LibraryNativeActionRow
-              theme={theme}
-              title={t("library.details.localStatus")}
-              value={
-                displayEntry.status === "ready"
-                  ? t("library.details.downloaded")
-                  : t("library.details.needsDownload")
-              }
-            />
-            <LibraryNativeActionRow
-              theme={theme}
-              title={t("library.details.file")}
-              value={
-                displayEntry.sourceName === "旧版导入" ||
-                displayEntry.sourceName === "Legacy import"
-                  ? t("library.details.legacyImport")
-                  : displayEntry.sourceName
-              }
-            />
-            <LibraryNativeActionRow
-              theme={theme}
-              title={t("library.details.size")}
-              value={
-                displayEntry.builtIn
-                  ? t("library.details.builtIn")
-                  : formatByteCount(displayEntry.originalByteLength)
-              }
-            />
-            <LibraryNativeActionRow
-              theme={theme}
-              title={t("library.details.added")}
-              value={dateLabel(displayEntry.addedAt)}
-            />
-          </FieldGroup.Section>
+        <SettingsCard theme={theme}>
+          <ReaderSettingsActionRow
+            theme={theme}
+            title={t("library.details.progress")}
+            value={
+              displayEntry.locator
+                ? formatPercentage(readingProgressPercent(displayEntry))
+                : t("library.details.notStarted")
+            }
+          />
+          <ReaderSettingsActionRow
+            theme={theme}
+            title={t("library.details.localStatus")}
+            value={
+              displayEntry.status === "ready"
+                ? t("library.details.downloaded")
+                : t("library.details.needsDownload")
+            }
+          />
+          <ReaderSettingsActionRow
+            theme={theme}
+            title={t("library.details.file")}
+            value={
+              displayEntry.sourceName === "旧版导入" ||
+              displayEntry.sourceName === "Legacy import"
+                ? t("library.details.legacyImport")
+                : displayEntry.sourceName
+            }
+            wrapsValue
+          />
+          <ReaderSettingsActionRow
+            theme={theme}
+            title={t("library.details.size")}
+            value={
+              displayEntry.builtIn
+                ? t("library.details.builtIn")
+                : formatByteCount(displayEntry.originalByteLength)
+            }
+          />
+          <ReaderSettingsActionRow
+            theme={theme}
+            title={t("library.details.added")}
+            value={dateLabel(displayEntry.addedAt)}
+          />
+        </SettingsCard>
 
-          <FieldGroup.Section>
+        {displayEntry.status === "ready" || !displayEntry.builtIn ? (
+          <SettingsCard theme={theme}>
             {displayEntry.status === "ready" ? (
-              <LibraryNativeActionRow
+              <ReaderSettingsActionRow
                 theme={theme}
                 title={t("library.details.continueReading")}
                 tone="accent"
@@ -133,7 +146,7 @@ export function BookDetailsModal({
               />
             ) : null}
             {!displayEntry.builtIn ? (
-              <LibraryNativeActionRow
+              <ReaderSettingsActionRow
                 theme={theme}
                 title={
                   displayEntry.status === "ready"
@@ -148,7 +161,7 @@ export function BookDetailsModal({
               />
             ) : null}
             {!displayEntry.builtIn ? (
-              <LibraryNativeActionRow
+              <ReaderSettingsActionRow
                 theme={theme}
                 title={t("library.details.deleteEverywhere")}
                 tone="danger"
@@ -158,13 +171,23 @@ export function BookDetailsModal({
                 }}
               />
             ) : null}
-          </FieldGroup.Section>
-        </FieldGroup>
-      </Host>
+          </SettingsCard>
+        ) : null}
+      </ScrollView>
     </LibraryNativeSheet>
   );
 }
 
 const styles = StyleSheet.create({
+  content: {
+    gap: uiSpace.xl,
+    paddingHorizontal: uiSpace.lg,
+    paddingTop: uiSpace.sm,
+  },
   host: { flex: 1, width: "100%" },
+  identity: {
+    gap: uiSpace.xs,
+    paddingHorizontal: uiSize.optionHorizontalInset,
+    paddingVertical: uiSpace.sm,
+  },
 });

@@ -44,6 +44,8 @@ export function LibraryNativeSyncNotice({
   onClose,
   onOpen,
 }: LibraryNativeSyncNoticeProps) {
+  const floatingShadowColor = `${theme.shadow}2e`;
+
   return (
     <View style={styles.container}>
       <Host
@@ -55,33 +57,40 @@ export function LibraryNativeSyncNotice({
       >
         <HStack
           alignment="center"
-          spacing={4}
+          spacing={2}
           modifiers={[
-            frame({ maxWidth: 10_000, minHeight: 72 }),
-            padding({ horizontal: 8, vertical: 7 }),
+            frame({ maxWidth: 10_000, minHeight: 60 }),
+            padding({ horizontal: 8, vertical: 4 }),
             glassEffect({
               glass: {
                 interactive: true,
                 tint: theme.panel,
-                variant: "regular",
+                variant: "clear",
               },
-              cornerRadius: 22,
+              cornerRadius: 18,
               shape: "roundedRectangle",
             }),
             ...(floating
-              ? [shadow({ color: theme.shadow, radius: 18, x: 0, y: 8 })]
+              ? [
+                  shadow({
+                    color: floatingShadowColor,
+                    radius: 9,
+                    x: 0,
+                    y: 4,
+                  }),
+                ]
               : []),
           ]}
         >
           <Button
             modifiers={[
               buttonStyle("plain"),
-              frame({ maxWidth: 10_000, minHeight: 58, alignment: "leading" }),
+              frame({ maxWidth: 10_000, minHeight: 50, alignment: "leading" }),
               accessibilityLabel(openAccessibilityLabel),
             ]}
             onPress={onOpen}
           >
-            <HStack alignment="center" spacing={12}>
+            <HStack alignment="center" spacing={10}>
               {kind === "syncing" ? (
                 <ProgressView />
               ) : (
@@ -96,7 +105,7 @@ export function LibraryNativeSyncNotice({
               <VStack alignment="leading" spacing={2}>
                 <Text
                   modifiers={[
-                    font({ size: 15, weight: "semibold" }),
+                    font({ size: 14, weight: "semibold" }),
                     foregroundStyle(theme.text),
                     lineLimit(1),
                   ]}
@@ -105,9 +114,9 @@ export function LibraryNativeSyncNotice({
                 </Text>
                 <Text
                   modifiers={[
-                    font({ size: 13 }),
+                    font({ size: 12 }),
                     foregroundStyle(theme.secondaryText),
-                    lineLimit(2),
+                    lineLimit(1),
                   ]}
                 >
                   {description}
@@ -129,7 +138,7 @@ export function LibraryNativeSyncNotice({
                 buttonStyle("plain"),
                 labelStyle("iconOnly"),
                 tint(theme.secondaryText),
-                frame({ width: 44, height: 52 }),
+                frame({ width: 44, height: 48 }),
                 accessibilityLabel(closeAccessibilityLabel ?? "Close"),
               ]}
               systemImage="xmark"
@@ -143,6 +152,6 @@ export function LibraryNativeSyncNotice({
 }
 
 const styles = StyleSheet.create({
-  container: { minHeight: 72, width: "100%" },
-  host: { minHeight: 72, width: "100%" },
+  container: { minHeight: 60, width: "100%" },
+  host: { minHeight: 60, width: "100%" },
 });

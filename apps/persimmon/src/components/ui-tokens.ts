@@ -51,6 +51,7 @@ export const uiSize = {
   nativeGroupedRowContent: 44,
   nativeGroupedRowWithDescriptionContent: 58,
   optionHorizontalInset: 16,
+  optionLabelColumn: 92,
   dividerHorizontalInset: 16,
 } as const;
 

@@ -11,8 +11,8 @@ import {
 } from "react-native";
 import { useTranslation } from "react-i18next";
 
-import { LibraryNativeToolbarButton } from "../components/library-native-toolbar-button";
-import { uiRadius, uiSpace } from "../components/ui-tokens";
+import { LibraryBookMenuButton } from "../components/library-book-menu-button";
+import { uiRadius, uiSize, uiSpace } from "../components/ui-tokens";
 import { formatPercentage } from "../i18n";
 import {
   libraryCoverCache,
@@ -28,7 +28,10 @@ import {
   libraryRepository,
   type LibraryBookSummary,
 } from "../library/repository";
-import type { BookMenuRect } from "../../modules/persimmon-selection-menu";
+import type {
+  BookMenuAction,
+  BookMenuRect,
+} from "../../modules/persimmon-selection-menu";
 
 const DEFAULT_COVER_RATIO = 0.7;
 
@@ -54,11 +57,13 @@ function BookCover({
   entry,
   maximumHeight,
   maximumWidth,
+  pressed,
   theme,
 }: {
   readonly entry: LibraryBookSummary;
   readonly maximumHeight: number;
   readonly maximumWidth: number;
+  readonly pressed: boolean;
   readonly theme: ReaderTheme;
 }) {
   const { t } = useTranslation();
@@ -140,7 +145,7 @@ function BookCover({
           }}
           resizeMode="contain"
           source={{ uri: cover.uri }}
-          style={[styles.coverImage, size]}
+          style={size}
         />
       ) : (
         <View
@@ -159,6 +164,12 @@ function BookCover({
           </Text>
         </View>
       )}
+      {pressed ? (
+        <View
+          pointerEvents="none"
+          style={[styles.coverPressed, { backgroundColor: theme.shadow }]}
+        />
+      ) : null}
     </View>
   );
 }
@@ -178,6 +189,10 @@ export interface LibraryBookCardProps {
     entry: LibraryBookSummary,
     rect: BookMenuRect,
   ) => void;
+  readonly onMenuAction: (
+    entry: LibraryBookSummary,
+    action: BookMenuAction,
+  ) => void;
   readonly onOpen: () => void;
 }
 
@@ -188,6 +203,7 @@ export function LibraryBookCard({
   theme,
   width,
   onContextMenu,
+  onMenuAction,
   onOpen,
 }: LibraryBookCardProps) {
   const { t } = useTranslation();
@@ -252,20 +268,23 @@ export function LibraryBookCard({
         }}
         style={[styles.coverPressable, { height: stageHeight }]}
       >
-        <View
-          style={[
-            styles.coverStage,
-            { height: stageHeight, width },
-            entry.status !== "ready" && styles.coverUnavailable,
-          ]}
-        >
-          <BookCover
-            entry={entry}
-            maximumHeight={stageHeight}
-            maximumWidth={width}
-            theme={theme}
-          />
-        </View>
+        {({ pressed }) => (
+          <View
+            style={[
+              styles.coverStage,
+              { height: stageHeight, width },
+              entry.status !== "ready" && styles.coverUnavailable,
+            ]}
+          >
+            <BookCover
+              entry={entry}
+              maximumHeight={stageHeight}
+              maximumWidth={width}
+              pressed={pressed}
+              theme={theme}
+            />
+          </View>
+        )}
       </Pressable>
 
       {bookMetadataVisible ? (
@@ -310,15 +329,21 @@ export function LibraryBookCard({
           </Text>
         )}
         <View collapsable={false} ref={moreAnchorRef} style={styles.moreButton}>
-          <LibraryNativeToolbarButton
+          <LibraryBookMenuButton
             accessibilityLabel={t("library.card.moreAccessibility", {
               title: entry.title,
             })}
-            compact
-            icon="more"
-            plain
-            onPress={openContextMenuFromButton}
+            canDelete={!entry.builtIn}
+            deleteLabel={t("library.nativeMenu.delete")}
+            detailsLabel={t("library.nativeMenu.details")}
+            syncLabel={
+              entry.status === "ready"
+                ? t("library.actions.syncNow")
+                : t("library.actions.downloadFromCloud")
+            }
             theme={theme}
+            onAction={(action) => onMenuAction(entry, action)}
+            onPress={openContextMenuFromButton}
           />
         </View>
       </View>
@@ -336,15 +361,19 @@ const styles = StyleSheet.create({
   card: {
     minWidth: 0,
   },
-  coverImage: {
-    borderRadius: uiRadius.cover,
-  },
   coverPressable: {
     justifyContent: "flex-end",
   },
+  coverPressed: {
+    bottom: 0,
+    left: 0,
+    opacity: 0.14,
+    position: "absolute",
+    right: 0,
+    top: 0,
+  },
   coverShadow: {
     backgroundColor: "transparent",
-    borderRadius: uiRadius.cover,
     shadowOffset: { width: 0, height: 7 },
     shadowOpacity: 0.2,
     shadowRadius: 10,
@@ -357,7 +386,6 @@ const styles = StyleSheet.create({
     opacity: 0.58,
   },
   fallbackCover: {
-    borderRadius: uiRadius.cover,
     justifyContent: "space-between",
     overflow: "hidden",
     padding: uiSpace.md,
@@ -385,10 +413,9 @@ const styles = StyleSheet.create({
   },
   moreButton: {
     alignItems: "center",
-    height: 40,
+    height: uiSize.minimumHitTarget,
     justifyContent: "center",
-    marginRight: -7,
-    width: 40,
+    width: uiSize.minimumHitTarget,
   },
   newBadge: {
     borderRadius: uiRadius.pill,

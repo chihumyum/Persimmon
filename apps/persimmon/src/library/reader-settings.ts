@@ -13,6 +13,7 @@ import {
   type ReaderSettings,
   type ReaderThemeName,
 } from "./types";
+import { READER_TYPOGRAPHY_RANGES } from "./reader-typography-controls";
 
 export function normalizeSettings(value: unknown): ReaderSettings {
   if (typeof value !== "object" || value === null) {
@@ -46,6 +47,10 @@ export function normalizeSettings(value: unknown): ReaderSettings {
 }
 
 function normalizeAppearance(value: object): ReaderAppearanceSettings {
+  const fontSize = READER_TYPOGRAPHY_RANGES.fontSize;
+  const lineHeight = READER_TYPOGRAPHY_RANGES.lineHeight;
+  const paragraphSpacing = READER_TYPOGRAPHY_RANGES.paragraphSpacing;
+  const horizontalMargin = READER_TYPOGRAPHY_RANGES.horizontalMargin;
   return {
     theme: readerTheme(value),
     colorMode: readerColorMode(value),
@@ -56,33 +61,33 @@ function normalizeAppearance(value: object): ReaderAppearanceSettings {
     fontSize: steppedNumber(
       value,
       "fontSize",
-      16,
-      32,
-      1,
+      fontSize.minimum,
+      fontSize.maximum,
+      fontSize.step,
       DEFAULT_READER_APPEARANCE.fontSize,
     ),
     lineHeight: steppedNumber(
       value,
       "lineHeight",
-      1.25,
-      2.1,
-      0.05,
+      lineHeight.minimum,
+      lineHeight.maximum,
+      lineHeight.step,
       DEFAULT_READER_APPEARANCE.lineHeight,
     ),
     paragraphSpacing: steppedNumber(
       value,
       "paragraphSpacing",
-      0,
-      2,
-      0.1,
+      paragraphSpacing.minimum,
+      paragraphSpacing.maximum,
+      paragraphSpacing.step,
       DEFAULT_READER_APPEARANCE.paragraphSpacing,
     ),
     horizontalMargin: steppedNumber(
       value,
       "horizontalMargin",
-      16,
-      72,
-      4,
+      horizontalMargin.minimum,
+      horizontalMargin.maximum,
+      horizontalMargin.step,
       DEFAULT_READER_APPEARANCE.horizontalMargin,
     ),
     progressDisplay: readerProgressDisplay(value),

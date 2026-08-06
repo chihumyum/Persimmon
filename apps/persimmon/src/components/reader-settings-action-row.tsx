@@ -15,6 +15,7 @@ export function ReaderSettingsActionRow({
   title,
   tone = "default",
   value,
+  wrapsValue = false,
   onPress,
 }: ReaderSettingsActionRowProps) {
   const titleColor = disabled
@@ -26,8 +27,13 @@ export function ReaderSettingsActionRow({
         : theme.controlText;
   const content = (
     <>
-      <View style={styles.copy}>
-        <Text style={[styles.title, { color: titleColor }]}>{title}</Text>
+      <View style={[styles.copy, wrapsValue && styles.fixedCopy]}>
+        <Text
+          numberOfLines={wrapsValue ? 1 : undefined}
+          style={[styles.title, { color: titleColor }]}
+        >
+          {title}
+        </Text>
         {description ? (
           <Text style={[styles.description, { color: theme.secondaryText }]}>
             {description}
@@ -35,7 +41,14 @@ export function ReaderSettingsActionRow({
         ) : null}
       </View>
       {value ? (
-        <Text style={[styles.value, { color: theme.secondaryText }]}>
+        <Text
+          numberOfLines={wrapsValue ? 2 : 1}
+          style={[
+            styles.value,
+            wrapsValue && styles.wrappingValue,
+            { color: theme.secondaryText },
+          ]}
+        >
           {value}
         </Text>
       ) : null}
@@ -77,6 +90,11 @@ const styles = StyleSheet.create({
   description: {
     ...uiTypography.optionDescription,
   },
+  fixedCopy: {
+    flex: 0,
+    flexShrink: 0,
+    width: uiSize.optionLabelColumn,
+  },
   row: {
     alignItems: "center",
     flexDirection: "row",
@@ -88,6 +106,10 @@ const styles = StyleSheet.create({
   },
   value: {
     ...uiTypography.optionValue,
+  },
+  wrappingValue: {
+    flex: 1,
+    textAlign: "right",
   },
 });
 

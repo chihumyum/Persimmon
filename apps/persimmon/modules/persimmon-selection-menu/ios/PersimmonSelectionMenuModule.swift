@@ -4,12 +4,18 @@ import UIKit
 
 final class PersimmonReaderTypographyPickerView: ExpoView, UIPickerViewDataSource, UIPickerViewDelegate {
   private static let componentCount = 4
+  private static let valueCommitDelay = 0.24
   let onValueChange = EventDispatcher()
   private let labels = (0..<componentCount).map { _ in UILabel() }
   private let labelStack = UIStackView()
   private let picker = UIPickerView()
   private var values = Array(repeating: [String](), count: componentCount)
   private var requestedIndices = Array(repeating: 0, count: componentCount)
+  private var pendingValueChangeGenerations = Array(repeating: 0, count: componentCount)
+  private var pendingValueChangeWorkItems = Array<DispatchWorkItem?>(
+    repeating: nil,
+    count: componentCount
+  )
   private var updatingFromProps = false
   private var textColor = UIColor.label
 
@@ -36,6 +42,10 @@ final class PersimmonReaderTypographyPickerView: ExpoView, UIPickerViewDataSourc
     picker.delegate = self
     addSubview(labelStack)
     addSubview(picker)
+  }
+
+  deinit {
+    pendingValueChangeWorkItems.forEach { $0?.cancel() }
   }
 
   override func layoutSubviews() {
@@ -86,9 +96,17 @@ final class PersimmonReaderTypographyPickerView: ExpoView, UIPickerViewDataSourc
 
   func updateSelectedIndices(_ nextIndices: [Int]) {
     for component in requestedIndices.indices {
-      requestedIndices[component] = nextIndices.indices.contains(component)
+      let nextIndex = nextIndices.indices.contains(component)
         ? nextIndices[component]
         : 0
+      // While UIKit is still decelerating, React still owns the last committed
+      // value. Do not let that old prop snap the native wheel back underneath
+      // the user's finger before the trailing selection is committed.
+      if pendingValueChangeWorkItems[component] != nil,
+         nextIndex != requestedIndices[component] {
+        continue
+      }
+      requestedIndices[component] = nextIndex
     }
     applyRequestedIndices(animated: false)
   }
@@ -150,7 +168,27 @@ final class PersimmonReaderTypographyPickerView: ExpoView, UIPickerViewDataSourc
     guard !updatingFromProps else {
       return
     }
-    onValueChange(["component": component, "index": row])
+    scheduleValueChange(row: row, component: component)
+  }
+
+  private func scheduleValueChange(row: Int, component: Int) {
+    pendingValueChangeWorkItems[component]?.cancel()
+    pendingValueChangeGenerations[component] += 1
+    let generation = pendingValueChangeGenerations[component]
+    let workItem = DispatchWorkItem { [weak self] in
+      guard let self,
+            self.pendingValueChangeGenerations[component] == generation,
+            self.requestedIndices[component] == row else {
+        return
+      }
+      self.pendingValueChangeWorkItems[component] = nil
+      self.onValueChange(["component": component, "index": row])
+    }
+    pendingValueChangeWorkItems[component] = workItem
+    DispatchQueue.main.asyncAfter(
+      deadline: .now() + Self.valueCommitDelay,
+      execute: workItem
+    )
   }
 }
 

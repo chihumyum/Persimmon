@@ -12,5 +12,6 @@ export interface ReaderSettingsActionRowProps {
   readonly title: string;
   readonly tone?: ReaderSettingsActionTone;
   readonly value?: string;
+  readonly wrapsValue?: boolean;
   readonly onPress?: () => void;
 }

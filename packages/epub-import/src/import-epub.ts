@@ -72,7 +72,7 @@ const FONT_MEDIA_TYPES = new Set([
   "font/woff2",
 ]);
 
-export const EPUB_COMPILER_VERSION = 6 as const;
+export const EPUB_COMPILER_VERSION = 7 as const;
 
 export interface EpubImportWarning {
   code:
@@ -992,7 +992,14 @@ class SectionCompiler {
     if (this.styleFor(body)?.hidden) {
       return [];
     }
-    this.processContainer(body, this.contextForElement(body, {}));
+    const bodyContext = this.contextForElement(body, {});
+    // A common EPUB 2/Calibre pattern points both NCX entries and in-content
+    // directory links at the content document's <body id="…">. The body is
+    // the container we start traversing from, so it never passes through
+    // processBlockElement and must queue its own anchor explicitly. Binding it
+    // to the first emitted block preserves the document-start semantics.
+    this.queueOwnElementAnchors(body, bodyContext.noteKind);
+    this.processContainer(body, bodyContext);
     const finalBlock = this.blocks.at(-1);
     if (finalBlock) {
       this.bindPendingAnchors(finalBlock.id);
@@ -1125,6 +1132,18 @@ class SectionCompiler {
     const noteKind =
       (element.name === "a" ? undefined : noteKindForElement(element)) ??
       inheritedNoteKind;
+    this.queueOwnElementAnchors(element, noteKind);
+    for (const child of element.children) {
+      if (child.kind === "element") {
+        this.queueElementAnchors(child, noteKind);
+      }
+    }
+  }
+
+  private queueOwnElementAnchors(
+    element: ContentElement,
+    noteKind?: NoteKind,
+  ): void {
     const anchorNames = [
       contentAttribute(element, "id")?.trim(),
       element.name === "a"
@@ -1137,11 +1156,6 @@ class SectionCompiler {
         !this.pendingFragmentAnchors.has(anchorName)
       ) {
         this.pendingFragmentAnchors.set(anchorName, noteKind);
-      }
-    }
-    for (const child of element.children) {
-      if (child.kind === "element") {
-        this.queueElementAnchors(child, noteKind);
       }
     }
   }

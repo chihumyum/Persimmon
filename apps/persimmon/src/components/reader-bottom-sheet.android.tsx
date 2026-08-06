@@ -1,10 +1,10 @@
 import {
-  Box,
   Host,
   ModalBottomSheet,
   type ModalBottomSheetRef,
   RNHostView,
 } from "@expo/ui/jetpack-compose";
+import { fillMaxWidth, height } from "@expo/ui/jetpack-compose/modifiers";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import Animated, {
@@ -182,35 +182,37 @@ export function ReaderBottomSheet({
         onBackRequest={onBackPress}
         onDismissRequest={finishDismiss}
       >
-        <Box>
-          <RNHostView matchContents>
-            <View style={[styles.hostFrame, { height: hostHeight }]}>
-              {dismissible && contentSized ? (
-                <Pressable
-                  accessibilityElementsHidden
-                  importantForAccessibility="no-hide-descendants"
-                  style={StyleSheet.absoluteFill}
-                  onPress={() => {
-                    void sheetRef.current?.hide().then(finishDismiss);
-                  }}
-                />
-              ) : null}
-              <Animated.View
-                style={[
-                  styles.sizedContent,
-                  {
-                    backgroundColor: theme.panel,
-                    shadowColor: theme.controlText,
-                  },
-                  animatedSurfaceStyle,
-                ]}
-                testID={testID}
-              >
-                {children}
-              </Animated.View>
-            </View>
-          </RNHostView>
-        </Box>
+        {/* Material 3 caps a modal sheet's width on large screens. Give the
+            Compose host an explicit height while letting its width follow the
+            native sheet constraints; a match-contents host would instead keep
+            the full React Native window width and clip both sides. */}
+        <RNHostView modifiers={[fillMaxWidth(), height(hostHeight)]}>
+          <View style={[styles.hostFrame, { height: hostHeight }]}>
+            {dismissible && contentSized ? (
+              <Pressable
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+                style={StyleSheet.absoluteFill}
+                onPress={() => {
+                  void sheetRef.current?.hide().then(finishDismiss);
+                }}
+              />
+            ) : null}
+            <Animated.View
+              style={[
+                styles.sizedContent,
+                {
+                  backgroundColor: theme.panel,
+                  shadowColor: theme.controlText,
+                },
+                animatedSurfaceStyle,
+              ]}
+              testID={testID}
+            >
+              {children}
+            </Animated.View>
+          </View>
+        </RNHostView>
       </ModalBottomSheet>
     </Host>
   );
@@ -223,6 +225,7 @@ const styles = StyleSheet.create({
   hostFrame: {
     overflow: "visible",
     position: "relative",
+    width: "100%",
   },
   sizedContent: {
     borderTopLeftRadius: 30,

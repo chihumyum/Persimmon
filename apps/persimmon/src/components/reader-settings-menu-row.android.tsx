@@ -63,6 +63,7 @@ export function ReaderSettingsMenuRow<Value extends string>({
         modifiers={[
           fillMaxWidth(),
           height(rowHeight),
+          ...(disabled ? [] : [clickable(() => setExpanded(true))]),
           padding(
             uiSize.optionHorizontalInset,
             0,
@@ -97,10 +98,7 @@ export function ReaderSettingsMenuRow<Value extends string>({
             <Row
               horizontalArrangement={{ spacedBy: 4 }}
               verticalAlignment="center"
-              modifiers={[
-                padding(8, 8, 0, 8),
-                ...(disabled ? [] : [clickable(() => setExpanded(true))]),
-              ]}
+              modifiers={[padding(8, 8, 0, 8)]}
             >
               <Text
                 color={theme.secondaryText}

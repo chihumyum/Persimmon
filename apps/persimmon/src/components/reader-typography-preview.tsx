@@ -110,9 +110,7 @@ const styles = StyleSheet.create({
     marginBottom: uiSize.sheetHeaderInset,
   },
   pickerGroup: {
-    flex: 1,
-    justifyContent: "flex-end",
-    minHeight: 0,
+    flexShrink: 0,
     width: "100%",
   },
   sheetPage: {

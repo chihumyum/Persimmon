@@ -29,6 +29,15 @@ describe("Reader typography preview model", () => {
     }
   });
 
+  it("exposes the expanded large-screen adjustment ranges", () => {
+    expect(READER_TYPOGRAPHY_CONTROLS).toEqual([
+      { key: "fontSize", minimum: 12, maximum: 48, step: 1 },
+      { key: "lineHeight", minimum: 1, maximum: 3, step: 0.05 },
+      { key: "paragraphSpacing", minimum: 0, maximum: 4, step: 0.1 },
+      { key: "horizontalMargin", minimum: 0, maximum: 320, step: 4 },
+    ]);
+  });
+
   it("updates only the selected typography value", () => {
     expect(updateReaderTypography(changed, "fontSize", 24)).toEqual({
       ...changed,
