@@ -35,7 +35,7 @@ index 435cb67dc6c8a2a0db1602e0374f3ed07bec9dea..ee846164a2faf2863af58448cfc37ea2
      }
 
 diff --git a/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt b/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
-index e800ec2adafaa7120724b30b65ef37bfbe8a72c2..51ad10ff143f0a2b6a7ba5a7ceb4379734064904 100644
+index e800ec2adafaa7120724b30b65ef37bfbe8a72c2..dddb23d211fabae0fd5049fb825841cf61978d5c 100644
 --- a/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
 +++ b/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
 @@ -3,6 +3,13 @@
@@ -43,93 +43,49 @@ index e800ec2adafaa7120724b30b65ef37bfbe8a72c2..51ad10ff143f0a2b6a7ba5a7ceb43797
 
  import android.graphics.Color
 +import android.os.Build
-+import android.view.Gravity
-+import android.view.View
-+import android.view.ViewGroup
 +import android.view.Window
-+import android.widget.FrameLayout
 +import androidx.activity.compose.BackHandler
++import androidx.compose.foundation.layout.WindowInsets
++import androidx.compose.foundation.layout.WindowInsetsSides
++import androidx.compose.foundation.layout.only
++import androidx.compose.foundation.layout.safeDrawing
  import androidx.compose.material3.BottomSheetDefaults
  import androidx.compose.material3.ExperimentalMaterial3Api
  import androidx.compose.material3.ModalBottomSheet
-@@ -11,7 +18,13 @@ import androidx.compose.material3.contentColorFor
+@@ -11,7 +18,10 @@ import androidx.compose.material3.contentColorFor
  import androidx.compose.material3.rememberModalBottomSheetState
  import androidx.compose.runtime.Composable
  import androidx.compose.runtime.LaunchedEffect
 +import androidx.compose.runtime.SideEffect
  import androidx.compose.runtime.rememberCoroutineScope
-+import androidx.compose.ui.graphics.toArgb
 +import androidx.compose.ui.platform.LocalView
 +import androidx.compose.ui.window.DialogWindowProvider
-+import androidx.core.view.ViewCompat
-+import androidx.core.view.WindowInsetsCompat
  import expo.modules.kotlin.records.Field
  import expo.modules.kotlin.records.Record
  import expo.modules.kotlin.types.OptimizedRecord
-@@ -22,6 +35,52 @@ import expo.modules.kotlin.views.OptimizedComposeProps
+@@ -22,6 +32,13 @@ import expo.modules.kotlin.views.OptimizedComposeProps
  import kotlinx.coroutines.withContext
  import kotlin.coroutines.cancellation.CancellationException
 
-+private const val NAVIGATION_BAR_BACKGROUND_TAG =
-+  "expo-ui-modal-bottom-sheet-navigation-bar-background"
-+
-+private fun updateNavigationBarBackground(
-+  background: View,
-+  insets: WindowInsetsCompat
-+) {
-+  val navigationBarHeight =
-+    insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
-+  background.layoutParams = FrameLayout.LayoutParams(
-+    ViewGroup.LayoutParams.MATCH_PARENT,
-+    navigationBarHeight,
-+    Gravity.BOTTOM
-+  )
-+}
-+
-+private fun configureNavigationBar(window: Window, color: Int) {
++private fun configureNavigationBar(window: Window) {
 +  window.navigationBarColor = Color.TRANSPARENT
 +  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
 +    window.isNavigationBarContrastEnforced = false
 +  }
-+
-+  val decorView = window.decorView as? ViewGroup ?: return
-+  val background = decorView.findViewWithTag<View>(NAVIGATION_BAR_BACKGROUND_TAG)
-+    ?: View(decorView.context).apply {
-+      tag = NAVIGATION_BAR_BACKGROUND_TAG
-+      importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-+      layoutParams = FrameLayout.LayoutParams(
-+        ViewGroup.LayoutParams.MATCH_PARENT,
-+        0,
-+        Gravity.BOTTOM
-+      )
-+      decorView.addView(this)
-+    }
-+  background.setBackgroundColor(color)
-+  background.bringToFront()
-+  ViewCompat.setOnApplyWindowInsetsListener(background) { _, insets ->
-+    updateNavigationBarBackground(background, insets)
-+    insets
-+  }
-+  ViewCompat.getRootWindowInsets(decorView)?.let { insets ->
-+    updateNavigationBarBackground(background, insets)
-+  }
-+  ViewCompat.requestApplyInsets(background)
 +}
 +
  @OptimizedRecord
  data class ModalBottomSheetPropertiesRecord(
    @Field val shouldDismissOnBackPress: Boolean = true,
-@@ -34,7 +93,9 @@ data class ModalBottomSheetViewProps(
-   val initialFullyExpanded: Boolean = false,
+@@ -35,6 +52,7 @@ data class ModalBottomSheetViewProps(
    val containerColor: Color? = null,
    val contentColor: Color? = null,
-+  val navigationBarColor: Color? = null,
    val scrimColor: Color? = null,
 +  val interceptBackPress: Boolean = false,
    val showDragHandle: Boolean = true,
    val sheetGesturesEnabled: Boolean = true,
    val properties: ModalBottomSheetPropertiesRecord = ModalBottomSheetPropertiesRecord(),
-@@ -47,7 +108,8 @@ fun FunctionalComposableScope.ModalBottomSheetContent(
+@@ -47,7 +65,8 @@ fun FunctionalComposableScope.ModalBottomSheetContent(
    hide: AsyncFunctionHandle<Unit>,
    expand: AsyncFunctionHandle<Unit>,
    partialExpand: AsyncFunctionHandle<Unit>,
@@ -139,7 +95,7 @@ index e800ec2adafaa7120724b30b65ef37bfbe8a72c2..51ad10ff143f0a2b6a7ba5a7ceb43797
  ) {
    val sheetState = rememberModalBottomSheetState(props.skipPartiallyExpanded)
    val scope = rememberCoroutineScope()
-@@ -107,11 +169,28 @@ fun FunctionalComposableScope.ModalBottomSheetContent(
+@@ -107,11 +126,27 @@ fun FunctionalComposableScope.ModalBottomSheetContent(
        else -> null
      },
      properties = ModalBottomSheetProperties(
@@ -148,29 +104,28 @@ index e800ec2adafaa7120724b30b65ef37bfbe8a72c2..51ad10ff143f0a2b6a7ba5a7ceb43797
 +        props.properties.shouldDismissOnBackPress && !props.interceptBackPress,
        shouldDismissOnClickOutside = props.properties.shouldDismissOnClickOutside
      ),
++    // The hosted React Native surface owns the bottom safe-area padding. Keep
++    // Material's top inset for a fully expanded sheet, but let the one animated
++    // surface draw continuously behind gesture navigation.
++    contentWindowInsets = { WindowInsets.safeDrawing.only(WindowInsetsSides.Top) },
      modifier = ModifierRegistry.applyModifiers(props.modifiers, appContext, composableScope, globalEventDispatcher)
    ) {
 +    BackHandler(enabled = props.interceptBackPress) {
 +      onBackRequest()
 +    }
-+    val navigationBarColor = props.navigationBarColor.composeOrNull
 +    val view = LocalView.current
 +    SideEffect {
-+      if (navigationBarColor != null) {
-+        var parent = view.parent
-+        while (parent != null && parent !is DialogWindowProvider) {
-+          parent = parent.parent
-+        }
-+        (parent as? DialogWindowProvider)?.window?.let { window ->
-+          configureNavigationBar(window, navigationBarColor.toArgb())
-+        }
++      var parent = view.parent
++      while (parent != null && parent !is DialogWindowProvider) {
++        parent = parent.parent
 +      }
++      (parent as? DialogWindowProvider)?.window?.let(::configureNavigationBar)
 +    }
      Children(UIComposableScope(), filter = { !isSlotView(it) })
    }
 
 diff --git a/build/jetpack-compose/ModalBottomSheet/index.d.ts b/build/jetpack-compose/ModalBottomSheet/index.d.ts
-index ddf89aa5ac11610459f6db8abd96a3673f01054f..42d9185a21d55351e86947c33017f1be6d7f0f62 100644
+index ddf89aa5ac11610459f6db8abd96a3673f01054f..ceb651192b4bbde1023901921f943f37e936d4a7 100644
 --- a/build/jetpack-compose/ModalBottomSheet/index.d.ts
 +++ b/build/jetpack-compose/ModalBottomSheet/index.d.ts
 @@ -44,6 +44,12 @@ export interface ModalBottomSheetProps {
@@ -186,19 +141,8 @@ index ddf89aa5ac11610459f6db8abd96a3673f01054f..42d9185a21d55351e86947c33017f1be
      /**
       * Immediately opens the bottom sheet in full screen.
       * @default false
-@@ -63,6 +69,10 @@ export interface ModalBottomSheetProps {
-      * The preferred color of the content inside the bottom sheet.
-      */
-     contentColor?: ColorValue;
-+    /**
-+     * The background color of the Android system navigation bar while the sheet is visible.
-+     */
-+    navigationBarColor?: ColorValue;
-     /**
-      * The color of the scrim overlay behind the bottom sheet.
-      */
 diff --git a/build/swift-ui/modifiers/presentationModifiers.d.ts b/build/swift-ui/modifiers/presentationModifiers.d.ts
-index 36de99f5d92b1b0f2c340ba4508109f1a0b6045b..86867a437428ba3ae015d33265c6b370b700f6f5 100644
+index 36de99f5d92b1b0f2c340ba4508109f1a0b6045b..b884f8e4a77cc3b98518379d1f12e6dc4720c1f6 100644
 --- a/build/swift-ui/modifiers/presentationModifiers.d.ts
 +++ b/build/swift-ui/modifiers/presentationModifiers.d.ts
 @@ -17,6 +17,7 @@ export type PresentationDetent = 'medium' | 'large' | {
@@ -236,7 +180,7 @@ index 3cba55eeb8648170464bdeaad9d1515141d57c92..0ebfddaa1dea66cfe4db659048f58939
    }
  }
 diff --git a/ios/Modifiers/PresentationModifiers.swift b/ios/Modifiers/PresentationModifiers.swift
-index f38528425a883a5d4dc0c1ad85e62dd278fc24b3..3022d2108d2cc1768e7e1ef0afedd39cb0488043 100644
+index f38528425a883a5d4dc0c1ad85e62dd278fc24b3..3deb9b0757cd9c23081e846cdbcf4d79c6f010ed 100644
 --- a/ios/Modifiers/PresentationModifiers.swift
 +++ b/ios/Modifiers/PresentationModifiers.swift
 @@ -41,6 +41,7 @@ private func parsePresentationDetent(_ detent: Either<PresentationDetentPreset,
@@ -340,7 +284,7 @@ index edd61228b9881de7ab542e535124fef67fc0b6ec..4083e3f2978d5ee0d28ba96a06030dd4
    ]);
 
 diff --git a/src/jetpack-compose/ModalBottomSheet/index.tsx b/src/jetpack-compose/ModalBottomSheet/index.tsx
-index ea749156c15b4929ac692dc0a513d7b00430552c..a865d66c2ac4e48ade348b01bd400f2aeb52c2e5 100644
+index ea749156c15b4929ac692dc0a513d7b00430552c..504871d9310383ebd2d3801cf29e6b596863e14d 100644
 --- a/src/jetpack-compose/ModalBottomSheet/index.tsx
 +++ b/src/jetpack-compose/ModalBottomSheet/index.tsx
 @@ -57,6 +57,12 @@ export interface ModalBottomSheetProps {
@@ -356,18 +300,7 @@ index ea749156c15b4929ac692dc0a513d7b00430552c..a865d66c2ac4e48ade348b01bd400f2a
    /**
     * Immediately opens the bottom sheet in full screen.
     * @default false
-@@ -76,6 +82,10 @@ export interface ModalBottomSheetProps {
-    * The preferred color of the content inside the bottom sheet.
-    */
-   contentColor?: ColorValue;
-+  /**
-+   * The background color of the Android system navigation bar while the sheet is visible.
-+   */
-+  navigationBarColor?: ColorValue;
-   /**
-    * The color of the scrim overlay behind the bottom sheet.
-    */
-@@ -101,7 +111,12 @@ export interface ModalBottomSheetProps {
+@@ -101,7 +107,12 @@ export interface ModalBottomSheetProps {
    modifiers?: ModifierConfig[];
  }
 
@@ -381,7 +314,7 @@ index ea749156c15b4929ac692dc0a513d7b00430552c..a865d66c2ac4e48ade348b01bd400f2a
    onDismissRequest: () => void;
  };
 
-@@ -111,13 +126,20 @@ const ModalBottomSheetNativeView: ComponentType<NativeModalBottomSheetProps> = r
+@@ -111,13 +122,20 @@ const ModalBottomSheetNativeView: ComponentType<NativeModalBottomSheetProps> = r
  );
 
  function transformProps(props: ModalBottomSheetProps): NativeModalBottomSheetProps {

@@ -173,6 +173,7 @@ export function LibrarySettingsModal({
 }: LibrarySettingsModalProps) {
   const { i18n, t } = useTranslation();
   const { bottom: bottomInset } = useSafeAreaInsets();
+  const contentBottomInset = Platform.OS === "android" ? 0 : bottomInset;
   const [legalDocument, setLegalDocument] = useState<LegalDocument>();
   const settingsScrollRef = useRef<ScrollView>(null);
   const settingsScrollOffsetRef = useRef(0);
@@ -334,7 +335,7 @@ export function LibrarySettingsModal({
       <ScrollView
         contentContainerStyle={[
           styles.settingsList,
-          { paddingBottom: bottomInset + uiSpace.xxl },
+          { paddingBottom: contentBottomInset + uiSpace.xxl },
         ]}
         ref={settingsScrollRef}
         showsVerticalScrollIndicator={false}

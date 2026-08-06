@@ -2,6 +2,7 @@ import type { BookNavigationItem, BookPosition } from "@persimmon/book-core";
 import type { ReaderTheme } from "@persimmon/reader-skia";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -52,6 +53,7 @@ export function TableOfContentsPanel({
   onSelect,
 }: TableOfContentsPanelProps) {
   const { t } = useTranslation();
+  const contentBottomInset = Platform.OS === "android" ? 0 : bottomInset;
   const [sheetVisible, setSheetVisible] = useState(visible);
   const scrollViewRef = useRef<ScrollView>(null);
   const viewportHeightRef = useRef(0);
@@ -111,7 +113,7 @@ export function TableOfContentsPanel({
         <ScrollView
           contentContainerStyle={[
             styles.rows,
-            { paddingBottom: bottomInset + uiSpace.xxl },
+            { paddingBottom: contentBottomInset + uiSpace.xxl },
           ]}
           onContentSizeChange={scrollToCurrent}
           onLayout={(event: LayoutChangeEvent) => {

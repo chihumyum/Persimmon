@@ -1,6 +1,6 @@
 import type { ReaderTheme } from "@persimmon/reader-skia";
 import { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { Platform, ScrollView, StyleSheet, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -43,6 +43,7 @@ export function BookDetailsModal({
 }: BookDetailsModalProps) {
   const { t } = useTranslation();
   const { bottom: bottomInset } = useSafeAreaInsets();
+  const contentBottomInset = Platform.OS === "android" ? 0 : bottomInset;
   const [displayEntry, setDisplayEntry] = useState(entry);
 
   useEffect(() => {
@@ -63,7 +64,7 @@ export function BookDetailsModal({
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: bottomInset + uiSpace.xxl },
+          { paddingBottom: contentBottomInset + uiSpace.xxl },
         ]}
         showsVerticalScrollIndicator={false}
         style={[styles.host, { backgroundColor: theme.panel }]}

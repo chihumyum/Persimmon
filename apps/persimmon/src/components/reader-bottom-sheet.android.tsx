@@ -4,7 +4,6 @@ import {
   type ModalBottomSheetRef,
   RNHostView,
 } from "@expo/ui/jetpack-compose";
-import { fillMaxWidth, height } from "@expo/ui/jetpack-compose/modifiers";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import Animated, {
@@ -14,10 +13,15 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { ReaderBottomSheetProps } from "./reader-bottom-sheet.types";
 
 const SHEET_RESIZE_DURATION_MS = 240;
+// Material 3's ModalBottomSheet uses BottomSheetDefaults.SheetMaxWidth.
+// Matching that constraint keeps the hosted RN tree from measuring to the
+// full tablet window and being clipped by the native sheet surface.
+const ANDROID_SHEET_MAX_WIDTH = 640;
 
 function resolveSnapHeight(
   snapPoint: number | string,
@@ -56,6 +60,7 @@ export function ReaderBottomSheet({
   onDismiss,
 }: ReaderBottomSheetProps) {
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const { bottom: bottomInset } = useSafeAreaInsets();
   const sheetRef = useRef<ModalBottomSheetRef>(null);
   const visibleRef = useRef(visible);
   const onDismissRef = useRef(onDismiss);
@@ -87,6 +92,7 @@ export function ReaderBottomSheet({
     [androidHeight, snapPoints, windowHeight],
   );
   const visibleHeight = androidHeight ?? hostHeight;
+  const sheetContentWidth = Math.min(windowWidth, ANDROID_SHEET_MAX_WIDTH);
   const animatedHeight = useSharedValue(visibleHeight);
   const animatedSurfaceStyle = useAnimatedStyle(() => ({
     height: animatedHeight.value,
@@ -171,7 +177,6 @@ export function ReaderBottomSheet({
         containerColor="transparent"
         contentColor={theme.controlText}
         initialFullyExpanded={hasMultipleSnapPoints && targetIndex === maxIndex}
-        navigationBarColor={theme.panel}
         properties={{
           shouldDismissOnBackPress: dismissible,
           shouldDismissOnClickOutside: dismissible,
@@ -182,12 +187,18 @@ export function ReaderBottomSheet({
         onBackRequest={onBackPress}
         onDismissRequest={finishDismiss}
       >
-        {/* Material 3 caps a modal sheet's width on large screens. Give the
-            Compose host an explicit height while letting its width follow the
-            native sheet constraints; a match-contents host would instead keep
-            the full React Native window width and clip both sides. */}
-        <RNHostView modifiers={[fillMaxWidth(), height(hostHeight)]}>
-          <View style={[styles.hostFrame, { height: hostHeight }]}>
+        {/* RNHostView's fill-parent mode consumes the dialog's full height
+            before explicit modifiers are applied, which top-aligns the RN
+            content and leaves a gap below it. Match the content instead so
+            Material owns the bottom anchor, while mirroring its native 640dp
+            width cap to avoid tablet-side clipping. */}
+        <RNHostView matchContents>
+          <View
+            style={[
+              styles.hostFrame,
+              { height: hostHeight, width: sheetContentWidth },
+            ]}
+          >
             {dismissible && contentSized ? (
               <Pressable
                 accessibilityElementsHidden
@@ -209,7 +220,11 @@ export function ReaderBottomSheet({
               ]}
               testID={testID}
             >
-              {children}
+              <View
+                style={[styles.safeContent, { paddingBottom: bottomInset }]}
+              >
+                {children}
+              </View>
             </Animated.View>
           </View>
         </RNHostView>
@@ -226,6 +241,9 @@ const styles = StyleSheet.create({
     overflow: "visible",
     position: "relative",
     width: "100%",
+  },
+  safeContent: {
+    flex: 1,
   },
   sizedContent: {
     borderTopLeftRadius: 30,

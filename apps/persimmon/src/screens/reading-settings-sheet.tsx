@@ -21,6 +21,7 @@ import {
   Alert,
   Animated,
   Easing,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -464,6 +465,7 @@ export function ReadingSettingsSheet({
 }: ReadingSettingsSheetProps) {
   const { t } = useTranslation();
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const contentBottomInset = Platform.OS === "android" ? 0 : bottomInset;
   const settingsSnapPoints = useMemo<(string | number)[]>(() => {
     const isLargeLandscape =
       windowWidth > windowHeight && Math.min(windowWidth, windowHeight) >= 600;
@@ -647,7 +649,7 @@ export function ReadingSettingsSheet({
       return (
         <FontPickerPage
           appearance={appearance}
-          bottomInset={bottomInset}
+          bottomInset={contentBottomInset}
           fontFamilies={fontFamilies}
           theme={theme}
           onAppearanceChange={onAppearanceChange}
@@ -673,7 +675,7 @@ export function ReadingSettingsSheet({
       <ScrollView
         contentContainerStyle={[
           styles.settingsList,
-          { paddingBottom: bottomInset + uiSpace.xxl },
+          { paddingBottom: contentBottomInset + uiSpace.xxl },
         ]}
         showsVerticalScrollIndicator={false}
       >
