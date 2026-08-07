@@ -9,9 +9,12 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "environment": "preview",
+      "autoIncrement": true
     },
     "production": {
+      "environment": "production",
       "autoIncrement": true
     }
   },

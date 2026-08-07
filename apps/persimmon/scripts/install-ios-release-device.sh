@@ -13,6 +13,7 @@ NODE_ENV=production xcodebuild \
   -configuration Release \
   -destination "platform=iOS,name=$device_name" \
   -derivedDataPath "$derived_data" \
+  -allowProvisioningUpdates \
   build
 
 if [[ ! -d "$app_path" ]]; then

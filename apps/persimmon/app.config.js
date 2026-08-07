@@ -4,6 +4,8 @@ const DEFAULT_GOOGLE_IOS_CLIENT_ID =
   "51752452441-gueqiurk1lrkeamljiqntn28ed6n5gg7.apps.googleusercontent.com";
 const DEFAULT_GOOGLE_ANDROID_CLIENT_ID =
   "51752452441-8q55ns0e3k8h47q9h5uqa3487rui5639.apps.googleusercontent.com";
+const DEFAULT_SUPPORT_EMAIL = "support@persimmon.cc";
+const DEFAULT_APPLE_TEAM_ID = "9843R35CWM";
 
 function configuredClientId(value) {
   return (
@@ -35,7 +37,8 @@ module.exports = ({ config }) => {
   const androidClientId =
     process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ??
     DEFAULT_GOOGLE_ANDROID_CLIENT_ID;
-  const supportEmail = process.env.EXPO_PUBLIC_SUPPORT_EMAIL;
+  const supportEmail =
+    process.env.EXPO_PUBLIC_SUPPORT_EMAIL ?? DEFAULT_SUPPORT_EMAIL;
   const plugins = [
     ...(config.plugins ?? []),
     "./plugins/with-google-signin-modular-headers",
@@ -51,6 +54,10 @@ module.exports = ({ config }) => {
   return {
     ...config,
     plugins,
+    ios: {
+      ...(config.ios ?? {}),
+      appleTeamId: config.ios?.appleTeamId ?? DEFAULT_APPLE_TEAM_ID,
+    },
     extra: {
       ...(config.extra ?? {}),
       googleDrive: {

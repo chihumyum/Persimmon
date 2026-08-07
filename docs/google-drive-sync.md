@@ -46,6 +46,8 @@ ID；iOS 和 Android Client ID 已配置。
    - 本地生成过 Android 工程后可在 `apps/persimmon/android` 运行
      `./gradlew signingReport` 查看 debug SHA-1；
    - EAS 构建应从对应 Android keystore 取得 SHA-1，并为该签名另建或更新 Client；
+   - 当前 EAS preview / production 共用 keystore 的 SHA-1 为
+     `0F:04:1A:5A:94:B6:61:24:70:11:19:13:16:6B:5D:AA:C9:3B:E0:62`；
    - Client ID：
      `51752452441-8q55ns0e3k8h47q9h5uqa3487rui5639.apps.googleusercontent.com`。
 
