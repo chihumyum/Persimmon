@@ -102,6 +102,15 @@ export const zhHans = {
     error: {
       title: "无法完成操作",
     },
+    importBanner: {
+      accessibility: "书籍导入进度",
+      complete: "导入完成",
+      importing: "正在导入书籍",
+      importingBook: "正在导入第 {{current}} / {{total}} 本 ·《{{title}}》",
+      processing: "已处理 {{completed}} / {{total}} 本…",
+      result: "已导入 {{imported}} 本书",
+      resultWithFailures: "已导入 {{imported}} 本，{{failed}} 本失败",
+    },
     search: {
       placeholder: "搜索书名或作者",
       clearAccessibility: "清空搜索",

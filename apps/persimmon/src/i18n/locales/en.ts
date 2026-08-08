@@ -109,6 +109,15 @@ export const en = {
     error: {
       title: "Something Went Wrong",
     },
+    importBanner: {
+      accessibility: "Book import progress",
+      complete: "Import Complete",
+      importing: "Importing Books",
+      importingBook: "Importing book {{current}} of {{total}} · {{title}}",
+      processing: "Processed {{completed}} of {{total}} books…",
+      result: "Imported {{imported}} books",
+      resultWithFailures: "Imported {{imported}} · {{failed}} failed",
+    },
     search: {
       placeholder: "Search titles or authors",
       clearAccessibility: "Clear search",

@@ -108,6 +108,16 @@ export const fr = {
       body: "Choisissez une autre catégorie ou importez un EPUB.",
     },
     error: { title: "Un problème est survenu" },
+    importBanner: {
+      accessibility: "Progression de l’importation des livres",
+      complete: "Importation terminée",
+      importing: "Importation des livres",
+      importingBook:
+        "Importation du livre {{current}} sur {{total}} · {{title}}",
+      processing: "{{completed}} livres sur {{total}} traités…",
+      result: "{{imported}} livres importés",
+      resultWithFailures: "{{imported}} importés · {{failed}} en échec",
+    },
     search: {
       placeholder: "Rechercher des titres ou des auteurs",
       clearAccessibility: "Effacer la recherche",

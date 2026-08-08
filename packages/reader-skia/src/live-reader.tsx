@@ -4161,6 +4161,10 @@ export function LiveReader({
     resolvedAppearance.lineHeight,
     resolvedAppearance.paragraphSpacing,
     resolvedAppearance.horizontalMargin,
+    // Progress decorations are baked into page-turn textures and native Pager
+    // stock. Changing their placement must retire the complete render
+    // generation so both caches destroy their old styled captures.
+    resolvedAppearance.progressDisplay,
     layout,
     theme.name,
     theme.colorScheme,

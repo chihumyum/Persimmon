@@ -93,4 +93,46 @@ describe("importEpubBatch", () => {
       "import second.epub",
     ]);
   });
+
+  it("reports determinate per-book progress across successes and failures", async () => {
+    const progress = vi.fn();
+
+    await importEpubBatch(
+      [
+        pickedEpub("first.epub", new Uint8Array([1])),
+        pickedEpub("broken.epub", new Error("read failed")),
+      ],
+      async ({ fileName }) => fileName,
+      progress,
+    );
+
+    expect(progress.mock.calls.map(([value]) => value)).toEqual([
+      {
+        completedBooks: 0,
+        failedBooks: 0,
+        importedBooks: 0,
+        totalBooks: 2,
+        currentFileName: "first.epub",
+      },
+      {
+        completedBooks: 1,
+        failedBooks: 0,
+        importedBooks: 1,
+        totalBooks: 2,
+      },
+      {
+        completedBooks: 1,
+        failedBooks: 0,
+        importedBooks: 1,
+        totalBooks: 2,
+        currentFileName: "broken.epub",
+      },
+      {
+        completedBooks: 2,
+        failedBooks: 1,
+        importedBooks: 1,
+        totalBooks: 2,
+      },
+    ]);
+  });
 });

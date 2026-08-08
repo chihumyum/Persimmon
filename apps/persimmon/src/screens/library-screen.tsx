@@ -38,6 +38,10 @@ import {
   saveBookMetadataVisible,
 } from "../library/library-ui-preferences";
 import {
+  importProgressFraction,
+  type LibraryImportStatus,
+} from "../library/library-import-banner";
+import {
   librarySyncBannerPlacement,
   shouldAnnounceSyncCompletion,
   syncProgressFraction,
@@ -119,33 +123,83 @@ function SyncBanner({
   );
 }
 
-function FloatingSyncBanner({
-  bottom,
-  horizontalPadding,
+function ImportBanner({
   status,
   theme,
-  visible,
+}: {
+  readonly status: LibraryImportStatus;
+  readonly theme: ReaderTheme;
+}) {
+  const { t } = useTranslation();
+  const current = Math.min(status.totalBooks, status.completedBooks + 1);
+  const description =
+    status.phase === "complete"
+      ? status.failedBooks > 0
+        ? t("library.importBanner.resultWithFailures", {
+            failed: status.failedBooks,
+            imported: status.importedBooks,
+          })
+        : t("library.importBanner.result", {
+            imported: status.importedBooks,
+          })
+      : status.currentFileName
+        ? t("library.importBanner.importingBook", {
+            current,
+            title: status.currentFileName,
+            total: status.totalBooks,
+          })
+        : t("library.importBanner.processing", {
+            completed: status.completedBooks,
+            total: status.totalBooks,
+          });
+  return (
+    <LibraryNativeSyncNotice
+      description={description}
+      floating
+      kind={status.phase === "complete" ? "success" : "syncing"}
+      openAccessibilityLabel={t("library.importBanner.accessibility")}
+      progress={importProgressFraction(status)}
+      theme={theme}
+      title={
+        status.phase === "complete"
+          ? t("library.importBanner.complete")
+          : t("library.importBanner.importing")
+      }
+      onOpen={() => undefined}
+    />
+  );
+}
+
+type FloatingLibraryNotice =
+  | { readonly kind: "import"; readonly status: LibraryImportStatus }
+  | { readonly kind: "sync"; readonly status: GoogleDriveSyncStatus };
+
+function FloatingLibraryBanner({
+  bottom,
+  horizontalPadding,
+  notice,
+  theme,
   onClose,
   onOpenSettings,
 }: {
   readonly bottom: number;
   readonly horizontalPadding: number;
-  readonly status: GoogleDriveSyncStatus;
+  readonly notice?: FloatingLibraryNotice;
   readonly theme: ReaderTheme;
-  readonly visible: boolean;
   readonly onClose?: () => void;
   readonly onOpenSettings: () => void;
 }) {
+  const visible = notice !== undefined;
   const transition = useRef(new Animated.Value(0)).current;
   const mountedRef = useRef(visible);
   const [mounted, setMounted] = useState(visible);
-  const [displayStatus, setDisplayStatus] = useState(status);
+  const [displayNotice, setDisplayNotice] = useState(notice);
 
   useEffect(() => {
-    if (visible) {
-      setDisplayStatus(status);
+    if (notice) {
+      setDisplayNotice(notice);
     }
-  }, [status, visible]);
+  }, [notice]);
 
   useEffect(() => {
     let frame = 0;
@@ -211,13 +265,17 @@ function FloatingSyncBanner({
       ]}
     >
       <View style={styles.syncBannerFloatingWidth}>
-        <SyncBanner
-          floating
-          status={displayStatus}
-          theme={theme}
-          onClose={onClose}
-          onOpenSettings={onOpenSettings}
-        />
+        {displayNotice?.kind === "import" ? (
+          <ImportBanner status={displayNotice.status} theme={theme} />
+        ) : displayNotice?.kind === "sync" ? (
+          <SyncBanner
+            floating
+            status={displayNotice.status}
+            theme={theme}
+            onClose={onClose}
+            onOpenSettings={onOpenSettings}
+          />
+        ) : null}
       </View>
     </Animated.View>
   );
@@ -229,6 +287,7 @@ export interface LibraryScreenProps {
   readonly dataClearing: "local" | "cloud" | null;
   readonly readerThemeName: ReaderThemeName;
   readonly error: string | null;
+  readonly importStatus?: LibraryImportStatus;
   readonly importing: boolean;
   readonly languagePreference: AppLanguagePreference;
   readonly openingBookId: string | null;
@@ -257,6 +316,7 @@ export function LibraryScreen({
   dataClearing,
   readerThemeName,
   error,
+  importStatus,
   importing,
   languagePreference,
   openingBookId,
@@ -334,11 +394,17 @@ export function LibraryScreen({
   );
   const syncBannerPlacement = librarySyncBannerPlacement(syncStatus, {
     connectionPromptDismissed,
+    importNoticeVisible: importStatus !== undefined,
     syncCompletionVisible: syncCompletionVisible || enteringSyncCompletion,
   });
   const floatingSyncBannerVisible =
     syncBannerPlacement === "floating" &&
     !(syncStatus.phase === "error" && syncErrorDismissed);
+  const floatingNotice = importStatus
+    ? ({ kind: "import", status: importStatus } as const)
+    : floatingSyncBannerVisible
+      ? ({ kind: "sync", status: syncStatus } as const)
+      : undefined;
   const sortLabel =
     sortOptions.find((option) => option.value === sort)?.label ??
     t("library.sort.default");
@@ -498,7 +564,7 @@ export function LibraryScreen({
             paddingTop: topControlOffset,
           },
           compact && styles.contentCompact,
-          floatingSyncBannerVisible && styles.contentWithFloatingSyncBanner,
+          floatingNotice && styles.contentWithFloatingSyncBanner,
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -623,12 +689,11 @@ export function LibraryScreen({
         ) : null}
       </ScrollView>
 
-      <FloatingSyncBanner
+      <FloatingLibraryBanner
         bottom={Math.max(insets.bottom, uiSpace.md)}
         horizontalPadding={horizontalPadding}
-        status={syncStatus}
+        notice={floatingNotice}
         theme={theme}
-        visible={floatingSyncBannerVisible}
         onClose={
           syncStatus.phase === "error"
             ? () => setSyncErrorDismissed(true)

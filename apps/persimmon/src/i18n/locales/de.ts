@@ -108,6 +108,16 @@ export const de = {
       body: "Wähle eine andere Kategorie oder importiere ein EPUB.",
     },
     error: { title: "Etwas ist schiefgelaufen" },
+    importBanner: {
+      accessibility: "Fortschritt des Buchimports",
+      complete: "Import abgeschlossen",
+      importing: "Bücher werden importiert",
+      importingBook:
+        "Buch {{current}} von {{total}} wird importiert · {{title}}",
+      processing: "{{completed}} von {{total}} Büchern verarbeitet…",
+      result: "{{imported}} Bücher importiert",
+      resultWithFailures: "{{imported}} importiert · {{failed}} fehlgeschlagen",
+    },
     search: {
       placeholder: "Titel oder Autoren suchen",
       clearAccessibility: "Suche löschen",

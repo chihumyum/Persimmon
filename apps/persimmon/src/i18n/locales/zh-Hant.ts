@@ -100,6 +100,15 @@ export const zhHant = {
     },
     empty: { title: "這裡還沒有書", body: "選擇其他分類，或匯入 EPUB。" },
     error: { title: "發生問題" },
+    importBanner: {
+      accessibility: "書籍匯入進度",
+      complete: "匯入完成",
+      importing: "正在匯入書籍",
+      importingBook: "正在匯入第 {{current}} / {{total}} 本 ·《{{title}}》",
+      processing: "已處理 {{completed}} / {{total}} 本…",
+      result: "已匯入 {{imported}} 本書",
+      resultWithFailures: "已匯入 {{imported}} 本，{{failed}} 本失敗",
+    },
     search: {
       placeholder: "搜尋書名或作者",
       clearAccessibility: "清除搜尋",

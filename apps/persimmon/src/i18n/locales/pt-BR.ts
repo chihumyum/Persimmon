@@ -107,6 +107,15 @@ export const ptBR = {
       body: "Escolha outra categoria ou importe um EPUB.",
     },
     error: { title: "Algo deu errado" },
+    importBanner: {
+      accessibility: "Progresso da importação de livros",
+      complete: "Importação concluída",
+      importing: "Importando livros",
+      importingBook: "Importando livro {{current}} de {{total}} · {{title}}",
+      processing: "{{completed}} de {{total}} livros processados…",
+      result: "{{imported}} livros importados",
+      resultWithFailures: "{{imported}} importados · {{failed}} com falha",
+    },
     search: {
       placeholder: "Buscar títulos ou autores",
       clearAccessibility: "Limpar busca",

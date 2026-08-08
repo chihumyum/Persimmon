@@ -85,6 +85,30 @@ describe("librarySyncBannerPlacement", () => {
       ),
     ).toBe("floating");
   });
+
+  it("lets an import notice replace every Google Drive notice", () => {
+    const context = {
+      connectionPromptDismissed: false,
+      importNoticeVisible: true,
+      syncCompletionVisible: true,
+    } as const;
+
+    expect(librarySyncBannerPlacement({ phase: "syncing" }, context)).toBe(
+      "hidden",
+    );
+    expect(librarySyncBannerPlacement({ phase: "disconnected" }, context)).toBe(
+      "hidden",
+    );
+    expect(
+      librarySyncBannerPlacement(
+        {
+          phase: "idle",
+          lastSyncedAt: "2026-08-02T00:00:00.000Z",
+        },
+        context,
+      ),
+    ).toBe("hidden");
+  });
 });
 
 describe("shouldAnnounceSyncCompletion", () => {

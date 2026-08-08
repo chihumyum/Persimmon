@@ -110,6 +110,15 @@ export const es = {
     error: {
       title: "Algo salió mal",
     },
+    importBanner: {
+      accessibility: "Progreso de importación de libros",
+      complete: "Importación completada",
+      importing: "Importando libros",
+      importingBook: "Importando libro {{current}} de {{total}} · {{title}}",
+      processing: "{{completed}} de {{total}} libros procesados…",
+      result: "{{imported}} libros importados",
+      resultWithFailures: "{{imported}} importados · {{failed}} con error",
+    },
     search: {
       placeholder: "Buscar títulos o autores",
       clearAccessibility: "Borrar búsqueda",

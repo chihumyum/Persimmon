@@ -9,6 +9,7 @@ export const SYNC_COMPLETION_VISIBLE_MS = 2_000;
 
 export interface LibrarySyncBannerContext {
   readonly connectionPromptDismissed: boolean | undefined;
+  readonly importNoticeVisible?: boolean;
   readonly syncCompletionVisible: boolean;
 }
 
@@ -16,6 +17,9 @@ export function librarySyncBannerPlacement(
   status: GoogleDriveSyncStatus,
   context: LibrarySyncBannerContext,
 ): LibrarySyncBannerPlacement {
+  if (context.importNoticeVisible) {
+    return "hidden";
+  }
   switch (status.phase) {
     case "loading":
     case "unconfigured":

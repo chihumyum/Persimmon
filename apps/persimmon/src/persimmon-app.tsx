@@ -32,6 +32,10 @@ import {
   type LibraryBookSummary,
   type OpenedLibraryBook,
 } from "./library/repository";
+import {
+  IMPORT_COMPLETION_VISIBLE_MS,
+  type LibraryImportStatus,
+} from "./library/library-import-banner";
 import { ProgressWriteQueue } from "./library/progress-write-queue";
 import {
   DEFAULT_READER_SETTINGS,
@@ -145,6 +149,7 @@ export function PersimmonApp() {
   );
   const readerSettingsRef = useRef<ReaderSettings>(DEFAULT_READER_SETTINGS);
   const [importing, setImporting] = useState(false);
+  const [importStatus, setImportStatus] = useState<LibraryImportStatus>();
   const [openingBookId, setOpeningBookId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<GoogleDriveSyncStatus>(
@@ -156,6 +161,9 @@ export function PersimmonApp() {
   const progressTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
+  const importCompletionTimer = useRef<
+    ReturnType<typeof setTimeout> | undefined
+  >(undefined);
   const progressWriter = useRef<ProgressWriteQueue | undefined>(undefined);
   progressWriter.current ??= new ProgressWriteQueue(async (snapshot) => {
     await googleDriveSyncService.noteProgress(
@@ -275,6 +283,9 @@ export function PersimmonApp() {
       if (settingsTimer.current) {
         clearTimeout(settingsTimer.current);
       }
+      if (importCompletionTimer.current) {
+        clearTimeout(importCompletionTimer.current);
+      }
     },
     [],
   );
@@ -312,14 +323,21 @@ export function PersimmonApp() {
 
   const importBook = useCallback(async () => {
     setError(null);
+    if (importCompletionTimer.current) {
+      clearTimeout(importCompletionTimer.current);
+      importCompletionTimer.current = undefined;
+    }
+    setImportStatus(undefined);
     setImporting(true);
     try {
       const pickedEpubs = await pickEpubs();
       if (pickedEpubs.length === 0) {
         return;
       }
-      const result = await importEpubBatch(pickedEpubs, (input) =>
-        libraryRepository.importBook(input),
+      const result = await importEpubBatch(
+        pickedEpubs,
+        (input) => libraryRepository.importBook(input),
+        (progress) => setImportStatus({ phase: "importing", ...progress }),
       );
       for (const imported of result.imported) {
         try {
@@ -339,7 +357,19 @@ export function PersimmonApp() {
       if (result.failures.length > 0) {
         setError(importFailureMessage(result.failures, result.imported.length));
       }
+      setImportStatus({
+        phase: "complete",
+        completedBooks: pickedEpubs.length,
+        failedBooks: result.failures.length,
+        importedBooks: result.imported.length,
+        totalBooks: pickedEpubs.length,
+      });
+      importCompletionTimer.current = setTimeout(() => {
+        importCompletionTimer.current = undefined;
+        setImportStatus(undefined);
+      }, IMPORT_COMPLETION_VISIBLE_MS);
     } catch (importError: unknown) {
+      setImportStatus(undefined);
       setError(userFacingError(importError));
     } finally {
       setImporting(false);
@@ -694,6 +724,7 @@ export function PersimmonApp() {
       dataClearing={dataClearing}
       readerThemeName={readerSettings.appearance.theme}
       error={error}
+      importStatus={importStatus}
       importing={importing}
       languagePreference={languagePreference}
       openingBookId={openingBookId}

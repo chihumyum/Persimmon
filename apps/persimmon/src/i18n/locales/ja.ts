@@ -109,6 +109,16 @@ export const ja = {
     error: {
       title: "問題が発生しました",
     },
+    importBanner: {
+      accessibility: "書籍のインポート進捗",
+      complete: "インポート完了",
+      importing: "書籍をインポート中",
+      importingBook:
+        "{{total}} 冊中 {{current}} 冊目をインポート中 · {{title}}",
+      processing: "{{total}} 冊中 {{completed}} 冊を処理済み…",
+      result: "{{imported}} 冊をインポートしました",
+      resultWithFailures: "{{imported}} 冊をインポート · {{failed}} 冊失敗",
+    },
     search: {
       placeholder: "タイトルまたは著者を検索",
       clearAccessibility: "検索をクリアする",

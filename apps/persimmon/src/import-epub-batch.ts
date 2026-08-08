@@ -20,14 +20,39 @@ export interface EpubBatchImportResult<T> {
   readonly imported: readonly ImportedEpub<T>[];
 }
 
+export interface EpubBatchImportProgress {
+  readonly completedBooks: number;
+  readonly failedBooks: number;
+  readonly importedBooks: number;
+  readonly totalBooks: number;
+  readonly currentFileName?: string;
+}
+
+export type EpubBatchImportProgressReporter = (
+  progress: EpubBatchImportProgress,
+) => void;
+
 export async function importEpubBatch<T>(
   pickedEpubs: readonly PickedEpub[],
   importBook: (input: EpubImportInput) => Promise<T>,
+  onProgress?: EpubBatchImportProgressReporter,
 ): Promise<EpubBatchImportResult<T>> {
   const imported: ImportedEpub<T>[] = [];
   const failures: FailedEpubImport[] = [];
+  let completedBooks = 0;
+
+  const reportProgress = (currentFileName?: string) => {
+    onProgress?.({
+      completedBooks,
+      failedBooks: failures.length,
+      importedBooks: imported.length,
+      totalBooks: pickedEpubs.length,
+      ...(currentFileName ? { currentFileName } : {}),
+    });
+  };
 
   for (const pickedEpub of pickedEpubs) {
+    reportProgress(pickedEpub.fileName);
     try {
       const value = await importBook({
         bytes: await pickedEpub.readBytes(),
@@ -37,6 +62,8 @@ export async function importEpubBatch<T>(
     } catch (error) {
       failures.push({ error, fileName: pickedEpub.fileName });
     }
+    completedBooks += 1;
+    reportProgress();
   }
 
   return { failures, imported };

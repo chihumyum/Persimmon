@@ -104,6 +104,15 @@ export const ko = {
       body: "다른 분류를 선택하거나 EPUB을 가져오세요.",
     },
     error: { title: "문제가 발생했습니다" },
+    importBanner: {
+      accessibility: "도서 가져오기 진행률",
+      complete: "가져오기 완료",
+      importing: "도서 가져오는 중",
+      importingBook: "{{total}}권 중 {{current}}번째 가져오는 중 · {{title}}",
+      processing: "{{total}}권 중 {{completed}}권 처리됨…",
+      result: "{{imported}}권을 가져왔습니다",
+      resultWithFailures: "{{imported}}권 가져옴 · {{failed}}권 실패",
+    },
     search: {
       placeholder: "제목 또는 저자 검색",
       clearAccessibility: "검색 지우기",
