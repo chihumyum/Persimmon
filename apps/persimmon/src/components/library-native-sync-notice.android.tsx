@@ -11,8 +11,10 @@ import {
 } from "@expo/ui/jetpack-compose";
 import {
   clickable,
+  clip,
   fillMaxWidth,
   padding,
+  Shapes,
   size,
   weight,
 } from "@expo/ui/jetpack-compose/modifiers";
@@ -52,7 +54,11 @@ export function LibraryNativeSyncNotice({
             contentColor: theme.controlText,
           }}
           elevation={floating ? 5 : 1}
-          modifiers={[fillMaxWidth()]}
+          modifiers={[
+            fillMaxWidth(),
+            clip(Shapes.RoundedCorner(12)),
+            clickable(onOpen),
+          ]}
         >
           <Row
             verticalAlignment="center"
@@ -61,7 +67,7 @@ export function LibraryNativeSyncNotice({
             <Row
               verticalAlignment="center"
               horizontalArrangement={{ spacedBy: 12 }}
-              modifiers={[weight(1), clickable(onOpen), padding(7, 5, 7, 5)]}
+              modifiers={[weight(1), padding(7, 5, 7, 5)]}
             >
               {kind === "syncing" ? (
                 <CircularProgressIndicator

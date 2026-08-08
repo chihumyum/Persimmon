@@ -7,10 +7,13 @@ import {
   Spacer,
   Text,
   VStack,
+  ZStack,
 } from "@expo/ui/swift-ui";
 import {
   accessibilityLabel,
   buttonStyle,
+  clipShape,
+  contentShape,
   font,
   foregroundStyle,
   frame,
@@ -18,6 +21,7 @@ import {
   labelStyle,
   lineLimit,
   padding,
+  shapes,
   shadow,
   tint,
 } from "@expo/ui/swift-ui/modifiers";
@@ -55,37 +59,38 @@ export function LibraryNativeSyncNotice({
         seedColor={theme.accent}
         style={styles.host}
       >
-        <HStack
-          alignment="center"
-          spacing={2}
-          modifiers={[
-            frame({ maxWidth: 10_000, minHeight: 60 }),
-            padding({ horizontal: 8, vertical: 4 }),
-            glassEffect({
-              glass: {
-                interactive: true,
-                tint: theme.panel,
-                variant: "clear",
-              },
-              cornerRadius: 18,
-              shape: "roundedRectangle",
-            }),
-            ...(floating
-              ? [
-                  shadow({
-                    color: floatingShadowColor,
-                    radius: 9,
-                    x: 0,
-                    y: 4,
-                  }),
-                ]
-              : []),
-          ]}
-        >
+        <ZStack alignment="trailing">
           <Button
             modifiers={[
               buttonStyle("plain"),
-              frame({ maxWidth: 10_000, minHeight: 50, alignment: "leading" }),
+              frame({ maxWidth: 10_000, minHeight: 60, alignment: "leading" }),
+              padding({ horizontal: 8, vertical: 4 }),
+              contentShape(
+                shapes.roundedRectangle({
+                  cornerRadius: 18,
+                  roundedCornerStyle: "continuous",
+                }),
+              ),
+              clipShape("roundedRectangle", 18),
+              glassEffect({
+                glass: {
+                  interactive: true,
+                  tint: theme.panel,
+                  variant: "clear",
+                },
+                cornerRadius: 18,
+                shape: "roundedRectangle",
+              }),
+              ...(floating
+                ? [
+                    shadow({
+                      color: floatingShadowColor,
+                      radius: 9,
+                      x: 0,
+                      y: 4,
+                    }),
+                  ]
+                : []),
               accessibilityLabel(openAccessibilityLabel),
             ]}
             onPress={onOpen}
@@ -129,6 +134,7 @@ export function LibraryNativeSyncNotice({
                 ) : null}
               </VStack>
               <Spacer />
+              {onClose ? <Spacer modifiers={[frame({ width: 46 })]} /> : null}
             </HStack>
           </Button>
           {onClose ? (
@@ -140,12 +146,13 @@ export function LibraryNativeSyncNotice({
                 tint(theme.secondaryText),
                 frame({ width: 44, height: 48 }),
                 accessibilityLabel(closeAccessibilityLabel ?? "Close"),
+                padding({ trailing: 8 }),
               ]}
               systemImage="xmark"
               onPress={onClose}
             />
           ) : null}
-        </HStack>
+        </ZStack>
       </Host>
     </View>
   );
