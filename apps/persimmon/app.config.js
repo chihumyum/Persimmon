@@ -5,7 +5,7 @@ const DEFAULT_GOOGLE_IOS_CLIENT_ID =
 const DEFAULT_GOOGLE_ANDROID_CLIENT_ID =
   "51752452441-8q55ns0e3k8h47q9h5uqa3487rui5639.apps.googleusercontent.com";
 const DEFAULT_SUPPORT_EMAIL = "support@persimmon.cc";
-const DEFAULT_APPLE_TEAM_ID = "9843R35CWM";
+const DEFAULT_APPLE_TEAM_ID = "G7ZSY874L2";
 
 function configuredClientId(value) {
   return (
@@ -56,7 +56,10 @@ module.exports = ({ config }) => {
     plugins,
     ios: {
       ...(config.ios ?? {}),
-      appleTeamId: config.ios?.appleTeamId ?? DEFAULT_APPLE_TEAM_ID,
+      appleTeamId:
+        process.env.PERSIMMON_APPLE_TEAM_ID ??
+        config.ios?.appleTeamId ??
+        DEFAULT_APPLE_TEAM_ID,
     },
     extra: {
       ...(config.extra ?? {}),
