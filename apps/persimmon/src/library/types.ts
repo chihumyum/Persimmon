@@ -280,10 +280,22 @@ export interface ImportBookInput {
   readonly addedAt?: string;
 }
 
+export interface ImportBookOptions {
+  /**
+   * Runs after asynchronous hashing and immediately before synchronous EPUB
+   * compilation. A background caller may throw here to yield to foreground
+   * Reader interaction without changing normal user-initiated imports.
+   */
+  readonly beforeCompile?: () => void;
+}
+
 export interface LibraryRepository {
   initialize(): Promise<void>;
   listBooks(): Promise<readonly LibraryBookSummary[]>;
-  importBook(input: ImportBookInput): Promise<LibraryBookSummary>;
+  importBook(
+    input: ImportBookInput,
+    options?: ImportBookOptions,
+  ): Promise<LibraryBookSummary>;
   openBook(bookId: string): Promise<OpenedLibraryBook>;
   getOriginalEpub(bookId: string): Promise<Uint8Array | undefined>;
   getResource(bookId: string, assetId: string): Promise<Uint8Array | undefined>;

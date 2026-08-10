@@ -17,6 +17,7 @@ import {
   LibraryError,
   type BookSource,
   type ImportBookInput,
+  type ImportBookOptions,
   type LibraryBookSummary,
   type LibraryRepository,
   type OpenedLibraryBook,
@@ -214,16 +215,21 @@ class NativeLibraryRepository implements LibraryRepository {
       .sort((left, right) => right.addedAt.localeCompare(left.addedAt));
   }
 
-  async importBook(input: ImportBookInput): Promise<LibraryBookSummary> {
+  async importBook(
+    input: ImportBookInput,
+    options?: ImportBookOptions,
+  ): Promise<LibraryBookSummary> {
     return this.persistImportedBook(
       input,
       input.addedAt ?? new Date().toISOString(),
+      options,
     );
   }
 
   private async persistImportedBook(
     input: ImportBookInput,
     addedAt: string,
+    options?: ImportBookOptions,
   ): Promise<LibraryBookSummary> {
     this.assertInitialized();
     const estimatedRequiredSpace =
@@ -246,6 +252,7 @@ class NativeLibraryRepository implements LibraryRepository {
       return summaryFromManifest(existing, progress);
     }
 
+    options?.beforeCompile?.();
     const result = importEpub(input.bytes, { contentDigest });
 
     const manifest = manifestFromImport(
@@ -673,6 +680,7 @@ export const libraryRepository: LibraryRepository =
 export type {
   BookSource,
   ImportBookInput,
+  ImportBookOptions,
   LibraryBookSummary,
   LibraryRepository,
   OpenedLibraryBook,

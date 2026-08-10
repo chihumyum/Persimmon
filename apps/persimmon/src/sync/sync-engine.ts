@@ -87,6 +87,23 @@ export interface SyncStateStore {
   save(state: LocalSyncState): Promise<void>;
 }
 
+class SyncDeferredForReaderError extends Error {
+  constructor() {
+    super("Google Drive book import deferred while Reader is active.");
+    this.name = "SyncDeferredForReaderError";
+  }
+}
+
+function bookImportShouldDefer(observer: SyncObserver): boolean {
+  return observer.shouldDeferBookImport?.() === true;
+}
+
+function deferBookImportIfNeeded(observer: SyncObserver): void {
+  if (observer.shouldDeferBookImport?.()) {
+    throw new SyncDeferredForReaderError();
+  }
+}
+
 export class SyncEngine {
   private state?: LocalSyncState;
   private initialized = false;
@@ -294,7 +311,16 @@ export class SyncEngine {
       });
     }
 
+    let deferredBookImports = 0;
     for (const [bookId, mutation] of pendingDownloads) {
+      // Do not start another network transfer once Reader has claimed the
+      // foreground. If Reader opens while a transfer is already in flight,
+      // the second check below drops only that downloaded buffer and lets the
+      // next sync retry it without ever entering synchronous compilation.
+      if (bookImportShouldDefer(observer)) {
+        deferredBookImports = totalDownloads - downloadedBooks;
+        break;
+      }
       const bytes = await cloud.downloadBook(
         mutation.revisionId,
         mutation.byteLength,
@@ -306,11 +332,32 @@ export class SyncEngine {
       ) {
         throw new Error(`云端 EPUB 校验失败：${mutation.title}`);
       }
-      const imported = await this.library.importBook({
-        bytes,
-        fileName: mutation.fileName,
-        addedAt: mutation.addedAt,
-      });
+      if (bookImportShouldDefer(observer)) {
+        deferredBookImports = totalDownloads - downloadedBooks;
+        break;
+      }
+      let imported: LibraryBookSummary;
+      try {
+        imported = await this.library.importBook(
+          {
+            bytes,
+            fileName: mutation.fileName,
+            addedAt: mutation.addedAt,
+          },
+          {
+            // Native repository hashing is asynchronous. Re-check after that
+            // await and immediately before unzipSync/EPUB compilation so a
+            // Reader opened during hashing still preempts the heavy phase.
+            beforeCompile: () => deferBookImportIfNeeded(observer),
+          },
+        );
+      } catch (error) {
+        if (error instanceof SyncDeferredForReaderError) {
+          deferredBookImports = totalDownloads - downloadedBooks;
+          break;
+        }
+        throw error;
+      }
       if (
         imported.id !== mutation.bookId ||
         imported.revisionId !== mutation.revisionId
@@ -403,6 +450,11 @@ export class SyncEngine {
 
     const completedAt = new Date(this.now()).toISOString();
     const state = this.requireState();
+    const previousAccountState = state.accounts[snapshot.account.id];
+    const lastSuccessfulSyncAt =
+      deferredBookImports === 0
+        ? completedAt
+        : previousAccountState?.lastSuccessfulSyncAt;
     this.state = {
       ...state,
       accounts: {
@@ -410,7 +462,7 @@ export class SyncEngine {
         [snapshot.account.id]: {
           ...(stateFileId ? { stateFileId } : {}),
           uploadedGeneration: state.generation,
-          lastSuccessfulSyncAt: completedAt,
+          ...(lastSuccessfulSyncAt ? { lastSuccessfulSyncAt } : {}),
         },
       },
     };
@@ -420,6 +472,7 @@ export class SyncEngine {
       account: snapshot.account,
       uploadedBooks,
       downloadedBooks,
+      deferredBookImports,
       removedBooks,
       updatedProgress,
       completedAt,

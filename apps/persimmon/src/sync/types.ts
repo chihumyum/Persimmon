@@ -110,6 +110,7 @@ export interface SyncResult {
   readonly account: CloudAccount;
   readonly uploadedBooks: number;
   readonly downloadedBooks: number;
+  readonly deferredBookImports: number;
   readonly removedBooks: number;
   readonly updatedProgress: number;
   readonly completedAt: string;
@@ -129,6 +130,12 @@ export type SyncProgressReporter = (
 export interface SyncObserver {
   readonly onProgress?: SyncProgressReporter;
   readonly onLibraryChanged?: () => void | Promise<void>;
+  /**
+   * Foreground Reader interaction has priority over CPU-heavy EPUB imports.
+   * Returning true asks the engine to finish the current safe boundary and
+   * let a later sync resume the remaining books.
+   */
+  readonly shouldDeferBookImport?: () => boolean;
 }
 
 export type GoogleDriveSyncStatus =

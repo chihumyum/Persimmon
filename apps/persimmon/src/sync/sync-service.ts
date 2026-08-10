@@ -62,6 +62,8 @@ class GoogleDriveSyncService {
   private scheduledSync?: ReturnType<typeof setTimeout>;
   private authorized = false;
   private dataOperationActive = false;
+  private readerActivityCount = 0;
+  private syncDeferredForReader = false;
   private accountEmail?: string;
   private lastSyncedAt?: string;
 
@@ -78,6 +80,19 @@ class GoogleDriveSyncService {
   subscribeLibraryChanges(listener: LibraryChangeListener): () => void {
     this.libraryChangeListeners.add(listener);
     return () => this.libraryChangeListeners.delete(listener);
+  }
+
+  beginReaderActivity(): () => void {
+    this.readerActivityCount += 1;
+    let released = false;
+    return () => {
+      if (released) {
+        return;
+      }
+      released = true;
+      this.readerActivityCount = Math.max(0, this.readerActivityCount - 1);
+      this.resumeDeferredSyncIfPossible();
+    };
   }
 
   initialize(): Promise<void> {
@@ -123,6 +138,7 @@ class GoogleDriveSyncService {
       // Local sign-out still wins even if Google's revocation endpoint is down.
     } finally {
       this.authorized = false;
+      this.syncDeferredForReader = false;
       this.accountEmail = undefined;
       this.lastSyncedAt = undefined;
       this.updateStatus({ phase: "disconnected" });
@@ -170,6 +186,7 @@ class GoogleDriveSyncService {
     const activeSync = this.enqueue(() => this.performSync()).finally(() => {
       if (this.activeSync === activeSync) {
         this.activeSync = undefined;
+        this.resumeDeferredSyncIfPossible();
       }
     });
     this.activeSync = activeSync;
@@ -260,9 +277,19 @@ class GoogleDriveSyncService {
             });
           },
           onLibraryChanged: () => this.notifyLibraryChanged(),
+          shouldDeferBookImport: () => this.readerActivityCount > 0,
         },
       );
       this.accountEmail = result.account.email;
+      if (result.deferredBookImports > 0) {
+        // Metadata/progress has reached its normal durable boundary, while
+        // remaining EPUB downloads stay pending until Reader releases its
+        // foreground lease. Keep the phase as syncing so no false completion
+        // notice is emitted.
+        this.syncDeferredForReader = true;
+        return;
+      }
+      this.syncDeferredForReader = false;
       this.lastSyncedAt = result.completedAt;
       this.updateStatus({
         phase: "idle",
@@ -270,6 +297,7 @@ class GoogleDriveSyncService {
         lastSyncedAt: result.completedAt,
       });
     } catch (error) {
+      this.syncDeferredForReader = false;
       this.updateAuthOrErrorStatus(error);
     }
   }
@@ -318,6 +346,19 @@ class GoogleDriveSyncService {
       clearTimeout(this.scheduledSync);
       this.scheduledSync = undefined;
     }
+  }
+
+  private resumeDeferredSyncIfPossible(): void {
+    if (
+      this.readerActivityCount !== 0 ||
+      !this.syncDeferredForReader ||
+      !this.authorized ||
+      this.dataOperationActive
+    ) {
+      return;
+    }
+    this.syncDeferredForReader = false;
+    void this.syncNow();
   }
 
   private resetEngine(): void {

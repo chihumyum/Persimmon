@@ -177,6 +177,13 @@ export function PersimmonApp() {
     undefined,
   );
   const settingsWrite = useRef<Promise<void>>(Promise.resolve());
+  const readerActivityRelease = useRef<(() => void) | undefined>(undefined);
+
+  const releaseReaderActivity = useCallback(() => {
+    const release = readerActivityRelease.current;
+    readerActivityRelease.current = undefined;
+    release?.();
+  }, []);
 
   const refreshLibrary = useCallback(async () => {
     setEntries(await libraryRepository.listBooks());
@@ -232,12 +239,19 @@ export function PersimmonApp() {
     };
   }, []);
 
-  useEffect(() => googleDriveSyncService.subscribe(setSyncStatus), []);
+  useEffect(() => {
+    if (screen.kind !== "library") {
+      return;
+    }
+    return googleDriveSyncService.subscribe(setSyncStatus);
+  }, [screen.kind]);
 
-  useEffect(
-    () => googleDriveSyncService.subscribeLibraryChanges(refreshLibrary),
-    [refreshLibrary],
-  );
+  useEffect(() => {
+    if (screen.kind !== "library") {
+      return;
+    }
+    return googleDriveSyncService.subscribeLibraryChanges(refreshLibrary);
+  }, [refreshLibrary, screen.kind]);
 
   useEffect(() => {
     if (!hydrated) {
@@ -270,10 +284,14 @@ export function PersimmonApp() {
   }, [hydrated, refreshLibrary]);
 
   useEffect(() => {
-    if (hydrated && syncStatus.phase === "idle") {
+    if (
+      hydrated &&
+      screen.kind === "library" &&
+      syncStatus.phase === "idle"
+    ) {
       void refreshLibrary();
     }
-  }, [hydrated, refreshLibrary, syncStatus]);
+  }, [hydrated, refreshLibrary, screen.kind, syncStatus]);
 
   useEffect(
     () => () => {
@@ -286,8 +304,9 @@ export function PersimmonApp() {
       if (importCompletionTimer.current) {
         clearTimeout(importCompletionTimer.current);
       }
+      releaseReaderActivity();
     },
-    [],
+    [releaseReaderActivity],
   );
 
   const activeEntry = useMemo(
@@ -307,19 +326,28 @@ export function PersimmonApp() {
     [readerSettings.appearance.theme, resolvedColorScheme],
   );
 
-  const openBook = useCallback(async (bookId: string) => {
-    setError(null);
-    setOpeningBookId(bookId);
-    try {
-      const opened = await libraryRepository.openBook(bookId);
-      setActiveBook(opened);
-      setScreen({ kind: "reader", bookId });
-    } catch (openError: unknown) {
-      setError(userFacingError(openError));
-    } finally {
-      setOpeningBookId(null);
-    }
-  }, []);
+  const openBook = useCallback(
+    async (bookId: string) => {
+      setError(null);
+      setOpeningBookId(bookId);
+      releaseReaderActivity();
+      const release = googleDriveSyncService.beginReaderActivity();
+      readerActivityRelease.current = release;
+      try {
+        const opened = await libraryRepository.openBook(bookId);
+        setActiveBook(opened);
+        setScreen({ kind: "reader", bookId });
+      } catch (openError: unknown) {
+        if (readerActivityRelease.current === release) {
+          releaseReaderActivity();
+        }
+        setError(userFacingError(openError));
+      } finally {
+        setOpeningBookId(null);
+      }
+    },
+    [releaseReaderActivity],
+  );
 
   const importBook = useCallback(async () => {
     setError(null);
@@ -633,6 +661,7 @@ export function PersimmonApp() {
         settingsTimer.current = undefined;
       }
       await settingsWrite.current;
+      releaseReaderActivity();
       await googleDriveSyncService.disconnectAndResetLocalState();
       await libraryRepository.clearAllData();
       readerSettingsRef.current = DEFAULT_READER_SETTINGS;
@@ -656,7 +685,7 @@ export function PersimmonApp() {
     } finally {
       setDataClearing(null);
     }
-  }, [persistPendingProgress]);
+  }, [persistPendingProgress, releaseReaderActivity]);
 
   const clearCloudData = useCallback(async () => {
     setDataClearing("cloud");
@@ -700,9 +729,12 @@ export function PersimmonApp() {
         fontFamilies={fontFamilies}
         loadFontFace={loadFontFace}
         onBack={() => {
-          void persistPendingProgress();
+          const release = readerActivityRelease.current;
+          readerActivityRelease.current = undefined;
           setActiveBook(null);
           setScreen({ kind: "library" });
+          void refreshLibrary();
+          void persistPendingProgress().finally(() => release?.());
         }}
         onAppearanceChange={updateAppearance}
         onDownloadFont={downloadFont}
