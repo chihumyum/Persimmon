@@ -192,7 +192,7 @@ export const DEFAULT_READER_GESTURE_PAGE_TURN_TUNING: ReaderGesturePageTurnTunin
     liftToLeft: 1,
     curvatureRelaxation: 10,
     pageWeight: 1,
-    commitThreshold: 1,
+    commitThreshold: 0.8,
     minimumSpeedScale: 1,
     maximumSpeedScale: 5,
     velocityGain: 0.2,

@@ -24,14 +24,14 @@ export const DEFAULT_GESTURE_PAGE_TURN_TUNING: GesturePageTurnTuning = {
   liftToLeft: 1,
   curvatureRelaxation: 10,
   pageWeight: 1,
-  commitThreshold: 1,
+  commitThreshold: 0.8,
   minimumSpeedScale: 1,
   maximumSpeedScale: 5,
   velocityGain: 0.2,
   idleDecaySeconds: 0.1,
 };
 
-const IOS_COMMIT_THRESHOLD_SCALE = 2 / 3;
+const IOS_COMMIT_THRESHOLD_SCALE = 0.8;
 
 export function normalizeGesturePageTurnTuning(
   tuning: Partial<GesturePageTurnTuning> | undefined,

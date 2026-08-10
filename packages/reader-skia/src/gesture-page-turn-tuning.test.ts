@@ -14,7 +14,7 @@ describe("gesture page turn tuning", () => {
       liftToLeft: 1,
       curvatureRelaxation: 10,
       pageWeight: 1,
-      commitThreshold: 1,
+      commitThreshold: 0.8,
       minimumSpeedScale: 1,
       maximumSpeedScale: 5,
       velocityGain: 0.2,
@@ -47,13 +47,29 @@ describe("gesture page turn tuning", () => {
     });
   });
 
-  it("reduces only the iOS commit threshold by one third", () => {
-    expect(
-      normalizeGesturePageTurnTuningForPlatform(undefined, "ios")
-        .commitThreshold,
-    ).toBeCloseTo(2 / 3, 12);
+  it("uses 80% of the Android commit threshold on iOS", () => {
+    const androidThreshold = normalizeGesturePageTurnTuningForPlatform(
+      undefined,
+      "android",
+    ).commitThreshold;
+    const iosThreshold = normalizeGesturePageTurnTuningForPlatform(
+      undefined,
+      "ios",
+    ).commitThreshold;
+    expect(androidThreshold).toBe(0.8);
+    expect(iosThreshold).toBeCloseTo(androidThreshold * 0.8, 12);
     expect(
       normalizeGesturePageTurnTuningForPlatform(undefined, "android"),
     ).toEqual(DEFAULT_GESTURE_PAGE_TURN_TUNING);
+
+    const customAndroidThreshold = normalizeGesturePageTurnTuningForPlatform(
+      { commitThreshold: 1.25 },
+      "android",
+    ).commitThreshold;
+    const customIosThreshold = normalizeGesturePageTurnTuningForPlatform(
+      { commitThreshold: 1.25 },
+      "ios",
+    ).commitThreshold;
+    expect(customIosThreshold).toBeCloseTo(customAndroidThreshold * 0.8, 12);
   });
 });

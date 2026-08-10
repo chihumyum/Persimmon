@@ -44,7 +44,7 @@ describe("reader settings", () => {
           liftToLeft: 1,
           curvatureRelaxation: 10,
           pageWeight: 1,
-          commitThreshold: 1,
+          commitThreshold: 0.8,
           minimumSpeedScale: 1,
           maximumSpeedScale: 5,
           velocityGain: 0.2,
@@ -300,7 +300,7 @@ describe("reader settings", () => {
         backward: {
           ...DEFAULT_READER_REVERSE_GESTURE_PAGE_TURN_TUNING,
           releaseX: 0.4,
-          commitThreshold: 1,
+          commitThreshold: gesture.commitThreshold,
         },
       },
     });
