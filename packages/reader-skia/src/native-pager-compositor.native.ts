@@ -77,18 +77,12 @@ interface NativePagerSkiaViewApi {
   pagerSetInputEnabled?: (nativeId: number, enabled: boolean) => void;
   pagerConfigureMotion?: (
     nativeId: number,
-    automaticReleaseX: number,
-    automaticLiftVelocity: number,
-    automaticLiftToLeft: number,
-    automaticCurvatureRelaxation: number,
-    rapidReleaseX: number,
-    rapidLiftVelocity: number,
-    rapidLiftToLeft: number,
-    rapidCurvatureRelaxation: number,
-    gestureReleaseX: number,
-    gestureLiftVelocity: number,
-    gestureLiftToLeft: number,
-    gestureCurvatureRelaxation: number,
+    automaticForward: readonly number[],
+    automaticBackward: readonly number[],
+    rapidForward: readonly number[],
+    rapidBackward: readonly number[],
+    gestureForward: readonly number[],
+    gestureBackward: readonly number[],
   ) => void;
   pagerConsumeInput?: (nativeId: number, direction: 1 | -1) => boolean;
   pagerTryConsumeInput?: (nativeId: number, direction: 1 | -1) => boolean;
@@ -115,6 +109,7 @@ interface NativePagerSkiaViewApi {
     minimumSpeedScale: number,
     maximumSpeedScale: number,
     velocityGain: number,
+    idleDecaySeconds: number,
   ) => boolean;
   pagerCancelGesture?: (nativeId: number) => boolean;
   pagerRunBenchmark?: (
@@ -175,7 +170,7 @@ export function nativePagerCompositorAvailable(): boolean {
     return false;
   }
   nativePagerAvailability =
-    protocolVersion >= 7 &&
+    protocolVersion >= 10 &&
     typeof nativePagerRnApi.ready === "function" &&
     typeof nativePagerRnApi.enqueue === "function" &&
     typeof nativePagerRnApi.enqueuePicture === "function" &&
@@ -381,23 +376,49 @@ export function configureNativePagerMotion(
   try {
     configureMotion(
       canvas.getNativeId(),
-      config.automatic.releaseX,
-      config.automatic.liftVelocity,
-      config.automatic.liftToLeft,
-      config.automatic.curvatureRelaxation,
-      config.rapid.releaseX,
-      config.rapid.liftVelocity,
-      config.rapid.liftToLeft,
-      config.rapid.curvatureRelaxation,
-      config.gesture.releaseX,
-      config.gesture.liftVelocity,
-      config.gesture.liftToLeft,
-      config.gesture.curvatureRelaxation,
+      motionTuningValues(config.automatic.forward),
+      motionTuningValues(config.automatic.backward),
+      motionTuningValues(config.rapid.forward),
+      motionTuningValues(config.rapid.backward),
+      motionTuningValues(config.gesture.forward),
+      motionTuningValues(config.gesture.backward),
     );
     return true;
   } catch {
     return false;
   }
+}
+
+function motionTuningValues(
+  tuning: NativePagerMotionConfig["automatic"]["forward"],
+): [
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+] {
+  return [
+    tuning.releaseX,
+    tuning.liftVelocity,
+    tuning.liftToLeft,
+    tuning.curvatureRelaxation,
+    tuning.incomingLandingStartProgress ?? 0.3,
+    tuning.incomingRevealStartProgress ?? 0,
+    tuning.incomingRevealEndProgress ?? 0.28,
+    tuning.incomingDragProgressScale ?? 1,
+    tuning.incomingDragProgressExponent ?? 1,
+    tuning.incomingSettleDurationSeconds ?? 0.52,
+    tuning.incomingSettleEasingPower ?? 2,
+    tuning.incomingRevertDurationSeconds ?? 0.72,
+  ];
 }
 
 export function consumeNativePagerInputOnUI(
@@ -479,6 +500,7 @@ export function endNativePagerGestureOnUI(
       release.minimumSpeedScale,
       release.maximumSpeedScale,
       release.velocityGain,
+      release.idleDecaySeconds,
     );
   } catch {
     return undefined;

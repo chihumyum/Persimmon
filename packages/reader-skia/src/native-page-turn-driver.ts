@@ -45,6 +45,10 @@ import {
   type GesturePageTurnTuning,
 } from "./gesture-page-turn-tuning";
 import {
+  reverseGestureTuningForCore,
+  type ReverseGesturePageTurnTuning,
+} from "./reverse-gesture-page-turn-tuning";
+import {
   beginNativePagerGestureOnUI,
   cancelNativePagerGestureOnUI,
   consumeNativePagerInputOnUI,
@@ -56,6 +60,7 @@ import {
   nativePagerTapNeedsRNFallback,
   resolvePageTurnRecognizerDistances,
 } from "./native-pager-input";
+import { pageTurnTuningForLayoutDirection } from "./page-turn-direction";
 import {
   PAGE_RIFFLE_ARMED,
   PAGE_RIFFLE_INWARD,
@@ -105,6 +110,7 @@ interface NativePageTurnDriverOptions {
   readonly canTurnForward: boolean;
   readonly canStartInteractive: boolean;
   readonly tuning: GesturePageTurnTuning;
+  readonly reverseTuning: ReverseGesturePageTurnTuning;
   readonly command?: NativePageTurnCommand;
   readonly benchmark?: NativePageTurnBenchmarkCommand;
   readonly onCenterTap: () => void;
@@ -231,6 +237,7 @@ export function useNativePageTurnDriver({
   canTurnForward,
   canStartInteractive,
   tuning,
+  reverseTuning,
   command,
   benchmark,
   onCenterTap,
@@ -249,8 +256,21 @@ export function useNativePageTurnDriver({
   const onePhysicalPixel = 1 / Math.max(1, PixelRatio.get());
   const { tapMaxDistance, panActivationDistance } =
     resolvePageTurnRecognizerDistances(onePhysicalPixel);
-  const coreTuning = useMemo(() => gestureTuningForCore(tuning), [tuning]);
-  const state = useSharedValue(createPageTurnWorkletState(coreTuning));
+  const forwardCoreTuning = useMemo(
+    () => gestureTuningForCore(tuning),
+    [tuning],
+  );
+  const reverseCoreTuning = useMemo(
+    () =>
+      pageTurnTuningForLayoutDirection(
+        gestureTuningForCore(tuning),
+        reverseGestureTuningForCore(reverseTuning),
+        -1,
+        spread,
+      ),
+    [reverseTuning, spread, tuning],
+  );
+  const state = useSharedValue(createPageTurnWorkletState(forwardCoreTuning));
   const frame = usePageTurnNativeSharedFrame(width, height, spread);
   const gestureTarget = useSharedValue(createNativeGestureTarget());
   const gestureProbe = useSharedValue(createNativeGestureProbe());
@@ -413,14 +433,21 @@ export function useNativePageTurnDriver({
   );
 
   useEffect(() => {
-    scheduleOnUI((nextTuning: PageTurnTuning) => {
-      "worklet";
-      state.modify((current) => {
-        setPageTurnWorkletTuning(current, nextTuning);
-        return current;
-      }, true);
-    }, coreTuning);
-  }, [coreTuning, state]);
+    scheduleOnUI(
+      (forward: PageTurnTuning, backward: PageTurnTuning) => {
+        "worklet";
+        state.modify((current) => {
+          setPageTurnWorkletTuning(
+            current,
+            current.direction === -1 ? backward : forward,
+          );
+          return current;
+        }, true);
+      },
+      forwardCoreTuning,
+      reverseCoreTuning,
+    );
+  }, [forwardCoreTuning, reverseCoreTuning, state]);
 
   const advanceDriverFrame = useCallback(
     ({ timeSincePreviousFrame }: FrameInfo) => {
@@ -747,6 +774,10 @@ export function useNativePageTurnDriver({
               return target;
             });
             state.modify((current) => {
+              setPageTurnWorkletTuning(
+                current,
+                direction === -1 ? reverseCoreTuning : forwardCoreTuning,
+              );
               beginPageTurnWorkletDrag(
                 current,
                 direction,
@@ -993,6 +1024,8 @@ export function useNativePageTurnDriver({
           physicalPageWidth,
         );
         if (probe.mode === 3) {
+          const releaseTuning =
+            probe.direction === -1 ? reverseCoreTuning : forwardCoreTuning;
           const fingerX = Math.min(
             1,
             Math.max(-1, 1 + releaseSample.currentBookX - probe.startBookX),
@@ -1009,12 +1042,13 @@ export function useNativePageTurnDriver({
                   fingerX,
                   throwVelocity: releaseSample.throwVelocity,
                   throwAcceleration: probe.throwAcceleration,
-                  pageWeight: coreTuning.pageWeight,
-                  commitThreshold: coreTuning.gestureCommitThreshold,
+                  pageWeight: releaseTuning.pageWeight,
+                  commitThreshold: releaseTuning.gestureCommitThreshold,
                   slowCommitEdgeX: SLOW_COMMIT_EDGE_X,
-                  minimumSpeedScale: coreTuning.gestureMinimumSpeedScale,
-                  maximumSpeedScale: coreTuning.gestureMaximumSpeedScale,
-                  velocityGain: coreTuning.gestureVelocityGain,
+                  minimumSpeedScale: releaseTuning.gestureMinimumSpeedScale,
+                  maximumSpeedScale: releaseTuning.gestureMaximumSpeedScale,
+                  velocityGain: releaseTuning.gestureVelocityGain,
+                  idleDecaySeconds: releaseTuning.gestureIdleDecaySeconds,
                 })
               : undefined;
           if (nativeEnded !== true) {
@@ -1219,7 +1253,8 @@ export function useNativePageTurnDriver({
     spread,
     state,
     tapMaxDistance,
-    coreTuning,
+    forwardCoreTuning,
+    reverseCoreTuning,
     width,
   ]);
 

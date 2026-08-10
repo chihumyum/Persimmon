@@ -10,6 +10,7 @@ import {
   anchoredGestureFingerX,
   gestureLiftRotationForFingerX,
   gestureTurnSpeedScale,
+  incomingPageDragProgress,
   pageGestureModeForStart,
   postHingeTurnProgressForFingerX,
   shouldCommitTurn,
@@ -85,7 +86,11 @@ import {
   pageTurnBackgroundSlots,
   pageTurnsReadyForPaint,
 } from "./page-turn-background";
-import { shouldDrawPageTurnShadow } from "./page-turn-direction";
+import {
+  pageTurnSolverDirectionForLayout,
+  pageTurnTuningForLayoutDirection,
+  shouldDrawPageTurnShadow,
+} from "./page-turn-direction";
 import {
   pageTurnCaptureAddresses,
   type PageTurnCaptureAddresses,
@@ -149,6 +154,18 @@ import {
   normalizeGesturePageTurnTuningForPlatform,
   type GesturePageTurnTuning,
 } from "./gesture-page-turn-tuning";
+import {
+  DEFAULT_REVERSE_AUTOMATIC_PAGE_TURN_TUNING,
+  normalizeReverseAutomaticPageTurnTuning,
+  reverseAutomaticTuningForCore,
+  type ReverseAutomaticPageTurnTuning,
+} from "./reverse-automatic-page-turn-tuning";
+import {
+  DEFAULT_REVERSE_GESTURE_PAGE_TURN_TUNING,
+  normalizeReverseGesturePageTurnTuningForPlatform,
+  reverseGestureTuningForCore,
+  type ReverseGesturePageTurnTuning,
+} from "./reverse-gesture-page-turn-tuning";
 import {
   useNativePageTurnPool,
   type NativeProgrammaticPageTurnCommand,
@@ -312,7 +329,9 @@ export interface LiveReaderProps {
   initialPosition?: BookPosition;
   loadResource?: ResourceLoader;
   automaticPageTurnTuning?: AutomaticPageTurnTuning;
+  reverseAutomaticPageTurnTuning?: ReverseAutomaticPageTurnTuning;
   gesturePageTurnTuning?: GesturePageTurnTuning;
+  reverseGesturePageTurnTuning?: ReverseGesturePageTurnTuning;
   onCenterPress?: () => void;
   onProgress?: (progress: ReaderProgress) => void;
   onSelectionChange?: (selecting: boolean) => void;
@@ -486,7 +505,9 @@ function LazyReaderEngine({
   initialPosition,
   loadResource,
   automaticPageTurnTuning = DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
+  reverseAutomaticPageTurnTuning = DEFAULT_REVERSE_AUTOMATIC_PAGE_TURN_TUNING,
   gesturePageTurnTuning = DEFAULT_GESTURE_PAGE_TURN_TUNING,
+  reverseGesturePageTurnTuning = DEFAULT_REVERSE_GESTURE_PAGE_TURN_TUNING,
   onCenterPress,
   onProgress,
   onSelectionChange,
@@ -534,16 +555,18 @@ function LazyReaderEngine({
       fontSize: appearance.fontSize,
       lineHeight: appearance.lineHeight,
       paragraphSpacing: appearance.paragraphSpacing,
-      horizontalMargin: appearance.horizontalMargin,
+      inlineMargin: appearance.inlineMargin,
+      textAlignment: appearance.textAlignment,
       progressDisplay: "hidden",
     }),
     [
       appearance.fontFamily,
       appearance.bookFontFamilyNames,
       appearance.fontSize,
-      appearance.horizontalMargin,
+      appearance.inlineMargin,
       appearance.lineHeight,
       appearance.paragraphSpacing,
+      appearance.textAlignment,
     ],
   );
   const spec = useMemo(
@@ -803,7 +826,7 @@ function LazyReaderEngine({
         model.pageNumber,
         model.pageCount,
         decorationFontFamily,
-        appearance.horizontalMargin,
+        appearance.inlineMargin,
         pagesPerView,
         width,
         height,
@@ -826,7 +849,7 @@ function LazyReaderEngine({
         fontFamily: decorationFontFamily,
         width,
         height,
-        horizontalMargin: appearance.horizontalMargin,
+        inlineMargin: appearance.inlineMargin,
         pagesPerView,
         topInset,
         bottomInset,
@@ -848,7 +871,7 @@ function LazyReaderEngine({
       return decoration;
     },
     [
-      appearance.horizontalMargin,
+      appearance.inlineMargin,
       book.language,
       bottomInset,
       decorationFontFamily,
@@ -1630,7 +1653,14 @@ function LazyReaderEngine({
       if (!readerGenerationIsCurrent()) {
         return;
       }
-      const coreTuning = gestureTuningForCore(gesturePageTurnTuning);
+      const settlingIncomingPage =
+        layout === "single" && input.direction === -1;
+      const coreTuning = pageTurnTuningForLayoutDirection(
+        gestureTuningForCore(gesturePageTurnTuning),
+        reverseGestureTuningForCore(reverseGesturePageTurnTuning),
+        input.direction,
+        layout === "spread",
+      );
       if (pageGestureModeForStart(input.startBookX) !== "full") {
         return;
       }
@@ -1663,7 +1693,9 @@ function LazyReaderEngine({
             fingerX,
             input.startBookX,
           ),
-          settlingProgress: input.turnProgress,
+          settlingProgress: settlingIncomingPage
+            ? incomingPageDragProgress(input.turnProgress, coreTuning)
+            : input.turnProgress,
         };
       })();
       if (!release) {
@@ -1707,6 +1739,8 @@ function LazyReaderEngine({
     },
     [
       gesturePageTurnTuning,
+      layout,
+      reverseGesturePageTurnTuning,
       mutateReaderState,
       pageTurnAnimation,
       readerGenerationIsCurrent,
@@ -2719,6 +2753,7 @@ function LazyReaderEngine({
       nativePagerDirectActiveCount === 0 &&
       activeTurns.length < turnConcurrency.maximumConcurrentTurns,
     tuning: gesturePageTurnTuning,
+    reverseTuning: reverseGesturePageTurnTuning,
     command: nativeCommand,
     benchmark: nativePagerCompositorEnabled
       ? undefined
@@ -2834,31 +2869,40 @@ function LazyReaderEngine({
         burstCompressedTurnIdsRef.current.delete(turnId);
       }
     }
-    for (const motion of ["tap", "rapid"] as const) {
-      const turnsForMotion = programmaticTurns.filter(
-        (turn) => turn.motion === motion,
-      );
-      if (turnsForMotion.length >= 2) {
-        for (const turn of turnsForMotion) {
-          burstCompressedTurnIdsRef.current.add(turn.id);
-        }
+    const overlappingTapTurns = programmaticTurns.filter(
+      (turn) => turn.motion === "tap",
+    );
+    if (overlappingTapTurns.length >= 2) {
+      for (const turn of overlappingTapTurns) {
+        burstCompressedTurnIdsRef.current.add(turn.id);
       }
     }
     return new Map(
       programmaticTurns.map((turn) => {
+        const tuning = pageTurnTuningForLayoutDirection(
+          automaticPageTurnTuning,
+          reverseAutomaticPageTurnTuning,
+          turn.direction,
+          layout === "spread",
+        );
         return [
           turn.id,
           burstCompressedTurnIdsRef.current.has(turn.id)
             ? burstPageTurnPlaybackSpeed(
-                automaticPageTurnTuning,
+                tuning,
                 0,
                 AUTOMATIC_PAGE_TURN_MAXIMUM_RELEASE_X,
               )
-            : automaticPageTurnTuning.playbackSpeed,
+            : tuning.playbackSpeed,
         ];
       }),
     );
-  }, [activeTurns, automaticPageTurnTuning]);
+  }, [
+    activeTurns,
+    automaticPageTurnTuning,
+    layout,
+    reverseAutomaticPageTurnTuning,
+  ]);
   const nativePagerStockPlan = useMemo(
     () => buildNativePagerStockPlan(readerState.settled, adjacent),
     [adjacent, readerState.settled],
@@ -2986,7 +3030,12 @@ function LazyReaderEngine({
           turnId,
           eventAtMs,
           nativePagerPlaybackSpeedsRef.current.get(turnId) ??
-            automaticPageTurnTuning.playbackSpeed,
+            pageTurnTuningForLayoutDirection(
+              automaticPageTurnTuning,
+              reverseAutomaticPageTurnTuning,
+              directEntry?.direction ?? eventDirection ?? 1,
+              layout === "spread",
+            ).playbackSpeed,
         );
         return;
       }
@@ -3176,13 +3225,20 @@ function LazyReaderEngine({
       typeof processedPaperColor === "number"
         ? processedPaperColor >>> 0
         : 0xffffffff;
-    const playbackSpeed = automaticPageTurnTuning.playbackSpeed;
     const stockTuningKey = [
       automaticPageTurnTuning.releaseX,
       automaticPageTurnTuning.liftVelocity,
       automaticPageTurnTuning.liftToLeft,
       automaticPageTurnTuning.curvatureRelaxation,
       automaticPageTurnTuning.playbackSpeed,
+      reverseAutomaticPageTurnTuning.releaseX,
+      reverseAutomaticPageTurnTuning.curvatureRelaxation,
+      reverseAutomaticPageTurnTuning.incomingLandingStartProgress,
+      reverseAutomaticPageTurnTuning.incomingRevealStartProgress,
+      reverseAutomaticPageTurnTuning.incomingRevealEndProgress,
+      reverseAutomaticPageTurnTuning.incomingSettleDurationSeconds,
+      reverseAutomaticPageTurnTuning.incomingSettleEasingPower,
+      reverseAutomaticPageTurnTuning.playbackSpeed,
     ].join(",");
     const entryIdFor = (
       from: PageAddress,
@@ -3287,6 +3343,16 @@ function LazyReaderEngine({
           continue;
         }
         const entryId = entryIdFor(edge.from, edge.to, edge.direction);
+        const edgeTuning = pageTurnTuningForLayoutDirection(
+          automaticPageTurnTuning,
+          reverseAutomaticPageTurnTuning,
+          edge.direction,
+          layout === "spread",
+        );
+        const durationMs = estimateAutomaticPageTurnDurationMs(
+          edgeTuning,
+          pageTurnSolverDirectionForLayout(edge.direction, layout === "spread"),
+        );
         const accepted = stockNativePagerPicture(canvas, {
           id: entryId,
           fromPageKey: nativePagerPageKey(edge.from),
@@ -3310,14 +3376,8 @@ function LazyReaderEngine({
           direction: edge.direction,
           spread: layout === "spread",
           contentRevision: imageVersion,
-          durationMs: estimateAutomaticPageTurnDurationMs(
-            automaticPageTurnTuning,
-            edge.direction,
-          ),
-          rapidDurationMs: estimateAutomaticPageTurnDurationMs(
-            automaticPageTurnTuning,
-            edge.direction,
-          ),
+          durationMs,
+          rapidDurationMs: durationMs,
           launchIntervalMs: turnConcurrency.minimumTurnIntervalMs,
           paperColor,
         });
@@ -3329,7 +3389,7 @@ function LazyReaderEngine({
           from: edge.from,
           to: edge.to,
           direction: edge.direction,
-          playbackSpeed,
+          playbackSpeed: edgeTuning.playbackSpeed,
         });
         trimNativePagerReconciliationEntries(
           nativePagerStockEntriesRef.current,
@@ -3350,6 +3410,7 @@ function LazyReaderEngine({
     };
   }, [
     automaticPageTurnTuning,
+    reverseAutomaticPageTurnTuning,
     captureSlotsForView,
     createRecordedPageCapture,
     crispTapCaptureQuality.desiredScale,
@@ -3371,14 +3432,40 @@ function LazyReaderEngine({
     if (!nativePagerCompositorEnabled || !readerCanvasRef.current) {
       return;
     }
+    const automaticForward = automaticTuningForCore(automaticPageTurnTuning);
+    const automaticBackward = pageTurnTuningForLayoutDirection(
+      automaticForward,
+      reverseAutomaticTuningForCore(reverseAutomaticPageTurnTuning),
+      -1,
+      layout === "spread",
+    );
+    const gestureForward = gestureTuningForCore(gesturePageTurnTuning);
+    const gestureBackward = pageTurnTuningForLayoutDirection(
+      gestureForward,
+      reverseGestureTuningForCore(reverseGesturePageTurnTuning),
+      -1,
+      layout === "spread",
+    );
     configureNativePagerMotion(readerCanvasRef.current, {
-      automatic: automaticTuningForCore(automaticPageTurnTuning),
-      rapid: automaticTuningForCore(automaticPageTurnTuning),
-      gesture: gestureTuningForCore(gesturePageTurnTuning),
+      automatic: {
+        forward: automaticForward,
+        backward: automaticBackward,
+      },
+      rapid: {
+        forward: automaticForward,
+        backward: automaticBackward,
+      },
+      gesture: {
+        forward: gestureForward,
+        backward: gestureBackward,
+      },
     });
   }, [
     automaticPageTurnTuning,
+    reverseAutomaticPageTurnTuning,
     gesturePageTurnTuning,
+    layout,
+    reverseGesturePageTurnTuning,
     nativePagerCompositorEnabled,
     readerCanvasRef,
   ]);
@@ -3469,13 +3556,24 @@ function LazyReaderEngine({
       }
       const playbackSpeed =
         programmaticPlaybackSpeeds.get(turn.id) ??
-        automaticPageTurnTuning.playbackSpeed;
+        pageTurnTuningForLayoutDirection(
+          automaticPageTurnTuning,
+          reverseAutomaticPageTurnTuning,
+          turn.direction,
+          layout === "spread",
+        ).playbackSpeed;
+      const turnTuning = pageTurnTuningForLayoutDirection(
+        automaticPageTurnTuning,
+        reverseAutomaticPageTurnTuning,
+        turn.direction,
+        layout === "spread",
+      );
       const durationMs =
         estimateAutomaticPageTurnDurationMs(
-          automaticPageTurnTuning,
-          turn.direction,
+          turnTuning,
+          pageTurnSolverDirectionForLayout(turn.direction, layout === "spread"),
         ) *
-        (automaticPageTurnTuning.playbackSpeed / Math.max(0.01, playbackSpeed));
+        (turnTuning.playbackSpeed / Math.max(0.01, playbackSpeed));
       presentationRequiredTurnIdsRef.current.add(turn.id);
       presentedTurnIdsRef.current.add(turn.id);
       nativePagerPlaybackSpeedsRef.current.set(turn.id, playbackSpeed);
@@ -3513,6 +3611,7 @@ function LazyReaderEngine({
   }, [
     activeTurns,
     automaticPageTurnTuning,
+    reverseAutomaticPageTurnTuning,
     programmaticPlaybackSpeeds,
     captureSlotsForView,
     createRecordedPageCapture,
@@ -3588,7 +3687,12 @@ function LazyReaderEngine({
         motion: turn.motion,
         playbackSpeed: isProgrammaticPageTurnMotion(turn.motion)
           ? (programmaticPlaybackSpeeds.get(turn.id) ??
-            automaticPageTurnTuning.playbackSpeed)
+            pageTurnTuningForLayoutDirection(
+              automaticPageTurnTuning,
+              reverseAutomaticPageTurnTuning,
+              turn.direction,
+              layout === "spread",
+            ).playbackSpeed)
           : undefined,
         gestureRelease: turn.gestureRelease,
       };
@@ -3596,6 +3700,7 @@ function LazyReaderEngine({
     return commands;
   }, [
     automaticPageTurnTuning.playbackSpeed,
+    reverseAutomaticPageTurnTuning,
     programmaticPlaybackSpeeds,
     layout,
     nativePagerCompositorEnabled,
@@ -3607,7 +3712,9 @@ function LazyReaderEngine({
     height,
     spread: layout === "spread",
     automaticTuning: automaticPageTurnTuning,
+    reverseAutomaticTuning: reverseAutomaticPageTurnTuning,
     gestureTuning: gesturePageTurnTuning,
+    reverseGestureTuning: reverseGesturePageTurnTuning,
     commands: nativePoolCommands,
     onPrepared: markScheduledTurnLanePrepared,
     onStarted: recordScheduledTurnLaneStarted,
@@ -4121,7 +4228,9 @@ export function LiveReader({
   initialPosition,
   loadResource,
   automaticPageTurnTuning,
+  reverseAutomaticPageTurnTuning,
   gesturePageTurnTuning,
+  reverseGesturePageTurnTuning,
   onCenterPress,
   onProgress,
   onSelectionChange,
@@ -4160,7 +4269,8 @@ export function LiveReader({
     resolvedAppearance.fontSize,
     resolvedAppearance.lineHeight,
     resolvedAppearance.paragraphSpacing,
-    resolvedAppearance.horizontalMargin,
+    resolvedAppearance.inlineMargin,
+    resolvedAppearance.textAlignment,
     // Progress decorations are baked into page-turn textures and native Pager
     // stock. Changing their placement must retire the complete render
     // generation so both caches destroy their old styled captures.
@@ -4175,6 +4285,11 @@ export function LiveReader({
     () => normalizeAutomaticPageTurnTuning(automaticPageTurnTuning),
     [automaticPageTurnTuning],
   );
+  const normalizedReverseAutomaticPageTurnTuning = useMemo(
+    () =>
+      normalizeReverseAutomaticPageTurnTuning(reverseAutomaticPageTurnTuning),
+    [reverseAutomaticPageTurnTuning],
+  );
   const normalizedGesturePageTurnTuning = useMemo(
     () =>
       normalizeGesturePageTurnTuningForPlatform(
@@ -4182,6 +4297,14 @@ export function LiveReader({
         Platform.OS,
       ),
     [gesturePageTurnTuning],
+  );
+  const normalizedReverseGesturePageTurnTuning = useMemo(
+    () =>
+      normalizeReverseGesturePageTurnTuningForPlatform(
+        reverseGesturePageTurnTuning,
+        Platform.OS,
+      ),
+    [reverseGesturePageTurnTuning],
   );
 
   return (
@@ -4204,7 +4327,9 @@ export function LiveReader({
       initialPosition={anchorRef.current}
       loadResource={loadResource}
       automaticPageTurnTuning={normalizedAutomaticPageTurnTuning}
+      reverseAutomaticPageTurnTuning={normalizedReverseAutomaticPageTurnTuning}
       gesturePageTurnTuning={normalizedGesturePageTurnTuning}
+      reverseGesturePageTurnTuning={normalizedReverseGesturePageTurnTuning}
       onCenterPress={onCenterPress}
       onProgress={handleProgress}
       onSelectionChange={onSelectionChange}

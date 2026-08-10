@@ -1,6 +1,12 @@
 export const READER_RENDERER_VERSION = 1;
 
 export {
+  FORWARD_CLICK_PAGE_TURN_TUNING_RANGES,
+  FORWARD_GESTURE_PAGE_TURN_TUNING_RANGES,
+  type PageTurnTuningRange,
+} from "./page-turn-tuning-ranges";
+
+export {
   AUTOMATIC_PAGE_TURN_MAXIMUM_RELEASE_X,
   DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
   normalizeAutomaticPageTurnTuning,
@@ -11,6 +17,16 @@ export {
   normalizeGesturePageTurnTuning,
   type GesturePageTurnTuning,
 } from "./gesture-page-turn-tuning";
+export {
+  DEFAULT_REVERSE_AUTOMATIC_PAGE_TURN_TUNING,
+  normalizeReverseAutomaticPageTurnTuning,
+  type ReverseAutomaticPageTurnTuning,
+} from "./reverse-automatic-page-turn-tuning";
+export {
+  DEFAULT_REVERSE_GESTURE_PAGE_TURN_TUNING,
+  normalizeReverseGesturePageTurnTuning,
+  type ReverseGesturePageTurnTuning,
+} from "./reverse-gesture-page-turn-tuning";
 export { createSkiaParagraphBackend } from "./skia-paragraph-backend";
 export {
   DEFAULT_READER_THEME,
@@ -25,6 +41,7 @@ export {
   DEFAULT_LIVE_READER_APPEARANCE,
   type ReaderAppearance,
   type ReaderProgressDisplay,
+  type ReaderTextAlignment,
 } from "./reader-appearance";
 export {
   PAGE_DECORATION_FONT_SIZE,

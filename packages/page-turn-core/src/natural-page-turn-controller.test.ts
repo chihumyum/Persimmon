@@ -9,20 +9,20 @@ import {
 } from "./index";
 
 describe("natural page turn controller", () => {
-  it("opens the release point only when the caller opts into 1.0", () => {
+  it("admits the extreme release point unless a lane requests a tighter cap", () => {
     const tuning = { ...DEFAULT_PAGE_TURN_TUNING, releaseX: 1 };
     const ordinary = new NaturalPageTurnController(tuning);
-    const rapid = new NaturalPageTurnController(tuning, 1);
+    const constrained = new NaturalPageTurnController(tuning, 0.8);
 
     ordinary.play();
-    rapid.play();
+    constrained.play();
     for (let frame = 0; frame < 3; frame += 1) {
       ordinary.advance(0.04);
-      rapid.advance(0.04);
+      constrained.advance(0.04);
     }
 
-    expect(ordinary.getMetrics().edgeX).toBeCloseTo(0.8, 8);
-    expect(rapid.getMetrics().edgeX).toBeCloseTo(1, 8);
+    expect(ordinary.getMetrics().edgeX).toBeCloseTo(1, 8);
+    expect(constrained.getMetrics().edgeX).toBeCloseTo(0.8, 8);
   });
 
   it("replays the reference automatic press and turn without shape shortcuts", () => {
@@ -232,6 +232,24 @@ describe("natural page turn controller", () => {
     advanceUntilSettled(controller);
     expect(controller.getPhase()).toBe("completed");
     expect(controller.getMetrics().edgeX).toBeCloseTo(-1, 5);
+  });
+
+  it("uses release speed to accelerate an incoming-page landing", () => {
+    const slow = new NaturalPageTurnController();
+    const fast = new NaturalPageTurnController();
+    const release = {
+      pressedEdgeX: 0.69,
+      heldRollTilt: 0,
+      turnProgress: 0,
+      settlingProgress: 0.3,
+    };
+    slow.playReleasedGesture({ ...release, speedScale: 0.5 }, true);
+    fast.playReleasedGesture({ ...release, speedScale: 2 }, true);
+
+    slow.advance(0.1);
+    fast.advance(0.1);
+
+    expect(fast.getMetrics().edgeX).toBeLessThan(slow.getMetrics().edgeX);
   });
 
   it("withdraws an incoming page when the hand reverses before release", () => {

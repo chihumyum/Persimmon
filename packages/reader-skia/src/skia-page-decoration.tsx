@@ -49,7 +49,7 @@ export interface CreateSkiaPageDecorationInput {
   readonly fontFamily: string;
   readonly width: number;
   readonly height: number;
-  readonly horizontalMargin: number;
+  readonly inlineMargin: number;
   readonly pagesPerView?: number;
   readonly topInset: number;
   readonly bottomInset: number;
@@ -63,7 +63,7 @@ export function createSkiaPageDecoration({
   fontFamily,
   width,
   height,
-  horizontalMargin,
+  inlineMargin,
   pagesPerView = 1,
   topInset,
   bottomInset,
@@ -72,8 +72,8 @@ export function createSkiaPageDecoration({
 }: CreateSkiaPageDecorationInput): SkiaPageDecoration {
   const normalizedPagesPerView = Math.max(1, Math.floor(pagesPerView));
   const pageWidth = width / normalizedPagesPerView;
-  const maximumHorizontalMargin = Math.max(8, (pageWidth - 96) / 2);
-  const margin = Math.min(horizontalMargin, maximumHorizontalMargin);
+  const maximumInlineMargin = Math.max(8, (pageWidth - 96) / 2);
+  const margin = Math.min(inlineMargin, maximumInlineMargin);
   const pageContentWidth = Math.max(1, pageWidth - margin * 2);
   // A spread is one reading view for navigation and progress. Keep its
   // decoration on the view axis instead of assigning the header to the left

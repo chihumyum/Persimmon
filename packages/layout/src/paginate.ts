@@ -123,9 +123,13 @@ function styleForBlock(
       : block.noteKind
         ? spec.note
         : spec.body;
+  const alignment =
+    block.kind === "paragraph" && spec.bodyAlignmentOverride
+      ? spec.bodyAlignmentOverride
+      : block.style?.textAlign;
   return {
     ...base,
-    ...(block.style?.textAlign ? { align: block.style.textAlign } : {}),
+    ...(alignment ? { align: alignment } : {}),
     ...(block.style?.fontWeight ? { weight: block.style.fontWeight } : {}),
     ...(block.style?.fontStyle ? { style: block.style.fontStyle } : {}),
   };

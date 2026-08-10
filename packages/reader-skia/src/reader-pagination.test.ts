@@ -8,7 +8,8 @@ const appearance: ReaderAppearance = {
   fontSize: 24,
   lineHeight: 1.8,
   paragraphSpacing: 1.2,
-  horizontalMargin: 44,
+  inlineMargin: 44,
+  textAlignment: "book",
   progressDisplay: "both",
 };
 
@@ -43,7 +44,7 @@ describe("reader pagination style", () => {
     const spec = createReaderLayoutSpec(
       160,
       800,
-      { ...appearance, horizontalMargin: 72 },
+      { ...appearance, inlineMargin: 72 },
       47,
       34,
     );
@@ -54,5 +55,17 @@ describe("reader pagination style", () => {
       bottom: 68,
       left: 32,
     });
+  });
+
+  it("maps the text preference to a body-only layout override", () => {
+    expect(
+      createReaderLayoutSpec(400, 800, {
+        ...appearance,
+        textAlignment: "justify",
+      }).bodyAlignmentOverride,
+    ).toBe("justify");
+    expect(createReaderLayoutSpec(400, 800, appearance)).not.toHaveProperty(
+      "bodyAlignmentOverride",
+    );
   });
 });

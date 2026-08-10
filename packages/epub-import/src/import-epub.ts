@@ -72,7 +72,7 @@ const FONT_MEDIA_TYPES = new Set([
   "font/woff2",
 ]);
 
-export const EPUB_COMPILER_VERSION = 7 as const;
+export const EPUB_COMPILER_VERSION = 8 as const;
 
 export interface EpubImportWarning {
   code:

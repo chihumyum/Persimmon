@@ -3,6 +3,8 @@ import {
   type PageTurnTuning,
 } from "@persimmon/page-turn-core";
 
+import { FORWARD_GESTURE_PAGE_TURN_TUNING_RANGES } from "./page-turn-tuning-ranges";
+
 export interface GesturePageTurnTuning {
   readonly releaseX: number;
   readonly liftVelocity: number;
@@ -17,16 +19,16 @@ export interface GesturePageTurnTuning {
 }
 
 export const DEFAULT_GESTURE_PAGE_TURN_TUNING: GesturePageTurnTuning = {
-  releaseX: 0.69,
-  liftVelocity: 0.9,
-  liftToLeft: 1.65,
-  curvatureRelaxation: 7,
-  pageWeight: 0.6,
-  commitThreshold: 0.53,
-  minimumSpeedScale: 0.95,
-  maximumSpeedScale: 2,
-  velocityGain: 0.6,
-  idleDecaySeconds: 0.09,
+  releaseX: 0.4,
+  liftVelocity: 1,
+  liftToLeft: 1,
+  curvatureRelaxation: 10,
+  pageWeight: 1,
+  commitThreshold: 1,
+  minimumSpeedScale: 1,
+  maximumSpeedScale: 5,
+  velocityGain: 0.2,
+  idleDecaySeconds: 0.1,
 };
 
 const IOS_COMMIT_THRESHOLD_SCALE = 2 / 3;
@@ -34,48 +36,51 @@ const IOS_COMMIT_THRESHOLD_SCALE = 2 / 3;
 export function normalizeGesturePageTurnTuning(
   tuning: Partial<GesturePageTurnTuning> | undefined,
 ): GesturePageTurnTuning {
-  const core = clampPageTurnTuning({
-    releaseX: finiteOrDefault(
-      tuning?.releaseX,
-      DEFAULT_GESTURE_PAGE_TURN_TUNING.releaseX,
-    ),
-    liftVelocity: finiteOrDefault(
-      tuning?.liftVelocity,
-      DEFAULT_GESTURE_PAGE_TURN_TUNING.liftVelocity,
-    ),
-    liftToLeft: finiteOrDefault(
-      tuning?.liftToLeft,
-      DEFAULT_GESTURE_PAGE_TURN_TUNING.liftToLeft,
-    ),
-    curvatureRelaxation: finiteOrDefault(
-      tuning?.curvatureRelaxation,
-      DEFAULT_GESTURE_PAGE_TURN_TUNING.curvatureRelaxation,
-    ),
-    pageWeight: finiteOrDefault(
-      tuning?.pageWeight,
-      DEFAULT_GESTURE_PAGE_TURN_TUNING.pageWeight,
-    ),
-    gestureCommitThreshold: finiteOrDefault(
-      tuning?.commitThreshold,
-      DEFAULT_GESTURE_PAGE_TURN_TUNING.commitThreshold,
-    ),
-    gestureMinimumSpeedScale: finiteOrDefault(
-      tuning?.minimumSpeedScale,
-      DEFAULT_GESTURE_PAGE_TURN_TUNING.minimumSpeedScale,
-    ),
-    gestureMaximumSpeedScale: finiteOrDefault(
-      tuning?.maximumSpeedScale,
-      DEFAULT_GESTURE_PAGE_TURN_TUNING.maximumSpeedScale,
-    ),
-    gestureVelocityGain: finiteOrDefault(
-      tuning?.velocityGain,
-      DEFAULT_GESTURE_PAGE_TURN_TUNING.velocityGain,
-    ),
-    gestureIdleDecaySeconds: finiteOrDefault(
-      tuning?.idleDecaySeconds,
-      DEFAULT_GESTURE_PAGE_TURN_TUNING.idleDecaySeconds,
-    ),
-  });
+  const core = clampPageTurnTuning(
+    {
+      releaseX: finiteOrDefault(
+        tuning?.releaseX,
+        DEFAULT_GESTURE_PAGE_TURN_TUNING.releaseX,
+      ),
+      liftVelocity: finiteOrDefault(
+        tuning?.liftVelocity,
+        DEFAULT_GESTURE_PAGE_TURN_TUNING.liftVelocity,
+      ),
+      liftToLeft: finiteOrDefault(
+        tuning?.liftToLeft,
+        DEFAULT_GESTURE_PAGE_TURN_TUNING.liftToLeft,
+      ),
+      curvatureRelaxation: finiteOrDefault(
+        tuning?.curvatureRelaxation,
+        DEFAULT_GESTURE_PAGE_TURN_TUNING.curvatureRelaxation,
+      ),
+      pageWeight: finiteOrDefault(
+        tuning?.pageWeight,
+        DEFAULT_GESTURE_PAGE_TURN_TUNING.pageWeight,
+      ),
+      gestureCommitThreshold: finiteOrDefault(
+        tuning?.commitThreshold,
+        DEFAULT_GESTURE_PAGE_TURN_TUNING.commitThreshold,
+      ),
+      gestureMinimumSpeedScale: finiteOrDefault(
+        tuning?.minimumSpeedScale,
+        DEFAULT_GESTURE_PAGE_TURN_TUNING.minimumSpeedScale,
+      ),
+      gestureMaximumSpeedScale: finiteOrDefault(
+        tuning?.maximumSpeedScale,
+        DEFAULT_GESTURE_PAGE_TURN_TUNING.maximumSpeedScale,
+      ),
+      gestureVelocityGain: finiteOrDefault(
+        tuning?.velocityGain,
+        DEFAULT_GESTURE_PAGE_TURN_TUNING.velocityGain,
+      ),
+      gestureIdleDecaySeconds: finiteOrDefault(
+        tuning?.idleDecaySeconds,
+        DEFAULT_GESTURE_PAGE_TURN_TUNING.idleDecaySeconds,
+      ),
+    },
+    FORWARD_GESTURE_PAGE_TURN_TUNING_RANGES.releaseX.maximum,
+  );
   return gestureTuningFromCore(core);
 }
 
@@ -87,10 +92,10 @@ export function normalizeGesturePageTurnTuningForPlatform(
   if (platform !== "ios") {
     return normalized;
   }
-  return normalizeGesturePageTurnTuning({
+  return {
     ...normalized,
     commitThreshold: normalized.commitThreshold * IOS_COMMIT_THRESHOLD_SCALE,
-  });
+  };
 }
 
 export function gestureTuningForCore(

@@ -98,7 +98,7 @@ function validateBlock(
   if (
     block.style &&
     ((block.style.textAlign !== undefined &&
-      !["start", "center", "justify"].includes(block.style.textAlign)) ||
+      !["start", "center", "justify", "end"].includes(block.style.textAlign)) ||
       (block.style.fontWeight !== undefined &&
         block.style.fontWeight !== 400 &&
         block.style.fontWeight !== 700) ||

@@ -14,11 +14,8 @@ export function createReaderLayoutSpec(
 ): PageLayoutSpec {
   const spec = createDefaultPageLayoutSpec({ width, height });
   const scale = appearance.fontSize / spec.body.fontSize;
-  const maximumHorizontalMargin = Math.max(8, (width - 96) / 2);
-  const horizontalMargin = Math.min(
-    appearance.horizontalMargin,
-    maximumHorizontalMargin,
-  );
+  const maximumInlineMargin = Math.max(8, (width - 96) / 2);
+  const inlineMargin = Math.min(appearance.inlineMargin, maximumInlineMargin);
   const fontFamilies = [
     ...new Set([appearance.fontFamily, "Noto Serif SC", "Noto Sans Math"]),
   ];
@@ -27,9 +24,9 @@ export function createReaderLayoutSpec(
     ...spec,
     padding: {
       top: Math.max(spec.padding.top, topInset + 34),
-      right: horizontalMargin,
+      right: inlineMargin,
       bottom: Math.max(spec.padding.bottom, bottomInset + 34),
-      left: horizontalMargin,
+      left: inlineMargin,
     },
     body: {
       ...spec.body,
@@ -66,5 +63,8 @@ export function createReaderLayoutSpec(
     },
     paragraphGap: appearance.fontSize * appearance.paragraphSpacing,
     paragraphGapMode: "reader",
+    ...(appearance.textAlignment === "book"
+      ? {}
+      : { bodyAlignmentOverride: appearance.textAlignment }),
   };
 }

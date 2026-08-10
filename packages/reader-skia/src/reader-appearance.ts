@@ -1,4 +1,5 @@
 export type ReaderProgressDisplay = "footer" | "header" | "both" | "hidden";
+export type ReaderTextAlignment = "book" | "start" | "justify" | "end";
 
 export interface ReaderAppearance {
   readonly fontFamily: string;
@@ -9,8 +10,9 @@ export interface ReaderAppearance {
   readonly lineHeight: number;
   /** Gap between adjacent body paragraphs, measured in em. */
   readonly paragraphSpacing: number;
-  /** Left and right page padding, measured in layout pixels. */
-  readonly horizontalMargin: number;
+  /** Symmetric start/end padding on the text inline axis, in layout pixels. */
+  readonly inlineMargin: number;
+  readonly textAlignment: ReaderTextAlignment;
   readonly progressDisplay: ReaderProgressDisplay;
 }
 
@@ -19,6 +21,7 @@ export const DEFAULT_LIVE_READER_APPEARANCE: ReaderAppearance = {
   fontSize: 20,
   lineHeight: 1.65,
   paragraphSpacing: 0.9,
-  horizontalMargin: 32,
+  inlineMargin: 32,
+  textAlignment: "book",
   progressDisplay: "footer",
 };

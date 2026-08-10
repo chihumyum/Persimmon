@@ -251,6 +251,52 @@ describe("paginateBook", () => {
     expect(result.pages[1]!.items[0]!.frame.y).toBe(0);
   });
 
+  it("overrides body alignment while preserving heading alignment", () => {
+    const inputs: ParagraphLayoutInput[] = [];
+    const fixed = createFixedBackend(20, 20);
+    const backend: ParagraphLayoutBackend<FixedHandle> = {
+      layout(input) {
+        inputs.push(input);
+        return fixed.layout(input);
+      },
+    };
+    const book: BookIR = {
+      schemaVersion: BOOK_IR_VERSION,
+      id: "reader-alignment-test",
+      revisionId: "v1",
+      title: "Reader alignment",
+      assets: {},
+      sections: [
+        {
+          id: "chapter",
+          blocks: [
+            {
+              kind: "heading",
+              level: 1,
+              id: "heading",
+              runs: [{ text: "Heading" }],
+              style: { textAlign: "center" },
+            },
+            {
+              kind: "paragraph",
+              id: "body",
+              runs: [{ text: "Body" }],
+              style: { textAlign: "center" },
+            },
+          ],
+        },
+      ],
+    };
+
+    paginateBook(
+      book,
+      { ...layoutSpec, bodyAlignmentOverride: "end" },
+      backend,
+    );
+
+    expect(inputs.map((input) => input.style.align)).toEqual(["center", "end"]);
+  });
+
   it("creates precise link hit regions while paginating one linked section", () => {
     const inputs: ParagraphLayoutInput[] = [];
     const backend: ParagraphLayoutBackend<FixedHandle> = {

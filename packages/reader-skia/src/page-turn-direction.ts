@@ -42,6 +42,38 @@ export function pageTurnXScale(
   return direction;
 }
 
+export function pageTurnTuningForDirection<Forward, Backward>(
+  forward: Forward,
+  backward: Backward,
+  direction: PageTurnDirection,
+): Forward | Backward {
+  return direction === 1 ? forward : backward;
+}
+
+/**
+ * A spread turns the same outgoing sheet in either direction. Reuse the
+ * forward physics and let the direction model provide the mirror. The
+ * incoming-page tuning remains exclusive to a single-column backward turn.
+ * This applies to automatic, rapid, and gesture turns.
+ */
+export function pageTurnTuningForLayoutDirection<Forward, Backward>(
+  forward: Forward,
+  backward: Backward,
+  direction: PageTurnDirection,
+  spread: boolean,
+): Forward | Backward {
+  return spread
+    ? forward
+    : pageTurnTuningForDirection(forward, backward, direction);
+}
+
+export function pageTurnSolverDirectionForLayout(
+  direction: PageTurnDirection,
+  spread: boolean,
+): PageTurnDirection {
+  return spread ? 1 : direction;
+}
+
 export function pageTurnFaceValues<T>(
   direction: PageTurnDirection,
   source: T,

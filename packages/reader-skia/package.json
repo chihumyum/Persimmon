@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./page-turn-tuning-ranges": "./src/page-turn-tuning-ranges.ts",
     "./theme": "./src/reader-theme.ts"
   },
   "scripts": {

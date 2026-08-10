@@ -11,29 +11,29 @@ import {
 } from "./page-turn-concurrency";
 
 describe("page turn concurrency", () => {
-  it("accounts for the prepended incoming-page reveal lifetime", () => {
+  it("estimates both directional solver lifetimes", () => {
     expect(
       estimateAutomaticPageTurnDurationMs(
         DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
         1,
       ),
-    ).toBe(441);
+    ).toBe(947);
     expect(
       estimateAutomaticPageTurnDurationMs(
         DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
         -1,
       ),
-    ).toBe(556);
+    ).toBe(723);
     expect(
       estimateAutomaticPageTurnDurationMs(
         { ...DEFAULT_AUTOMATIC_PAGE_TURN_TUNING, releaseX: 1 },
-        1,
         1,
       ),
     ).toBeGreaterThan(
       estimateAutomaticPageTurnDurationMs(
         { ...DEFAULT_AUTOMATIC_PAGE_TURN_TUNING, releaseX: 1 },
         1,
+        0.8,
       ),
     );
   });
@@ -42,7 +42,7 @@ describe("page turn concurrency", () => {
     expect(
       calculatePageTurnConcurrency(DEFAULT_AUTOMATIC_PAGE_TURN_TUNING, 150),
     ).toEqual({
-      estimatedTapDurationMs: 556,
+      estimatedTapDurationMs: 947,
       minimumTurnIntervalMs: 150,
       maximumConcurrentTapTurns: 10,
       maximumConcurrentTurns: 11,
@@ -56,7 +56,7 @@ describe("page turn concurrency", () => {
         150,
       ),
     ).toMatchObject({
-      estimatedTapDurationMs: 362,
+      estimatedTapDurationMs: 474,
       minimumTurnIntervalMs: 150,
       maximumConcurrentTapTurns: 10,
       maximumConcurrentTurns: 11,
@@ -67,7 +67,7 @@ describe("page turn concurrency", () => {
         150,
       ),
     ).toMatchObject({
-      estimatedTapDurationMs: 1445,
+      estimatedTapDurationMs: 1893,
       minimumTurnIntervalMs: 150,
       maximumConcurrentTapTurns: 10,
       maximumConcurrentTurns: 11,

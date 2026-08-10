@@ -1,6 +1,7 @@
 import {
   DEFAULT_PAGE_PROFILE_POINTS,
   incomingPageRevealProgress,
+  type IncomingPageTurnTuning,
 } from "@persimmon/page-turn-core";
 
 import { projectPageTurnBookX } from "./page-turn-perspective";
@@ -16,12 +17,13 @@ export function incomingPageProjectedOffset(
   cameraBookX: number,
   xScale: 1 | -1,
   incomingPageProgress: number | undefined,
+  tuning?: Partial<IncomingPageTurnTuning>,
 ): number {
   "worklet";
   if (incomingPageProgress === undefined) {
     return 0;
   }
-  const reveal = incomingPageRevealProgress(incomingPageProgress);
+  const reveal = incomingPageRevealProgress(incomingPageProgress, tuning);
   if (reveal >= 1) {
     return 0;
   }

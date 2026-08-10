@@ -4,9 +4,18 @@ import {
 } from "@persimmon/page-turn-core";
 
 import {
+  AUTOMATIC_PAGE_TURN_MAXIMUM_RELEASE_X,
   automaticTuningForCore,
   type AutomaticPageTurnTuning,
 } from "./automatic-page-turn-tuning";
+import {
+  reverseAutomaticTuningForCore,
+  type ReverseAutomaticPageTurnTuning,
+} from "./reverse-automatic-page-turn-tuning";
+
+type AnyAutomaticPageTurnTuning =
+  | AutomaticPageTurnTuning
+  | ReverseAutomaticPageTurnTuning;
 
 export const PAGE_TURN_LANE_HARD_LIMIT = 11;
 export const PAGE_TURN_GESTURE_LANE_RESERVE = 1;
@@ -34,7 +43,7 @@ export interface PageTurnConcurrency {
 export function calculatePageTurnConcurrency(
   tuning: AutomaticPageTurnTuning,
   startIntervalMs: number,
-  maximumReleaseX = 0.8,
+  maximumReleaseX: number = AUTOMATIC_PAGE_TURN_MAXIMUM_RELEASE_X,
 ): PageTurnConcurrency {
   const estimatedTapDurationMs = estimateAutomaticPageTurnDurationMs(
     tuning,
@@ -83,9 +92,9 @@ export function calculatePageTurnConcurrency(
  * overlap. It never slows a fast custom animation down.
  */
 export function burstPageTurnPlaybackSpeed(
-  tuning: AutomaticPageTurnTuning,
+  tuning: AnyAutomaticPageTurnTuning,
   _olderTurnDepth = 0,
-  maximumReleaseX = 0.8,
+  maximumReleaseX: number = AUTOMATIC_PAGE_TURN_MAXIMUM_RELEASE_X,
 ): number {
   const estimatedDurationMs = estimateAutomaticPageTurnDurationMs(
     tuning,
@@ -103,14 +112,23 @@ export function burstPageTurnPlaybackSpeed(
 }
 
 export function estimateAutomaticPageTurnDurationMs(
-  tuning: AutomaticPageTurnTuning,
+  tuning: AnyAutomaticPageTurnTuning,
   direction?: 1 | -1,
-  maximumReleaseX = 0.8,
+  maximumReleaseX: number = AUTOMATIC_PAGE_TURN_MAXIMUM_RELEASE_X,
 ): number {
-  const coreTuning = automaticTuningForCore(tuning);
+  const reverse = !("liftVelocity" in tuning);
+  const coreTuning = reverse
+    ? reverseAutomaticTuningForCore(tuning)
+    : automaticTuningForCore(tuning);
   const solverDurationSeconds =
     direction === undefined
-      ? automaticPageTurnSolverDurationSeconds(coreTuning, maximumReleaseX)
+      ? reverse
+        ? automaticPageTurnSolverDurationSecondsForDirection(
+            coreTuning,
+            -1,
+            maximumReleaseX,
+          )
+        : automaticPageTurnSolverDurationSeconds(coreTuning, maximumReleaseX)
       : automaticPageTurnSolverDurationSecondsForDirection(
           coreTuning,
           direction,

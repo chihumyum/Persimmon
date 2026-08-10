@@ -25,12 +25,25 @@ export interface NativePagerMotionTuning {
   readonly liftVelocity: number;
   readonly liftToLeft: number;
   readonly curvatureRelaxation: number;
+  readonly incomingLandingStartProgress?: number;
+  readonly incomingRevealStartProgress?: number;
+  readonly incomingRevealEndProgress?: number;
+  readonly incomingDragProgressScale?: number;
+  readonly incomingDragProgressExponent?: number;
+  readonly incomingSettleDurationSeconds?: number;
+  readonly incomingSettleEasingPower?: number;
+  readonly incomingRevertDurationSeconds?: number;
 }
 
 export interface NativePagerMotionConfig {
-  readonly automatic: NativePagerMotionTuning;
-  readonly rapid: NativePagerMotionTuning;
-  readonly gesture: NativePagerMotionTuning;
+  readonly automatic: NativePagerDirectionalMotionTuning;
+  readonly rapid: NativePagerDirectionalMotionTuning;
+  readonly gesture: NativePagerDirectionalMotionTuning;
+}
+
+export interface NativePagerDirectionalMotionTuning {
+  readonly forward: NativePagerMotionTuning;
+  readonly backward: NativePagerMotionTuning;
 }
 
 export interface NativePagerTurnCommand {
@@ -94,6 +107,7 @@ export interface NativePagerGestureRelease {
   readonly minimumSpeedScale: number;
   readonly maximumSpeedScale: number;
   readonly velocityGain: number;
+  readonly idleDecaySeconds: number;
 }
 
 export interface NativePagerGestureStart {

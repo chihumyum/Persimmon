@@ -26,7 +26,7 @@ export interface TypographyPreset {
   heightMultiplier: number;
   weight?: 400 | 500 | 600 | 700;
   style?: "normal" | "italic";
-  align?: "start" | "center" | "justify";
+  align?: "start" | "center" | "justify" | "end";
 }
 
 export interface PageLayoutSpec {
@@ -41,6 +41,8 @@ export interface PageLayoutSpec {
    * paragraphs while preserving publisher spacing around headings and images.
    */
   paragraphGapMode?: "publisher" | "reader";
+  /** Reader preference that overrides publisher alignment for body paragraphs. */
+  bodyAlignmentOverride?: "start" | "justify" | "end";
   headingBefore: number;
   headingAfter: number;
   imageGap: number;

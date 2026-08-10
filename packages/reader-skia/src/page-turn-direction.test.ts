@@ -4,6 +4,8 @@ import {
   isPageTurnSourceFacing,
   pageTurnDirectionModel,
   pageTurnFaceValues,
+  pageTurnSolverDirectionForLayout,
+  pageTurnTuningForLayoutDirection,
   pageTurnXScale,
   shouldDrawPageTurnShadow,
 } from "./page-turn-direction";
@@ -47,5 +49,32 @@ describe("page-turn direction model", () => {
     expect(isPageTurnSourceFacing(1, false)).toBe(false);
     expect(isPageTurnSourceFacing(-1, true)).toBe(false);
     expect(isPageTurnSourceFacing(-1, false)).toBe(true);
+  });
+
+  it("mirrors one tuning for taps, rapid turns, and gestures in a spread", () => {
+    const forward = { name: "forward" };
+    const backward = { name: "backward" };
+
+    expect(pageTurnTuningForLayoutDirection(forward, backward, 1, true)).toBe(
+      forward,
+    );
+    expect(pageTurnTuningForLayoutDirection(forward, backward, -1, true)).toBe(
+      forward,
+    );
+    expect(pageTurnSolverDirectionForLayout(1, true)).toBe(1);
+    expect(pageTurnSolverDirectionForLayout(-1, true)).toBe(1);
+  });
+
+  it("preserves directional automatic tuning in a single-column layout", () => {
+    const forward = { name: "forward" };
+    const backward = { name: "backward" };
+
+    expect(pageTurnTuningForLayoutDirection(forward, backward, 1, false)).toBe(
+      forward,
+    );
+    expect(pageTurnTuningForLayoutDirection(forward, backward, -1, false)).toBe(
+      backward,
+    );
+    expect(pageTurnSolverDirectionForLayout(-1, false)).toBe(-1);
   });
 });

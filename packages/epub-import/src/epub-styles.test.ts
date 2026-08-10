@@ -75,6 +75,18 @@ describe("safe EPUB style cascade", () => {
     });
   });
 
+  it("preserves end-side text alignment from EPUB styles", () => {
+    const rightSheet = parseEpubStyleSheet(["p { text-align: right }"]);
+    const endSheet = parseEpubStyleSheet(["p { text-align: end }"]);
+
+    expect(
+      styleForContentElement(firstBodyChild("<p>Right</p>"), rightSheet),
+    ).toMatchObject({ textAlign: "end" });
+    expect(
+      styleForContentElement(firstBodyChild("<p>End</p>"), endSheet),
+    ).toMatchObject({ textAlign: "end" });
+  });
+
   it("extracts font faces and keeps only the first explicit CSS family", () => {
     const sheet = parseEpubStyleSheet([
       {

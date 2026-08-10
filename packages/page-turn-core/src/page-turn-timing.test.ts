@@ -5,6 +5,7 @@ import {
   INCOMING_PAGE_PRELUDE_PROGRESS,
   INCOMING_PAGE_SETTLE_DURATION_SECONDS,
   incomingPageDrivenProgress,
+  incomingPageDragProgress,
   incomingPageRemainingDurationSeconds,
   incomingPageRevealProgress,
   incomingPageShapeProgress,
@@ -61,5 +62,30 @@ describe("incoming page prelude", () => {
       12,
     );
     expect(incomingPageDrivenProgress(0, totalDuration)).toBe(1);
+  });
+
+  it("supports independent reveal timing and drag response", () => {
+    const tuning = {
+      incomingLandingStartProgress: 0.5,
+      incomingRevealStartProgress: 0.2,
+      incomingRevealEndProgress: 0.6,
+      incomingDragProgressScale: 0.8,
+      incomingDragProgressExponent: 0.5,
+      incomingSettleDurationSeconds: 0.8,
+      incomingSettleEasingPower: 3,
+      incomingRevertDurationSeconds: 0.4,
+    };
+
+    expect(incomingPageRevealProgress(0.2, tuning)).toBe(0);
+    expect(incomingPageRevealProgress(0.4, tuning)).toBeCloseTo(0.5, 12);
+    expect(incomingPageRevealProgress(0.6, tuning)).toBe(1);
+    expect(incomingPageShapeProgress(0.6, tuning)).toBe(0.5);
+    expect(incomingPageShapeProgress(0.8, tuning)).toBeCloseTo(0.75, 12);
+    expect(incomingPageDragProgress(0.25, tuning)).toBeCloseTo(0.4, 12);
+    expect(incomingPageRemainingDurationSeconds(0.6, tuning)).toBeCloseTo(
+      0.8,
+      12,
+    );
+    expect(incomingPageDrivenProgress(0.6, 0.4, tuning)).toBeCloseTo(0.95, 12);
   });
 });

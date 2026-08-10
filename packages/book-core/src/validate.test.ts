@@ -106,4 +106,25 @@ describe("BookIR validation", () => {
       ]),
     );
   });
+
+  it("accepts logical end alignment in the safe style whitelist", () => {
+    const book: BookIR = {
+      ...SAMPLE_BOOK,
+      sections: [
+        {
+          id: "end-aligned-section",
+          blocks: [
+            {
+              kind: "paragraph",
+              id: "end-aligned",
+              runs: [{ text: "柿" }],
+              style: { textAlign: "end" },
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(validateBookIR(book)).toEqual([]);
+  });
 });

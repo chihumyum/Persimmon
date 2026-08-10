@@ -8,8 +8,16 @@ import {
   GESTURE_HINGE_ROTATION,
   GESTURE_LIFT_START_X,
   GESTURE_ROLL_TILT_RATE,
+  MAX_GESTURE_COMMIT_THRESHOLD,
+  MAX_GESTURE_IDLE_DECAY_SECONDS,
+  MAX_GESTURE_SPEED_SCALE,
+  MAX_GESTURE_VELOCITY_GAIN,
+  MAX_PAGE_TURN_LIFT_TO_LEFT,
+  MAX_PAGE_TURN_RELEASE_X,
   MAX_PAGE_WEIGHT,
   MIN_GESTURE_COMMIT_THRESHOLD,
+  MIN_GESTURE_SPEED_SCALE,
+  MIN_PAGE_TURN_LIFT_VELOCITY,
   MIN_PAGE_WEIGHT,
   SLOW_COMMIT_EDGE_X,
   WEAK_GRIP_MAX_COMPRESSION,
@@ -29,6 +37,7 @@ import {
 } from "./page-turn-gesture";
 import {
   MAX_PRESSED_ROLL_TILT,
+  MIN_CURVATURE_RELAXATION,
   MIN_PRESSED_EDGE_X,
   pressedRollHingeGeometry,
 } from "./rolled-page-strip";
@@ -50,16 +59,17 @@ describe("page-turn gesture kinematics", () => {
         gestureIdleDecaySeconds: 9,
       }),
     ).toEqual({
-      releaseX: 0.8,
-      liftVelocity: 0.7,
-      liftToLeft: 2.6,
-      curvatureRelaxation: 3.5,
+      ...DEFAULT_PAGE_TURN_TUNING,
+      releaseX: MAX_PAGE_TURN_RELEASE_X,
+      liftVelocity: MIN_PAGE_TURN_LIFT_VELOCITY,
+      liftToLeft: MAX_PAGE_TURN_LIFT_TO_LEFT,
+      curvatureRelaxation: MIN_CURVATURE_RELAXATION,
       pageWeight: MAX_PAGE_WEIGHT,
-      gestureCommitThreshold: 1.2,
-      gestureMinimumSpeedScale: 0.5,
-      gestureMaximumSpeedScale: 3,
-      gestureVelocityGain: 1.2,
-      gestureIdleDecaySeconds: 0.2,
+      gestureCommitThreshold: MAX_GESTURE_COMMIT_THRESHOLD,
+      gestureMinimumSpeedScale: MIN_GESTURE_SPEED_SCALE,
+      gestureMaximumSpeedScale: MAX_GESTURE_SPEED_SCALE,
+      gestureVelocityGain: MAX_GESTURE_VELOCITY_GAIN,
+      gestureIdleDecaySeconds: MAX_GESTURE_IDLE_DECAY_SECONDS,
     });
     expect(
       clampPageTurnTuning({

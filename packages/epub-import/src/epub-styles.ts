@@ -160,6 +160,8 @@ export function styleForContentElement(
     style.textAlign = textAlign;
   } else if (textAlign === "left" || textAlign === "start") {
     style.textAlign = "start";
+  } else if (textAlign === "right" || textAlign === "end") {
+    style.textAlign = "end";
   }
 
   const fontWeight = winners.get("font-weight")?.value.toLowerCase();

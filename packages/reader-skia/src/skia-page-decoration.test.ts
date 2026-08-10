@@ -65,7 +65,7 @@ describe("native page-decoration ownership", () => {
       fontFamily: "Noto Serif SC",
       width: 400,
       height: 800,
-      horizontalMargin: 24,
+      inlineMargin: 24,
       topInset: 0,
       bottomInset: 0,
     });
@@ -93,7 +93,7 @@ describe("native page-decoration ownership", () => {
       fontFamily: "Noto Serif SC",
       width: 400,
       height: 800,
-      horizontalMargin: 24,
+      inlineMargin: 24,
       topInset: 0,
       bottomInset: 0,
     });
@@ -120,7 +120,7 @@ describe("native page-decoration ownership", () => {
       fontFamily: "Noto Serif SC",
       width: 400,
       height: 800,
-      horizontalMargin: 24,
+      inlineMargin: 24,
       topInset: 0,
       bottomInset: 0,
     });
@@ -149,7 +149,7 @@ describe("native page-decoration ownership", () => {
       fontFamily: "Noto Serif SC",
       width: 800,
       height: 800,
-      horizontalMargin: 24,
+      inlineMargin: 24,
       pagesPerView: 2,
       topInset: 0,
       bottomInset: 0,

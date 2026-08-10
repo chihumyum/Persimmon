@@ -17,6 +17,7 @@ import {
 import {
   AUTOMATIC_PAGE_TURN_PRESS_DURATION_SECONDS,
   PAGE_TURN_PROPAGATION_SPEED_SCALE,
+  incomingPageDragProgress,
   incomingPageDrivenProgress,
   incomingPageRemainingDurationSeconds,
   incomingPageShapeProgress,
@@ -51,12 +52,33 @@ const MAX_TRACKED_GESTURE_ACCELERATION = 20;
 const FULL_GESTURE_START_MIN_X = 0.25;
 const WEAK_GRIP_MAX_COMPRESSION = 0.04;
 const WEAK_GRIP_COMPRESSION_PER_PAGE = 0.2;
-const MIN_PAGE_WEIGHT = 0.5;
-const MAX_PAGE_WEIGHT = 1.8;
-// The app-level tuning floor is 0.4. Keep the solver floor below its iOS
-// two-thirds scale so the platform adjustment is not silently clamped away.
-const MIN_GESTURE_COMMIT_THRESHOLD = 0.25;
-const MAX_GESTURE_COMMIT_THRESHOLD = 1.2;
+const MIN_PAGE_TURN_RELEASE_X = 0.15;
+const MAX_PAGE_TURN_RELEASE_X = 1;
+const MIN_PAGE_TURN_LIFT_VELOCITY = 0.1;
+const MAX_PAGE_TURN_LIFT_VELOCITY = 5;
+const MIN_PAGE_TURN_LIFT_TO_LEFT = 0.25;
+const MAX_PAGE_TURN_LIFT_TO_LEFT = 6;
+const MIN_CURVATURE_RELAXATION = 0.25;
+const MAX_CURVATURE_RELAXATION = 40;
+const MIN_PAGE_WEIGHT = 0.1;
+const MAX_PAGE_WEIGHT = 6;
+const MIN_GESTURE_COMMIT_THRESHOLD = 0.05;
+const MAX_GESTURE_COMMIT_THRESHOLD = 3;
+const MIN_GESTURE_SPEED_SCALE = 0.1;
+const MAX_GESTURE_MINIMUM_SPEED_SCALE = 4;
+const MAX_GESTURE_SPEED_SCALE = 8;
+const MIN_GESTURE_VELOCITY_GAIN = 0;
+const MAX_GESTURE_VELOCITY_GAIN = 4;
+const MIN_GESTURE_IDLE_DECAY_SECONDS = 0.005;
+const MAX_GESTURE_IDLE_DECAY_SECONDS = 1;
+const DEFAULT_INCOMING_LANDING_START_PROGRESS = 0.3;
+const DEFAULT_INCOMING_REVEAL_START_PROGRESS = 0;
+const DEFAULT_INCOMING_REVEAL_END_PROGRESS = 0.28;
+const DEFAULT_INCOMING_DRAG_PROGRESS_SCALE = 1;
+const DEFAULT_INCOMING_DRAG_PROGRESS_EXPONENT = 1;
+const DEFAULT_INCOMING_SETTLE_DURATION_SECONDS = 0.52;
+const DEFAULT_INCOMING_SETTLE_EASING_POWER = 2;
+const DEFAULT_INCOMING_REVERT_DURATION_SECONDS = 0.72;
 const COMMIT_VELOCITY_LIMIT = 3.2;
 const COMMIT_ACCELERATION_LIMIT = 10;
 const COMMIT_VELOCITY_GAIN = 0.18;
@@ -130,6 +152,14 @@ export interface PageTurnWorkletState {
   tuningGestureMaximumSpeedScale: number;
   tuningGestureVelocityGain: number;
   tuningGestureIdleDecaySeconds: number;
+  incomingLandingStartProgress: number;
+  incomingRevealStartProgress: number;
+  incomingRevealEndProgress: number;
+  incomingDragProgressScale: number;
+  incomingDragProgressExponent: number;
+  incomingSettleDurationSeconds: number;
+  incomingSettleEasingPower: number;
+  incomingRevertDurationSeconds: number;
 
   startBookX: number;
   lastBookX: number;
@@ -166,9 +196,28 @@ export interface PageTurnWorkletState {
 
 export function createPageTurnWorkletState(
   tuning: PageTurnTuning = DEFAULT_PAGE_TURN_TUNING,
-  maximumReleaseX = 0.8,
+  maximumReleaseX = MAX_PAGE_TURN_RELEASE_X,
 ): PageTurnWorkletState {
-  const safeMaximumReleaseX = clamp(maximumReleaseX, 0.58, 1);
+  const safeMaximumReleaseX = clamp(
+    maximumReleaseX,
+    MIN_PAGE_TURN_RELEASE_X,
+    MAX_PAGE_TURN_RELEASE_X,
+  );
+  const revealStartValue = tuning.incomingRevealStartProgress;
+  const revealStart = clamp(
+    revealStartValue !== undefined && Number.isFinite(revealStartValue)
+      ? revealStartValue
+      : DEFAULT_INCOMING_REVEAL_START_PROGRESS,
+    0,
+    0.85,
+  );
+  const landingStartValue = tuning.incomingLandingStartProgress;
+  const revealEndValue = tuning.incomingRevealEndProgress;
+  const dragScaleValue = tuning.incomingDragProgressScale;
+  const dragExponentValue = tuning.incomingDragProgressExponent;
+  const settleDurationValue = tuning.incomingSettleDurationSeconds;
+  const settleEasingValue = tuning.incomingSettleEasingPower;
+  const revertDurationValue = tuning.incomingRevertDurationSeconds;
   const state: PageTurnWorkletState = {
     phase: PAGE_TURN_WORKLET_IDLE,
     outcome: PAGE_TURN_WORKLET_NO_OUTCOME,
@@ -176,10 +225,26 @@ export function createPageTurnWorkletState(
     direction: 1,
     settlingIncomingPage: false,
 
-    tuningReleaseX: clamp(tuning.releaseX, 0.58, safeMaximumReleaseX),
-    tuningLiftVelocity: clamp(tuning.liftVelocity, 0.7, 1.8),
-    tuningLiftToLeft: clamp(tuning.liftToLeft, 1.4, 2.6),
-    tuningCurvatureRelaxation: clamp(tuning.curvatureRelaxation, 3.5, 14),
+    tuningReleaseX: clamp(
+      tuning.releaseX,
+      MIN_PAGE_TURN_RELEASE_X,
+      safeMaximumReleaseX,
+    ),
+    tuningLiftVelocity: clamp(
+      tuning.liftVelocity,
+      MIN_PAGE_TURN_LIFT_VELOCITY,
+      MAX_PAGE_TURN_LIFT_VELOCITY,
+    ),
+    tuningLiftToLeft: clamp(
+      tuning.liftToLeft,
+      MIN_PAGE_TURN_LIFT_TO_LEFT,
+      MAX_PAGE_TURN_LIFT_TO_LEFT,
+    ),
+    tuningCurvatureRelaxation: clamp(
+      tuning.curvatureRelaxation,
+      MIN_CURVATURE_RELAXATION,
+      MAX_CURVATURE_RELAXATION,
+    ),
     tuningPageWeight: clamp(
       tuning.pageWeight,
       MIN_PAGE_WEIGHT,
@@ -192,19 +257,77 @@ export function createPageTurnWorkletState(
     ),
     tuningGestureMinimumSpeedScale: clamp(
       tuning.gestureMinimumSpeedScale,
-      0.5,
-      1.5,
+      MIN_GESTURE_SPEED_SCALE,
+      MAX_GESTURE_MINIMUM_SPEED_SCALE,
     ),
     tuningGestureMaximumSpeedScale: clamp(
       tuning.gestureMaximumSpeedScale,
-      clamp(tuning.gestureMinimumSpeedScale, 0.5, 1.5),
-      3,
+      clamp(
+        tuning.gestureMinimumSpeedScale,
+        MIN_GESTURE_SPEED_SCALE,
+        MAX_GESTURE_MINIMUM_SPEED_SCALE,
+      ),
+      MAX_GESTURE_SPEED_SCALE,
     ),
-    tuningGestureVelocityGain: clamp(tuning.gestureVelocityGain, 0.1, 1.2),
+    tuningGestureVelocityGain: clamp(
+      tuning.gestureVelocityGain,
+      MIN_GESTURE_VELOCITY_GAIN,
+      MAX_GESTURE_VELOCITY_GAIN,
+    ),
     tuningGestureIdleDecaySeconds: clamp(
       tuning.gestureIdleDecaySeconds,
-      0.03,
-      0.2,
+      MIN_GESTURE_IDLE_DECAY_SECONDS,
+      MAX_GESTURE_IDLE_DECAY_SECONDS,
+    ),
+    incomingLandingStartProgress: clamp(
+      landingStartValue !== undefined && Number.isFinite(landingStartValue)
+        ? landingStartValue
+        : DEFAULT_INCOMING_LANDING_START_PROGRESS,
+      0.05,
+      0.85,
+    ),
+    incomingRevealStartProgress: revealStart,
+    incomingRevealEndProgress: clamp(
+      revealEndValue !== undefined && Number.isFinite(revealEndValue)
+        ? revealEndValue
+        : DEFAULT_INCOMING_REVEAL_END_PROGRESS,
+      revealStart + 0.02,
+      0.95,
+    ),
+    incomingDragProgressScale: clamp(
+      dragScaleValue !== undefined && Number.isFinite(dragScaleValue)
+        ? dragScaleValue
+        : DEFAULT_INCOMING_DRAG_PROGRESS_SCALE,
+      0.25,
+      3,
+    ),
+    incomingDragProgressExponent: clamp(
+      dragExponentValue !== undefined && Number.isFinite(dragExponentValue)
+        ? dragExponentValue
+        : DEFAULT_INCOMING_DRAG_PROGRESS_EXPONENT,
+      0.35,
+      3,
+    ),
+    incomingSettleDurationSeconds: clamp(
+      settleDurationValue !== undefined && Number.isFinite(settleDurationValue)
+        ? settleDurationValue
+        : DEFAULT_INCOMING_SETTLE_DURATION_SECONDS,
+      0.15,
+      1.5,
+    ),
+    incomingSettleEasingPower: clamp(
+      settleEasingValue !== undefined && Number.isFinite(settleEasingValue)
+        ? settleEasingValue
+        : DEFAULT_INCOMING_SETTLE_EASING_POWER,
+      0.75,
+      6,
+    ),
+    incomingRevertDurationSeconds: clamp(
+      revertDurationValue !== undefined && Number.isFinite(revertDurationValue)
+        ? revertDurationValue
+        : DEFAULT_INCOMING_REVERT_DURATION_SECONDS,
+      0.1,
+      1.5,
     ),
 
     startBookX: 1,
@@ -261,46 +384,125 @@ export function createPageTurnWorkletState(
 export function setPageTurnWorkletTuning(
   state: PageTurnWorkletState,
   tuning: PageTurnTuning,
-  maximumReleaseX = 0.8,
+  maximumReleaseX = 1,
 ): void {
   "worklet";
-  const safeMaximumReleaseX = Math.min(1, Math.max(0.58, maximumReleaseX));
+  // Keep this UI-runtime entry point self-contained. In particular, Worklets
+  // does not serialize module constants referenced by default parameters.
+  const safeMaximumReleaseX = Math.min(1, Math.max(0.15, maximumReleaseX));
   state.tuningReleaseX = Math.min(
     safeMaximumReleaseX,
-    Math.max(0.58, tuning.releaseX),
+    Math.max(0.15, tuning.releaseX),
   );
-  state.tuningLiftVelocity = Math.min(1.8, Math.max(0.7, tuning.liftVelocity));
-  state.tuningLiftToLeft = Math.min(2.6, Math.max(1.4, tuning.liftToLeft));
+  state.tuningLiftVelocity = Math.min(5, Math.max(0.1, tuning.liftVelocity));
+  state.tuningLiftToLeft = Math.min(6, Math.max(0.25, tuning.liftToLeft));
   state.tuningCurvatureRelaxation = Math.min(
-    14,
-    Math.max(3.5, tuning.curvatureRelaxation),
+    40,
+    Math.max(0.25, tuning.curvatureRelaxation),
   );
-  state.tuningPageWeight = Math.min(
-    MAX_PAGE_WEIGHT,
-    Math.max(MIN_PAGE_WEIGHT, tuning.pageWeight),
-  );
+  state.tuningPageWeight = Math.min(6, Math.max(0.1, tuning.pageWeight));
   state.tuningGestureCommitThreshold = Math.min(
-    MAX_GESTURE_COMMIT_THRESHOLD,
-    Math.max(MIN_GESTURE_COMMIT_THRESHOLD, tuning.gestureCommitThreshold),
+    3,
+    Math.max(0.05, tuning.gestureCommitThreshold),
   );
   state.tuningGestureMinimumSpeedScale = Math.min(
-    1.5,
-    Math.max(0.5, tuning.gestureMinimumSpeedScale),
+    4,
+    Math.max(0.1, tuning.gestureMinimumSpeedScale),
   );
   state.tuningGestureMaximumSpeedScale = Math.min(
-    3,
+    8,
     Math.max(
       state.tuningGestureMinimumSpeedScale,
       tuning.gestureMaximumSpeedScale,
     ),
   );
   state.tuningGestureVelocityGain = Math.min(
-    1.2,
-    Math.max(0.1, tuning.gestureVelocityGain),
+    4,
+    Math.max(0, tuning.gestureVelocityGain),
   );
   state.tuningGestureIdleDecaySeconds = Math.min(
-    0.2,
-    Math.max(0.03, tuning.gestureIdleDecaySeconds),
+    1,
+    Math.max(0.005, tuning.gestureIdleDecaySeconds),
+  );
+  const landingStartValue = tuning.incomingLandingStartProgress;
+  state.incomingLandingStartProgress = Math.min(
+    0.85,
+    Math.max(
+      0.05,
+      landingStartValue !== undefined && Number.isFinite(landingStartValue)
+        ? landingStartValue
+        : 0.3,
+    ),
+  );
+  const revealStartValue = tuning.incomingRevealStartProgress;
+  state.incomingRevealStartProgress = Math.min(
+    0.85,
+    Math.max(
+      0,
+      revealStartValue !== undefined && Number.isFinite(revealStartValue)
+        ? revealStartValue
+        : 0,
+    ),
+  );
+  const revealEndValue = tuning.incomingRevealEndProgress;
+  state.incomingRevealEndProgress = Math.min(
+    0.95,
+    Math.max(
+      state.incomingRevealStartProgress + 0.02,
+      revealEndValue !== undefined && Number.isFinite(revealEndValue)
+        ? revealEndValue
+        : 0.28,
+    ),
+  );
+  const dragScaleValue = tuning.incomingDragProgressScale;
+  state.incomingDragProgressScale = Math.min(
+    3,
+    Math.max(
+      0.25,
+      dragScaleValue !== undefined && Number.isFinite(dragScaleValue)
+        ? dragScaleValue
+        : 1,
+    ),
+  );
+  const dragExponentValue = tuning.incomingDragProgressExponent;
+  state.incomingDragProgressExponent = Math.min(
+    3,
+    Math.max(
+      0.35,
+      dragExponentValue !== undefined && Number.isFinite(dragExponentValue)
+        ? dragExponentValue
+        : 1,
+    ),
+  );
+  const settleDurationValue = tuning.incomingSettleDurationSeconds;
+  state.incomingSettleDurationSeconds = Math.min(
+    1.5,
+    Math.max(
+      0.15,
+      settleDurationValue !== undefined && Number.isFinite(settleDurationValue)
+        ? settleDurationValue
+        : 0.52,
+    ),
+  );
+  const settleEasingValue = tuning.incomingSettleEasingPower;
+  state.incomingSettleEasingPower = Math.min(
+    6,
+    Math.max(
+      0.75,
+      settleEasingValue !== undefined && Number.isFinite(settleEasingValue)
+        ? settleEasingValue
+        : 2,
+    ),
+  );
+  const revertDurationValue = tuning.incomingRevertDurationSeconds;
+  state.incomingRevertDurationSeconds = Math.min(
+    1.5,
+    Math.max(
+      0.1,
+      revertDurationValue !== undefined && Number.isFinite(revertDurationValue)
+        ? revertDurationValue
+        : 0.72,
+    ),
   );
 }
 
@@ -647,9 +849,9 @@ function postHingeTurnProgressForFingerXWorklet(
     );
   }
   const relaxation = Math.min(
-    14,
+    40,
     Math.max(
-      3.5,
+      0.25,
       Number.isFinite(curvatureRelaxation) ? curvatureRelaxation : 7,
     ),
   );
@@ -732,6 +934,7 @@ function beginTurnDrive(
 function beginSettlingDrive(
   state: PageTurnWorkletState,
   startProgress: number,
+  speedScale = 1,
 ): void {
   "worklet";
   state.phase = PAGE_TURN_WORKLET_SETTLE;
@@ -739,7 +942,11 @@ function beginSettlingDrive(
   state.outcomeNotified = false;
   state.driveElapsed = 0;
   state.driveStartX = state.tuningReleaseX;
-  state.driveSpeedScale = 1;
+  state.driveSpeedScale = clamp(
+    speedScale,
+    MIN_GESTURE_SPEED_SCALE,
+    MAX_GESTURE_SPEED_SCALE,
+  );
   state.driveStartProgress = clamp(startProgress, 0, 1);
   state.settlingProgress = state.driveStartProgress;
   state.driveStartRotation = 0;
@@ -803,14 +1010,14 @@ function advancePageTurnWorkletStep(
     if (state.settlingIncomingPage) {
       const duration = Math.max(
         1 / 60,
-        incomingPageRemainingDurationSeconds(0) * state.driveStartProgress,
+        state.incomingRevertDurationSeconds * state.driveStartProgress,
       );
       const linearProgress = clamp(state.driveElapsed / duration, 0, 1);
       const easedProgress = 1 - (1 - linearProgress) ** 3;
       state.settlingProgress = state.driveStartProgress * (1 - easedProgress);
       rebuildTurnProfile(
         state,
-        incomingPageShapeProgress(state.settlingProgress),
+        incomingPageShapeProgress(state.settlingProgress, state),
         state.driveStartX,
         0,
         deltaTime,
@@ -819,7 +1026,7 @@ function advancePageTurnWorkletStep(
         state.settlingProgress = 0;
         rebuildTurnProfile(
           state,
-          incomingPageShapeProgress(0),
+          incomingPageShapeProgress(0, state),
           state.driveStartX,
           0,
           deltaTime,
@@ -852,16 +1059,17 @@ function advancePageTurnWorkletStep(
   }
 
   if (state.phase === PAGE_TURN_WORKLET_SETTLE) {
-    const duration = incomingPageRemainingDurationSeconds(
-      state.driveStartProgress,
-    );
+    const duration =
+      incomingPageRemainingDurationSeconds(state.driveStartProgress, state) /
+      state.driveSpeedScale;
     state.settlingProgress = incomingPageDrivenProgress(
       state.driveStartProgress,
-      state.driveElapsed,
+      state.driveElapsed * state.driveSpeedScale,
+      state,
     );
     rebuildTurnProfile(
       state,
-      incomingPageShapeProgress(state.settlingProgress),
+      incomingPageShapeProgress(state.settlingProgress, state),
       state.driveStartX,
       0,
       deltaTime,
@@ -870,7 +1078,7 @@ function advancePageTurnWorkletStep(
       state.settlingProgress = 1;
       rebuildTurnProfile(
         state,
-        incomingPageShapeProgress(1),
+        incomingPageShapeProgress(1, state),
         state.driveStartX,
         0,
         deltaTime,
@@ -963,7 +1171,7 @@ export function beginPageTurnWorkletDrag(
   if (settlingIncomingPage) {
     rebuildTurnProfile(
       state,
-      incomingPageShapeProgress(0),
+      incomingPageShapeProgress(0, state),
       state.tuningReleaseX,
       0,
       0,
@@ -1018,10 +1226,10 @@ export function movePageTurnWorkletDrag(
   state.lastBookY = bookY;
   state.lastTime = currentTime;
   if (state.settlingIncomingPage) {
-    state.settlingProgress = clamp(turnProgress, 0, 1);
+    state.settlingProgress = incomingPageDragProgress(turnProgress, state);
     rebuildTurnProfile(
       state,
-      incomingPageShapeProgress(state.settlingProgress),
+      incomingPageShapeProgress(state.settlingProgress, state),
       state.tuningReleaseX,
       0,
       deltaTime,
@@ -1044,7 +1252,7 @@ export function playPageTurnWorklet(
   if (settlingIncomingPage) {
     rebuildTurnProfile(
       state,
-      incomingPageShapeProgress(0),
+      incomingPageShapeProgress(0, state),
       state.tuningReleaseX,
       0,
       0,
@@ -1075,12 +1283,12 @@ export function playReleasedPageTurnWorklet(
     state.settlingProgress = startProgress;
     rebuildTurnProfile(
       state,
-      incomingPageShapeProgress(startProgress),
+      incomingPageShapeProgress(startProgress, state),
       state.tuningReleaseX,
       0,
       0,
     );
-    beginSettlingDrive(state, startProgress);
+    beginSettlingDrive(state, startProgress, release.speedScale);
     return;
   }
 
@@ -1133,7 +1341,11 @@ export function endPageTurnWorkletDrag(
       (distance + velocity + acceleration) /
       clamp(state.tuningPageWeight, MIN_PAGE_WEIGHT, MAX_PAGE_WEIGHT);
     if (score >= state.tuningGestureCommitThreshold - 1e-6) {
-      beginSettlingDrive(state, state.settlingProgress);
+      beginSettlingDrive(
+        state,
+        state.settlingProgress,
+        gestureTurnSpeedScale(state, throwVelocity),
+      );
       return PAGE_TURN_WORKLET_COMMITTED;
     }
     beginIncomingRevertDrive(state, state.settlingProgress);

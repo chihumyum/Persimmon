@@ -1,6 +1,8 @@
 import type { PageTurnNativeSharedFrame } from "./page-turn-native-shared-frame";
 import type { AutomaticPageTurnTuning } from "./automatic-page-turn-tuning";
 import type { GesturePageTurnTuning } from "./gesture-page-turn-tuning";
+import type { ReverseAutomaticPageTurnTuning } from "./reverse-automatic-page-turn-tuning";
+import type { ReverseGesturePageTurnTuning } from "./reverse-gesture-page-turn-tuning";
 import type { PAGE_TURN_LANE_HARD_LIMIT } from "./page-turn-concurrency";
 import type { ReleasedPageTurnGesture } from "@persimmon/page-turn-core";
 
@@ -30,7 +32,9 @@ export interface NativePageTurnPoolOptions {
   readonly height: number;
   readonly spread: boolean;
   readonly automaticTuning: AutomaticPageTurnTuning;
+  readonly reverseAutomaticTuning: ReverseAutomaticPageTurnTuning;
   readonly gestureTuning: GesturePageTurnTuning;
+  readonly reverseGestureTuning: ReverseGesturePageTurnTuning;
   readonly commands: readonly (NativeProgrammaticPageTurnCommand | undefined)[];
   readonly onPrepared: (turnId: string) => void;
   readonly onStarted: (

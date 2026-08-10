@@ -15,20 +15,21 @@ import {
   setPageTurnWorkletTuning,
   PAGE_TURN_WORKLET_PRESS,
   PAGE_TURN_WORKLET_REVERT,
+  PAGE_TURN_WORKLET_SETTLE,
   PAGE_TURN_WORKLET_TURN,
 } from "./page-turn-worklet";
 
 describe("UI-runtime page-turn engine", () => {
-  it("opens the release point only for an explicitly widened lane", () => {
+  it("admits the extreme release point unless a lane requests a tighter cap", () => {
     const tuning = { ...DEFAULT_PAGE_TURN_TUNING, releaseX: 2 };
     const ordinary = createPageTurnWorkletState(tuning);
-    const rapid = createPageTurnWorkletState(tuning, 1);
+    const constrained = createPageTurnWorkletState(tuning, 0.8);
 
-    expect(ordinary.tuningReleaseX).toBe(0.8);
-    expect(rapid.tuningReleaseX).toBe(1);
-
-    setPageTurnWorkletTuning(ordinary, tuning, 1);
     expect(ordinary.tuningReleaseX).toBe(1);
+    expect(constrained.tuningReleaseX).toBe(0.8);
+
+    setPageTurnWorkletTuning(ordinary, tuning, 0.8);
+    expect(ordinary.tuningReleaseX).toBe(0.8);
   });
 
   it("preserves the iOS two-thirds commit threshold", () => {
@@ -194,6 +195,49 @@ describe("UI-runtime page-turn engine", () => {
     expect(worklet.driveStartRotation).toBe(0.7);
     expect(worklet.driveSpeedScale).toBe(1.8);
     expect(worklet.profile.at(-4)).toBeLessThan(0.25);
+  });
+
+  it("applies release speed to an incoming previous-page settle", () => {
+    const slow = createPageTurnWorkletState();
+    const fast = createPageTurnWorkletState();
+    const release = {
+      pressedEdgeX: 0.69,
+      heldRollTilt: 0,
+      turnProgress: 0,
+      settlingProgress: 0.3,
+    };
+
+    playReleasedPageTurnWorklet(slow, -1, true, {
+      ...release,
+      speedScale: 0.5,
+    });
+    playReleasedPageTurnWorklet(fast, -1, true, {
+      ...release,
+      speedScale: 2,
+    });
+    advancePageTurnWorklet(slow, 0.1);
+    advancePageTurnWorklet(fast, 0.1);
+
+    expect(slow.driveSpeedScale).toBe(0.5);
+    expect(fast.driveSpeedScale).toBe(2);
+    expect(fast.settlingProgress).toBeGreaterThan(slow.settlingProgress);
+  });
+
+  it("derives incoming settle speed from reverse gesture velocity tuning", () => {
+    const worklet = createPageTurnWorkletState({
+      ...DEFAULT_PAGE_TURN_TUNING,
+      gestureMinimumSpeedScale: 0.4,
+      gestureMaximumSpeedScale: 4,
+      gestureVelocityGain: 1.5,
+    });
+    beginPageTurnWorkletDrag(worklet, -1, 0.96, 0.5, 0, true);
+    movePageTurnWorkletDrag(worklet, 0.56, 0.5, 0.7, 0.08);
+
+    expect(endPageTurnWorkletDrag(worklet, 0.08)).toBe(1);
+    expect(worklet.phase).toBe(PAGE_TURN_WORKLET_SETTLE);
+    expect(worklet.driveSpeedScale).toBeGreaterThan(
+      worklet.tuningGestureMinimumSpeedScale,
+    );
   });
 
   it("catches a handoff lane up to the advancing interactive sheet", () => {

@@ -10,6 +10,9 @@ import {
   DEFAULT_PAGE_TURN_TUNING,
   GESTURE_HINGE_CHORD_X,
   GESTURE_HINGE_ROTATION,
+  MAX_GESTURE_SPEED_SCALE,
+  MAX_PAGE_TURN_RELEASE_X,
+  MIN_GESTURE_SPEED_SCALE,
   SLOW_COMMIT_EDGE_X,
   anchoredGestureFingerX,
   clampPageTurnTuning,
@@ -33,6 +36,7 @@ import {
 import {
   AUTOMATIC_PAGE_TURN_PRESS_DURATION_SECONDS,
   PAGE_TURN_PROPAGATION_SPEED_SCALE,
+  incomingPageDragProgress,
   incomingPageDrivenProgress,
   incomingPageRemainingDurationSeconds,
   incomingPageShapeProgress,
@@ -108,7 +112,7 @@ export class NaturalPageTurnController {
 
   constructor(
     tuning: PageTurnTuning = DEFAULT_PAGE_TURN_TUNING,
-    maximumReleaseX = 0.8,
+    maximumReleaseX = MAX_PAGE_TURN_RELEASE_X,
   ) {
     this.maximumReleaseX = maximumReleaseX;
     this.tuning = clampPageTurnTuning(tuning, maximumReleaseX);
@@ -152,7 +156,7 @@ export class NaturalPageTurnController {
   playSettlingPage(): void {
     this.reset();
     this.sheet.setTurnProgress(
-      incomingPageShapeProgress(0),
+      incomingPageShapeProgress(0, this.tuning),
       this.tuning.releaseX,
       0,
       0,
@@ -175,13 +179,13 @@ export class NaturalPageTurnController {
       const startProgress = clamp(release.settlingProgress, 0, 1);
       this.incomingPageProgress = startProgress;
       this.sheet.setTurnProgress(
-        incomingPageShapeProgress(startProgress),
+        incomingPageShapeProgress(startProgress, this.tuning),
         this.tuning.releaseX,
         0,
         0,
         this.tuning.curvatureRelaxation,
       );
-      this.beginSettlingDrive(startProgress);
+      this.beginSettlingDrive(startProgress, release.speedScale);
       return;
     }
     const startX = clamp(release.pressedEdgeX, MIN_PRESSED_EDGE_X, 1);
@@ -216,7 +220,7 @@ export class NaturalPageTurnController {
       this.reset();
     }
     this.sheet.setTurnProgress(
-      incomingPageShapeProgress(0),
+      incomingPageShapeProgress(0, this.tuning),
       this.tuning.releaseX,
       0,
       0,
@@ -238,7 +242,7 @@ export class NaturalPageTurnController {
     }
     const currentTime = safeTime(time);
     const deltaTime = Math.max(0.001, currentTime - drag.lastTime);
-    const nextProgress = clamp(progress, 0, 1);
+    const nextProgress = incomingPageDragProgress(progress, this.tuning);
     const previousVelocity = drag.velocity;
     const instantaneousVelocity = clamp(
       ((nextProgress - drag.progress) * (1 - SLOW_COMMIT_EDGE_X)) / deltaTime,
@@ -261,7 +265,7 @@ export class NaturalPageTurnController {
     drag.progress = nextProgress;
     this.incomingPageProgress = nextProgress;
     this.sheet.setTurnProgress(
-      incomingPageShapeProgress(nextProgress),
+      incomingPageShapeProgress(nextProgress, this.tuning),
       this.tuning.releaseX,
       deltaTime,
       0,
@@ -295,7 +299,10 @@ export class NaturalPageTurnController {
         this.tuning,
       )
     ) {
-      this.beginSettlingDrive(drag.progress);
+      this.beginSettlingDrive(
+        drag.progress,
+        gestureTurnSpeedScale(throwVelocity, this.tuning),
+      );
       return "turn";
     }
     this.beginIncomingRevert(drag.progress);
@@ -546,14 +553,18 @@ export class NaturalPageTurnController {
     };
   }
 
-  private beginSettlingDrive(startProgress: number): void {
+  private beginSettlingDrive(startProgress: number, speedScale = 1): void {
     this.completed = false;
     this.drive = {
       phase: "settle",
       elapsed: 0,
       startX: this.tuning.releaseX,
       tuning: { ...this.tuning },
-      speedScale: 1,
+      speedScale: clamp(
+        speedScale,
+        MIN_GESTURE_SPEED_SCALE,
+        MAX_GESTURE_SPEED_SCALE,
+      ),
       startProgress: clamp(startProgress, 0, 1),
       startRotation: 0,
       revertPressedStartX: this.tuning.releaseX,
@@ -582,14 +593,17 @@ export class NaturalPageTurnController {
     drive: NaturalPageTurnDrive,
     deltaTime: number,
   ): void {
-    const duration = incomingPageRemainingDurationSeconds(drive.startProgress);
+    const duration =
+      incomingPageRemainingDurationSeconds(drive.startProgress, drive.tuning) /
+      drive.speedScale;
     const progress = incomingPageDrivenProgress(
       drive.startProgress,
-      drive.elapsed,
+      drive.elapsed * drive.speedScale,
+      drive.tuning,
     );
     this.incomingPageProgress = progress;
     this.sheet.setTurnProgress(
-      incomingPageShapeProgress(progress),
+      incomingPageShapeProgress(progress, drive.tuning),
       drive.startX,
       deltaTime,
       0,
@@ -599,7 +613,7 @@ export class NaturalPageTurnController {
       this.drive = null;
       this.incomingPageProgress = 1;
       this.sheet.setTurnProgress(
-        incomingPageShapeProgress(1),
+        incomingPageShapeProgress(1, drive.tuning),
         drive.startX,
         deltaTime,
         0,
@@ -616,13 +630,15 @@ export class NaturalPageTurnController {
   ): void {
     const duration = Math.max(
       1 / 60,
-      incomingPageRemainingDurationSeconds(0) * drive.startProgress,
+      (drive.tuning.incomingRevertDurationSeconds ??
+        DEFAULT_PAGE_TURN_TUNING.incomingRevertDurationSeconds ??
+        0.72) * drive.startProgress,
     );
     const easedProgress = revertEasedProgress(drive.elapsed, duration);
     const progress = drive.startProgress * (1 - easedProgress);
     this.incomingPageProgress = progress;
     this.sheet.setTurnProgress(
-      incomingPageShapeProgress(progress),
+      incomingPageShapeProgress(progress, drive.tuning),
       drive.startX,
       deltaTime,
       0,
@@ -632,7 +648,7 @@ export class NaturalPageTurnController {
       this.drive = null;
       this.incomingPageProgress = 0;
       this.sheet.setTurnProgress(
-        incomingPageShapeProgress(0),
+        incomingPageShapeProgress(0, drive.tuning),
         drive.startX,
         deltaTime,
         0,

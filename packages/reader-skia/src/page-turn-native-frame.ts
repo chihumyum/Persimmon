@@ -191,6 +191,7 @@ export function updatePageTurnNativeFrameValues(
     cameraBookX,
     xScale,
     state.settlingIncomingPage ? state.settlingProgress : undefined,
+    state,
   );
   let paperMinimumX = Number.POSITIVE_INFINITY;
   let paperMaximumX = Number.NEGATIVE_INFINITY;

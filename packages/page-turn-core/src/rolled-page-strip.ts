@@ -37,6 +37,8 @@ const ROOT_INTEGRATION_STEPS = 256;
 export const PROFILE_QUADRATURE_OFFSET = 0.5 / Math.sqrt(3);
 const FIRST_BESSEL_ZERO = 2.4048255577;
 export const DEFAULT_CURVATURE_RELAXATION = 7;
+export const MIN_CURVATURE_RELAXATION = 0.25;
+export const MAX_CURVATURE_RELAXATION = 40;
 const PRESSED_SURFACE_CLEARANCE = 0.015;
 export const MAX_PRESSED_ROLL_TILT = Math.max(
   0,
@@ -139,7 +141,11 @@ export class RolledPageStrip {
         clamp(progress, 0, 1),
         this.cachedTurnAmplitude,
         clamp(startRotation, 0, MAX_PRESSED_ROLL_TILT),
-        clamp(curvatureRelaxation, 3.5, 14),
+        clamp(
+          curvatureRelaxation,
+          MIN_CURVATURE_RELAXATION,
+          MAX_CURVATURE_RELAXATION,
+        ),
       ),
       deltaTime,
     );
@@ -306,7 +312,10 @@ export function turnCurlRetention(
 ): number {
   "worklet";
   const remaining = Math.min(1, Math.max(0, 1 - landedLength));
-  const relaxation = Math.min(14, Math.max(3.5, curvatureRelaxation));
+  const relaxation = Math.min(
+    MAX_CURVATURE_RELAXATION,
+    Math.max(MIN_CURVATURE_RELAXATION, curvatureRelaxation),
+  );
   return remaining ** (1 + relaxation / 14);
 }
 

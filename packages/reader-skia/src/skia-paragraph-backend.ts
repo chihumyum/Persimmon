@@ -39,6 +39,8 @@ function textAlignOf(align: TypographyPreset["align"]): TextAlign {
       return TextAlign.Center;
     case "justify":
       return TextAlign.Justify;
+    case "end":
+      return TextAlign.End;
     default:
       return TextAlign.Start;
   }

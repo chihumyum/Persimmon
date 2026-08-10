@@ -59,7 +59,7 @@ export interface ImageBlockIR {
  * browser styling into the reader core.
  */
 export interface BlockStyleIR {
-  textAlign?: "start" | "center" | "justify";
+  textAlign?: "start" | "center" | "justify" | "end";
   fontWeight?: 400 | 700;
   fontStyle?: "normal" | "italic";
   marginBeforeEm?: number;

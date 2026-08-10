@@ -4,6 +4,8 @@ import {
   type PageTurnTuning,
 } from "@persimmon/page-turn-core";
 
+import { FORWARD_CLICK_PAGE_TURN_TUNING_RANGES } from "./page-turn-tuning-ranges";
+
 export interface AutomaticPageTurnTuning {
   readonly releaseX: number;
   readonly liftVelocity: number;
@@ -12,14 +14,15 @@ export interface AutomaticPageTurnTuning {
   readonly playbackSpeed: number;
 }
 
-export const AUTOMATIC_PAGE_TURN_MAXIMUM_RELEASE_X = 0.8;
+export const AUTOMATIC_PAGE_TURN_MAXIMUM_RELEASE_X =
+  FORWARD_CLICK_PAGE_TURN_TUNING_RANGES.releaseX.maximum;
 
 export const DEFAULT_AUTOMATIC_PAGE_TURN_TUNING: AutomaticPageTurnTuning = {
-  releaseX: 0.72,
-  liftVelocity: 1.5,
-  liftToLeft: 2.2,
-  curvatureRelaxation: 6.75,
-  playbackSpeed: 1.3,
+  releaseX: 0.9,
+  liftVelocity: 0.5,
+  liftToLeft: 4,
+  curvatureRelaxation: 10,
+  playbackSpeed: 1,
 };
 
 export function normalizeAutomaticPageTurnTuning(
@@ -62,7 +65,13 @@ export function normalizeAutomaticPageTurnTuning(
     liftToLeft: core.liftToLeft,
     curvatureRelaxation: core.curvatureRelaxation,
     playbackSpeed: Number.isFinite(requestedPlaybackSpeed)
-      ? Math.min(2, Math.max(0.5, requestedPlaybackSpeed))
+      ? Math.min(
+          FORWARD_CLICK_PAGE_TURN_TUNING_RANGES.playbackSpeed.maximum,
+          Math.max(
+            FORWARD_CLICK_PAGE_TURN_TUNING_RANGES.playbackSpeed.minimum,
+            requestedPlaybackSpeed,
+          ),
+        )
       : DEFAULT_AUTOMATIC_PAGE_TURN_TUNING.playbackSpeed,
   };
 }

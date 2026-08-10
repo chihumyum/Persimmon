@@ -1,6 +1,9 @@
 import {
   clampPageTurnTuning,
+  DEFAULT_INCOMING_PAGE_TURN_TUNING,
+  MAX_PAGE_TURN_RELEASE_X,
   turnPropagationSpeed,
+  type IncomingPageTurnTuning,
   type PageTurnTuning,
 } from "./page-turn-gesture";
 
@@ -15,32 +18,91 @@ export const INCOMING_PAGE_LANDING_START_PROGRESS = 0.3;
 export const INCOMING_PAGE_PRELUDE_PROGRESS = 0.28;
 export const PAGE_TURN_PROPAGATION_SPEED_SCALE = 1.15;
 
-export function incomingPageShapeProgress(progress: number): number {
+export function incomingPageShapeProgress(
+  progress: number,
+  tuning: Partial<IncomingPageTurnTuning> = DEFAULT_INCOMING_PAGE_TURN_TUNING,
+): number {
   "worklet";
   const safeProgress = Math.min(1, Math.max(0, progress));
-  if (safeProgress <= INCOMING_PAGE_PRELUDE_PROGRESS) {
-    return INCOMING_PAGE_LANDING_START_PROGRESS;
+  const revealEndValue = tuning.incomingRevealEndProgress;
+  const revealEnd =
+    revealEndValue !== undefined && Number.isFinite(revealEndValue)
+      ? revealEndValue
+      : DEFAULT_INCOMING_PAGE_TURN_TUNING.incomingRevealEndProgress;
+  const landingStartValue = tuning.incomingLandingStartProgress;
+  const landingStart =
+    landingStartValue !== undefined && Number.isFinite(landingStartValue)
+      ? landingStartValue
+      : DEFAULT_INCOMING_PAGE_TURN_TUNING.incomingLandingStartProgress;
+  if (safeProgress <= revealEnd) {
+    return landingStart;
   }
   const landingProgress =
-    (safeProgress - INCOMING_PAGE_PRELUDE_PROGRESS) /
-    (1 - INCOMING_PAGE_PRELUDE_PROGRESS);
-  return (
-    INCOMING_PAGE_LANDING_START_PROGRESS +
-    (1 - INCOMING_PAGE_LANDING_START_PROGRESS) * landingProgress
+    (safeProgress - revealEnd) / Math.max(0.000001, 1 - revealEnd);
+  return landingStart + (1 - landingStart) * landingProgress;
+}
+
+export function incomingPageRevealProgress(
+  progress: number,
+  tuning: Partial<IncomingPageTurnTuning> = DEFAULT_INCOMING_PAGE_TURN_TUNING,
+): number {
+  "worklet";
+  const safeProgress = Math.min(1, Math.max(0, progress));
+  const revealStartValue = tuning.incomingRevealStartProgress;
+  const revealStart =
+    revealStartValue !== undefined && Number.isFinite(revealStartValue)
+      ? revealStartValue
+      : DEFAULT_INCOMING_PAGE_TURN_TUNING.incomingRevealStartProgress;
+  const revealEndValue = tuning.incomingRevealEndProgress;
+  const revealEnd = Math.max(
+    revealStart + 0.000001,
+    revealEndValue !== undefined && Number.isFinite(revealEndValue)
+      ? revealEndValue
+      : DEFAULT_INCOMING_PAGE_TURN_TUNING.incomingRevealEndProgress,
+  );
+  return Math.min(
+    1,
+    Math.max(0, (safeProgress - revealStart) / (revealEnd - revealStart)),
   );
 }
 
-export function incomingPageRevealProgress(progress: number): number {
+export function incomingPageDragProgress(
+  progress: number,
+  tuning: Partial<IncomingPageTurnTuning> = DEFAULT_INCOMING_PAGE_TURN_TUNING,
+): number {
   "worklet";
-  return Math.min(1, Math.max(0, progress) / INCOMING_PAGE_PRELUDE_PROGRESS);
+  const safeProgress = Math.min(1, Math.max(0, progress));
+  const scaleValue = tuning.incomingDragProgressScale;
+  const scale =
+    scaleValue !== undefined && Number.isFinite(scaleValue)
+      ? scaleValue
+      : DEFAULT_INCOMING_PAGE_TURN_TUNING.incomingDragProgressScale;
+  const exponentValue = tuning.incomingDragProgressExponent;
+  const exponent =
+    exponentValue !== undefined && Number.isFinite(exponentValue)
+      ? exponentValue
+      : DEFAULT_INCOMING_PAGE_TURN_TUNING.incomingDragProgressExponent;
+  return Math.min(1, Math.max(0, safeProgress ** exponent * scale));
 }
 
-export function incomingPageRemainingDurationSeconds(progress: number): number {
+export function incomingPageRemainingDurationSeconds(
+  progress: number,
+  tuning: Partial<IncomingPageTurnTuning> = DEFAULT_INCOMING_PAGE_TURN_TUNING,
+): number {
   "worklet";
+  const revealEndValue = tuning.incomingRevealEndProgress;
+  const revealEnd =
+    revealEndValue !== undefined && Number.isFinite(revealEndValue)
+      ? revealEndValue
+      : DEFAULT_INCOMING_PAGE_TURN_TUNING.incomingRevealEndProgress;
+  const settleDurationValue = tuning.incomingSettleDurationSeconds;
+  const settleDuration =
+    settleDurationValue !== undefined && Number.isFinite(settleDurationValue)
+      ? settleDurationValue
+      : DEFAULT_INCOMING_PAGE_TURN_TUNING.incomingSettleDurationSeconds;
   return (
-    (INCOMING_PAGE_SETTLE_DURATION_SECONDS *
-      (1 - Math.min(1, Math.max(0, progress)))) /
-    (1 - INCOMING_PAGE_PRELUDE_PROGRESS)
+    (settleDuration * (1 - Math.min(1, Math.max(0, progress)))) /
+    Math.max(0.000001, 1 - revealEnd)
   );
 }
 
@@ -55,43 +117,57 @@ export function incomingPageRemainingDurationSeconds(progress: number): number {
 export function incomingPageDrivenProgress(
   startProgress: number,
   elapsedSeconds: number,
+  tuning: Partial<IncomingPageTurnTuning> = DEFAULT_INCOMING_PAGE_TURN_TUNING,
 ): number {
   "worklet";
   const safeStart = Math.min(1, Math.max(0, startProgress));
   const safeElapsed = Math.max(0, elapsedSeconds);
+  const revealEndValue = tuning.incomingRevealEndProgress;
+  const revealEnd =
+    revealEndValue !== undefined && Number.isFinite(revealEndValue)
+      ? revealEndValue
+      : DEFAULT_INCOMING_PAGE_TURN_TUNING.incomingRevealEndProgress;
+  const settleDurationValue = tuning.incomingSettleDurationSeconds;
+  const settleDuration =
+    settleDurationValue !== undefined && Number.isFinite(settleDurationValue)
+      ? settleDurationValue
+      : DEFAULT_INCOMING_PAGE_TURN_TUNING.incomingSettleDurationSeconds;
+  const easingPowerValue = tuning.incomingSettleEasingPower;
+  const easingPower =
+    easingPowerValue !== undefined && Number.isFinite(easingPowerValue)
+      ? easingPowerValue
+      : DEFAULT_INCOMING_PAGE_TURN_TUNING.incomingSettleEasingPower;
   const progressDurationScale =
-    INCOMING_PAGE_SETTLE_DURATION_SECONDS /
-    (1 - INCOMING_PAGE_PRELUDE_PROGRESS);
+    settleDuration / Math.max(0.000001, 1 - revealEnd);
   const preludeRemaining =
-    safeStart < INCOMING_PAGE_PRELUDE_PROGRESS
-      ? (INCOMING_PAGE_PRELUDE_PROGRESS - safeStart) * progressDurationScale
-      : 0;
+    safeStart < revealEnd ? (revealEnd - safeStart) * progressDurationScale : 0;
   if (preludeRemaining > 0 && safeElapsed < preludeRemaining) {
     return (
-      safeStart +
-      (INCOMING_PAGE_PRELUDE_PROGRESS - safeStart) *
-        (safeElapsed / preludeRemaining)
+      safeStart + (revealEnd - safeStart) * (safeElapsed / preludeRemaining)
     );
   }
 
-  const landingStart = Math.max(safeStart, INCOMING_PAGE_PRELUDE_PROGRESS);
-  const landingDuration = incomingPageRemainingDurationSeconds(landingStart);
+  const landingStart = Math.max(safeStart, revealEnd);
+  const landingDuration = incomingPageRemainingDurationSeconds(
+    landingStart,
+    tuning,
+  );
   if (landingDuration <= 0) {
     return 1;
   }
   const landingElapsed = Math.max(0, safeElapsed - preludeRemaining);
   const linearProgress = Math.min(1, landingElapsed / landingDuration);
-  const easedProgress = 1 - (1 - linearProgress) ** 2;
+  const easedProgress = 1 - (1 - linearProgress) ** easingPower;
   return landingStart + (1 - landingStart) * easedProgress;
 }
 
 export function automaticPageTurnSolverDurationSecondsForDirection(
   tuning: PageTurnTuning,
   direction: 1 | -1,
-  maximumReleaseX = 0.8,
+  maximumReleaseX = MAX_PAGE_TURN_RELEASE_X,
 ): number {
   if (direction === -1) {
-    return incomingPageRemainingDurationSeconds(0);
+    return incomingPageRemainingDurationSeconds(0, tuning);
   }
   const safeTuning = clampPageTurnTuning(tuning, maximumReleaseX);
   const propagationSpeed =
@@ -104,7 +180,7 @@ export function automaticPageTurnSolverDurationSecondsForDirection(
 
 export function automaticPageTurnSolverDurationSeconds(
   tuning: PageTurnTuning,
-  maximumReleaseX = 0.8,
+  maximumReleaseX = MAX_PAGE_TURN_RELEASE_X,
 ): number {
   return Math.max(
     automaticPageTurnSolverDurationSecondsForDirection(

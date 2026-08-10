@@ -32,11 +32,20 @@ import {
   gestureTuningForCore,
   type GesturePageTurnTuning,
 } from "./gesture-page-turn-tuning";
+import {
+  reverseAutomaticTuningForCore,
+  type ReverseAutomaticPageTurnTuning,
+} from "./reverse-automatic-page-turn-tuning";
+import {
+  reverseGestureTuningForCore,
+  type ReverseGesturePageTurnTuning,
+} from "./reverse-gesture-page-turn-tuning";
 import type {
   NativePageTurnPool,
   NativePageTurnPoolOptions,
   NativeProgrammaticPageTurnCommand,
 } from "./native-page-turn-pool";
+import { pageTurnTuningForLayoutDirection } from "./page-turn-direction";
 import { useStableRNDispatcher } from "./use-stable-rn-dispatcher";
 
 interface NativeProgrammaticPageTurnLane {
@@ -55,7 +64,9 @@ function useNativeProgrammaticPageTurnLane(
   height: number,
   spread: boolean,
   automaticTuning: AutomaticPageTurnTuning,
+  reverseAutomaticTuning: ReverseAutomaticPageTurnTuning,
   gestureTuning: GesturePageTurnTuning,
+  reverseGestureTuning: ReverseGesturePageTurnTuning,
   command: NativeProgrammaticPageTurnCommand | undefined,
   onPrepared: (turnId: string) => void,
   onStarted: (
@@ -66,12 +77,24 @@ function useNativeProgrammaticPageTurnLane(
   onOutcome: (turnId: string, outcome: number, completedAtMs: number) => void,
 ): NativeProgrammaticPageTurnLane {
   const automaticCoreTuning = useMemo(
-    () => automaticTuningForCore(automaticTuning),
-    [automaticTuning],
+    () =>
+      pageTurnTuningForLayoutDirection(
+        automaticTuningForCore(automaticTuning),
+        reverseAutomaticTuningForCore(reverseAutomaticTuning),
+        command?.direction ?? 1,
+        spread,
+      ),
+    [automaticTuning, command?.direction, reverseAutomaticTuning, spread],
   );
   const gestureCoreTuning = useMemo(
-    () => gestureTuningForCore(gestureTuning),
-    [gestureTuning],
+    () =>
+      pageTurnTuningForLayoutDirection(
+        gestureTuningForCore(gestureTuning),
+        reverseGestureTuningForCore(reverseGestureTuning),
+        command?.direction ?? 1,
+        spread,
+      ),
+    [command?.direction, gestureTuning, reverseGestureTuning, spread],
   );
   const state = useSharedValue(createPageTurnWorkletState(automaticCoreTuning));
   const scheduledCommandId = useSharedValue<string | undefined>(undefined);
@@ -93,7 +116,12 @@ function useNativeProgrammaticPageTurnLane(
           Number.isFinite(command.playbackSpeed) &&
           command.playbackSpeed > 0
         ? command.playbackSpeed
-        : automaticTuning.playbackSpeed;
+        : pageTurnTuningForLayoutDirection(
+            automaticTuning,
+            reverseAutomaticTuning,
+            command?.direction ?? 1,
+            spread,
+          ).playbackSpeed;
   const playbackSpeed = useSharedValue(requestedPlaybackSpeed);
   useEffect(() => {
     playbackSpeed.value = requestedPlaybackSpeed;
@@ -355,7 +383,9 @@ export function useNativePageTurnPool({
   height,
   spread,
   automaticTuning,
+  reverseAutomaticTuning,
   gestureTuning,
+  reverseGestureTuning,
   commands,
   onPrepared,
   onStarted,
@@ -369,7 +399,9 @@ export function useNativePageTurnPool({
     height,
     spread,
     automaticTuning,
+    reverseAutomaticTuning,
     gestureTuning,
+    reverseGestureTuning,
     commands[0],
     dispatchPrepared,
     dispatchStarted,
@@ -380,7 +412,9 @@ export function useNativePageTurnPool({
     height,
     spread,
     automaticTuning,
+    reverseAutomaticTuning,
     gestureTuning,
+    reverseGestureTuning,
     commands[1],
     dispatchPrepared,
     dispatchStarted,
@@ -391,7 +425,9 @@ export function useNativePageTurnPool({
     height,
     spread,
     automaticTuning,
+    reverseAutomaticTuning,
     gestureTuning,
+    reverseGestureTuning,
     commands[2],
     dispatchPrepared,
     dispatchStarted,
@@ -402,7 +438,9 @@ export function useNativePageTurnPool({
     height,
     spread,
     automaticTuning,
+    reverseAutomaticTuning,
     gestureTuning,
+    reverseGestureTuning,
     commands[3],
     dispatchPrepared,
     dispatchStarted,
@@ -413,7 +451,9 @@ export function useNativePageTurnPool({
     height,
     spread,
     automaticTuning,
+    reverseAutomaticTuning,
     gestureTuning,
+    reverseGestureTuning,
     commands[4],
     dispatchPrepared,
     dispatchStarted,
@@ -424,7 +464,9 @@ export function useNativePageTurnPool({
     height,
     spread,
     automaticTuning,
+    reverseAutomaticTuning,
     gestureTuning,
+    reverseGestureTuning,
     commands[5],
     dispatchPrepared,
     dispatchStarted,
@@ -435,7 +477,9 @@ export function useNativePageTurnPool({
     height,
     spread,
     automaticTuning,
+    reverseAutomaticTuning,
     gestureTuning,
+    reverseGestureTuning,
     commands[6],
     dispatchPrepared,
     dispatchStarted,
@@ -446,7 +490,9 @@ export function useNativePageTurnPool({
     height,
     spread,
     automaticTuning,
+    reverseAutomaticTuning,
     gestureTuning,
+    reverseGestureTuning,
     commands[7],
     dispatchPrepared,
     dispatchStarted,
@@ -457,7 +503,9 @@ export function useNativePageTurnPool({
     height,
     spread,
     automaticTuning,
+    reverseAutomaticTuning,
     gestureTuning,
+    reverseGestureTuning,
     commands[8],
     dispatchPrepared,
     dispatchStarted,
@@ -468,7 +516,9 @@ export function useNativePageTurnPool({
     height,
     spread,
     automaticTuning,
+    reverseAutomaticTuning,
     gestureTuning,
+    reverseGestureTuning,
     commands[9],
     dispatchPrepared,
     dispatchStarted,
@@ -479,7 +529,9 @@ export function useNativePageTurnPool({
     height,
     spread,
     automaticTuning,
+    reverseAutomaticTuning,
     gestureTuning,
+    reverseGestureTuning,
     commands[10],
     dispatchPrepared,
     dispatchStarted,

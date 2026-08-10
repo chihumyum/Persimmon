@@ -1277,7 +1277,7 @@ index aad94429344434bd0b4c3a78e3bcff15fb0d27ce..f796c0afcac504055f1f8946c9a9a8ed
    size_t getMemoryPressure() const override { return 2048; }
  
 diff --git a/cpp/rnskia/RNSkJsiViewApi.h b/cpp/rnskia/RNSkJsiViewApi.h
-index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..56dda7c8dbdfa2cfaf37f7b6e58fe1f7c70e7847 100644
+index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..7cb8d71e5cc5bb0401e6ea1df2accb6671fbadf3 100644
 --- a/cpp/rnskia/RNSkJsiViewApi.h
 +++ b/cpp/rnskia/RNSkJsiViewApi.h
 @@ -10,6 +10,7 @@
@@ -1288,7 +1288,7 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..56dda7c8dbdfa2cfaf37f7b6e58fe1f7
  #include "RNSkPictureView.h"
  #include "RNSkPlatformContext.h"
  #include "RNSkView.h"
-@@ -268,11 +269,549 @@ public:
+@@ -268,11 +269,582 @@ public:
      return sizeObj;
    }
  
@@ -1549,19 +1549,56 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..56dda7c8dbdfa2cfaf37f7b6e58fe1f7
 +  }
 +
 +  JSI_HOST_FUNCTION(pagerConfigureMotion) {
-+    if (count != 13) {
++    if (count != 7 || !arguments[0].isNumber()) {
 +      _platformContext->raiseError(
-+          std::string(
-+              "pagerConfigureMotion: Expected 13 numeric arguments, got " +
-+              std::to_string(count) + "."));
++          "pagerConfigureMotion: Expected native id and six tuning arrays.");
 +      return jsi::Value::undefined();
 +    }
-+    for (size_t index = 0; index < count; index += 1) {
-+      if (!arguments[index].isNumber()) {
-+        _platformContext->raiseError(
-+            "pagerConfigureMotion: All arguments must be numeric.");
-+        return jsi::Value::undefined();
++
++    auto readTuning = [&](size_t argumentIndex,
++                          RNSkPagerCompositor::MotionTuning &tuning) {
++      if (!arguments[argumentIndex].isObject()) {
++        return false;
 +      }
++      auto object = arguments[argumentIndex].asObject(runtime);
++      if (!object.isArray(runtime)) {
++        return false;
++      }
++      auto values = object.asArray(runtime);
++      if (values.size(runtime) != 12) {
++        return false;
++      }
++      float numbers[12];
++      for (size_t index = 0; index < 12; index += 1) {
++        auto value = values.getValueAtIndex(runtime, index);
++        if (!value.isNumber()) {
++          return false;
++        }
++        numbers[index] = static_cast<float>(value.asNumber());
++      }
++      tuning = {
++          numbers[0], numbers[1], numbers[2], numbers[3],
++          numbers[4], numbers[5], numbers[6], numbers[7],
++          numbers[8], numbers[9], numbers[10], numbers[11],
++      };
++      return true;
++    };
++
++    RNSkPagerCompositor::MotionTuning automaticForward;
++    RNSkPagerCompositor::MotionTuning automaticBackward;
++    RNSkPagerCompositor::MotionTuning rapidForward;
++    RNSkPagerCompositor::MotionTuning rapidBackward;
++    RNSkPagerCompositor::MotionTuning gestureForward;
++    RNSkPagerCompositor::MotionTuning gestureBackward;
++    if (!readTuning(1, automaticForward) ||
++        !readTuning(2, automaticBackward) ||
++        !readTuning(3, rapidForward) ||
++        !readTuning(4, rapidBackward) ||
++        !readTuning(5, gestureForward) ||
++        !readTuning(6, gestureBackward)) {
++      _platformContext->raiseError(
++          "pagerConfigureMotion: Every tuning array must contain 12 numbers.");
++      return jsi::Value::undefined();
 +    }
 +    const int nativeId = arguments[0].asNumber();
 +    auto view = ViewRegistry::getInstance().withViewInfo(
@@ -1570,12 +1607,8 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..56dda7c8dbdfa2cfaf37f7b6e58fe1f7
 +    auto pictureView = std::dynamic_pointer_cast<RNSkPictureView>(view);
 +    if (pictureView != nullptr) {
 +      pictureView->configurePagerMotion(
-+          arguments[1].asNumber(), arguments[2].asNumber(),
-+          arguments[3].asNumber(), arguments[4].asNumber(),
-+          arguments[5].asNumber(), arguments[6].asNumber(),
-+          arguments[7].asNumber(), arguments[8].asNumber(),
-+          arguments[9].asNumber(), arguments[10].asNumber(),
-+          arguments[11].asNumber(), arguments[12].asNumber());
++          automaticForward, automaticBackward, rapidForward, rapidBackward,
++          gestureForward, gestureBackward);
 +    }
 +    return jsi::Value::undefined();
 +  }
@@ -1661,14 +1694,14 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..56dda7c8dbdfa2cfaf37f7b6e58fe1f7
 +  }
 +
 +  JSI_HOST_FUNCTION(pagerEndGesture) {
-+    if (count != 10 || !arguments[0].isNumber() ||
++    if (count != 11 || !arguments[0].isNumber() ||
 +        !arguments[1].isNumber() || !arguments[2].isNumber() ||
 +        !arguments[3].isNumber() || !arguments[4].isNumber() ||
 +        !arguments[5].isNumber() || !arguments[6].isNumber() ||
 +        !arguments[7].isNumber() || !arguments[8].isNumber() ||
-+        !arguments[9].isNumber()) {
++        !arguments[9].isNumber() || !arguments[10].isNumber()) {
 +      _platformContext->raiseError(
-+          "pagerEndGesture: Expected native id and nine gesture values.");
++          "pagerEndGesture: Expected native id and ten gesture values.");
 +      return jsi::Value(false);
 +    }
 +    const int nativeId = arguments[0].asNumber();
@@ -1684,7 +1717,7 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..56dda7c8dbdfa2cfaf37f7b6e58fe1f7
 +        arguments[3].asNumber(), arguments[4].asNumber(),
 +        arguments[5].asNumber(), arguments[6].asNumber(),
 +        arguments[7].asNumber(), arguments[8].asNumber(),
-+        arguments[9].asNumber()));
++        arguments[9].asNumber(), arguments[10].asNumber()));
 +  }
 +
 +  JSI_HOST_FUNCTION(pagerCancelGesture) {
@@ -1782,7 +1815,7 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..56dda7c8dbdfa2cfaf37f7b6e58fe1f7
 +          "pagerProtocolVersion: Expected no arguments.");
 +      return jsi::Value::undefined();
 +    }
-+    return jsi::Value(7);
++    return jsi::Value(10);
 +  }
 +
 +  JSI_HOST_FUNCTION(pagerReady) {
@@ -1841,10 +1874,10 @@ index 6a18a5b336612b03b5f903cbdb18517cbf45b8a1..56dda7c8dbdfa2cfaf37f7b6e58fe1f7
     * Constructor
 diff --git a/cpp/rnskia/RNSkPagerCompositor.h b/cpp/rnskia/RNSkPagerCompositor.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565b0e37b29
+index 0000000000000000000000000000000000000000..4cf4f4febedc2c0baf803083c6bfd662a27db99c
 --- /dev/null
 +++ b/cpp/rnskia/RNSkPagerCompositor.h
-@@ -0,0 +1,3034 @@
+@@ -0,0 +1,3129 @@
 +#pragma once
 +
 +#include <algorithm>
@@ -1914,17 +1947,31 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +    float liftVelocity;
 +    float liftToLeft;
 +    float curvatureRelaxation;
++    float incomingLandingStartProgress = 0.3f;
++    float incomingRevealStartProgress = 0.0f;
++    float incomingRevealEndProgress = 0.28f;
++    float incomingDragProgressScale = 1.0f;
++    float incomingDragProgressExponent = 1.0f;
++    float incomingSettleDurationSeconds = 0.52f;
++    float incomingSettleEasingPower = 2.0f;
++    float incomingRevertDurationSeconds = 0.72f;
 +  };
 +
 +  explicit RNSkPagerCompositor(std::function<void()> requestRedraw)
 +      : _requestRedraw(std::move(requestRedraw)) {}
 +
-+  void configureMotion(MotionTuning automatic, MotionTuning rapid,
-+                       MotionTuning gesture) {
++  void configureMotion(MotionTuning automaticForward,
++                       MotionTuning automaticBackward,
++                       MotionTuning rapidForward, MotionTuning rapidBackward,
++                       MotionTuning gestureForward,
++                       MotionTuning gestureBackward) {
 +    std::lock_guard<std::mutex> lock(_mutex);
-+    _automaticTuning = clampMotionTuning(automatic);
-+    _rapidTuning = clampMotionTuning(rapid, 1.0f);
-+    _gestureTuning = clampMotionTuning(gesture);
++    _automaticForwardTuning = clampMotionTuning(automaticForward);
++    _automaticBackwardTuning = clampMotionTuning(automaticBackward);
++    _rapidForwardTuning = clampMotionTuning(rapidForward);
++    _rapidBackwardTuning = clampMotionTuning(rapidBackward);
++    _gestureForwardTuning = clampMotionTuning(gestureForward);
++    _gestureBackwardTuning = clampMotionTuning(gestureBackward);
 +  }
 +
 +  void preload(sk_sp<SkImage> image) {
@@ -1959,7 +2006,8 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +      turn.backImage = std::move(backImage);
 +      turn.direction = direction < 0 ? -1 : 1;
 +      turn.spread = spread;
-+      turn.tuning = _automaticTuning;
++      turn.tuning = turn.direction == 1 ? _automaticForwardTuning
++                                        : _automaticBackwardTuning;
 +      const double requestedNotBeforeSteadyMs =
 +          nowSteadyMs + std::max(0.0, startAtEpochMs - nowEpochMs);
 +      const double cadenceMs = std::clamp(launchIntervalMs, 1.0, 1000.0);
@@ -2010,7 +2058,8 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +      turn.pixelHeight = pixelHeight;
 +      turn.direction = direction < 0 ? -1 : 1;
 +      turn.spread = spread;
-+      turn.tuning = _automaticTuning;
++      turn.tuning = turn.direction == 1 ? _automaticForwardTuning
++                                        : _automaticBackwardTuning;
 +      const double requestedNotBeforeSteadyMs =
 +          nowSteadyMs + std::max(0.0, startAtEpochMs - nowEpochMs);
 +      const double cadenceMs = std::clamp(launchIntervalMs, 1.0, 1000.0);
@@ -2324,11 +2373,13 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +      turn.started = true;
 +      turn.interactive = true;
 +      turn.motionPhase = MotionPhase::GestureDrag;
-+      turn.tuning = _gestureTuning;
++      turn.tuning = turn.direction == 1 ? _gestureForwardTuning
++                                        : _gestureBackwardTuning;
 +      turn.startBookX = std::clamp(startBookX, 0.0f, 1.0f);
 +      turn.weakGrip =
 +          turn.startBookX < kFullGestureStartMinimumX;
 +      updateGestureStateLocked(turn, fingerX, turnProgress);
++      turn.lastGestureUpdateAtSteadyMs = nowSteadyMs;
 +      turn.paperColor = stock->paperColor;
 +      turn.startedAtSteadyMs = nowSteadyMs;
 +      _preferredDirection = normalizedDirection;
@@ -2352,6 +2403,7 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +        return false;
 +      }
 +      updateGestureStateLocked(*turn, fingerX, turnProgress);
++      turn->lastGestureUpdateAtSteadyMs = steadyNowMs();
 +      accepted = true;
 +    }
 +    if (accepted) {
@@ -2364,7 +2416,7 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +                  float throwAcceleration, float pageWeight,
 +                  float commitThreshold, float slowCommitEdgeX,
 +                  float minimumSpeedScale, float maximumSpeedScale,
-+                  float velocityGain) {
++                  float velocityGain, float idleDecaySeconds) {
 +    bool accepted = false;
 +    {
 +      std::lock_guard<std::mutex> lock(_mutex);
@@ -2372,7 +2424,22 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +      if (turn == _turns.end() || turn->settling) {
 +        return false;
 +      }
-+      updateGestureStateLocked(*turn, fingerX, turn->gestureProgress);
++      const double nowSteadyMs = steadyNowMs();
++      const float safeIdleDecaySeconds =
++          std::clamp(idleDecaySeconds, 0.005f, 1.0f);
++      const float idleSeconds = static_cast<float>(
++          std::max(0.0, nowSteadyMs - turn->lastGestureUpdateAtSteadyMs) /
++          1000.0);
++      const float idleDecay =
++          std::exp(-idleSeconds / safeIdleDecaySeconds);
++      const float decayedThrowVelocity =
++          std::max(0.0f, throwVelocity) * idleDecay;
++      const float decayedThrowAcceleration = throwAcceleration * idleDecay;
++      if (turn->direction < 0 && !turn->spread) {
++        turn->gestureFingerX = std::clamp(fingerX, -1.0f, 1.0f);
++      } else {
++        updateGestureStateLocked(*turn, fingerX, turn->gestureProgress);
++      }
 +      const float safeCommitEdge =
 +          std::clamp(slowCommitEdgeX, -0.5f, 0.95f);
 +      const bool incomingPage = turn->direction < 0 && !turn->spread;
@@ -2385,18 +2452,18 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +              std::max(0.05f, 1.0f - safeCommitEdge),
 +          0.0f, 1.2f);
 +      const float velocity =
-+          std::clamp(throwVelocity, 0.0f, 3.2f) * 0.18f;
++          std::clamp(decayedThrowVelocity, 0.0f, 3.2f) * 0.18f;
 +      const float acceleration =
-+          std::clamp(throwAcceleration, 0.0f, 10.0f) * 0.035f;
++          std::clamp(decayedThrowAcceleration, 0.0f, 10.0f) * 0.035f;
 +      const float score =
 +          (distance + velocity + acceleration) /
-+          std::clamp(pageWeight, 0.5f, 1.8f);
++          std::clamp(pageWeight, 0.25f, 3.0f);
 +      const bool commit =
 +          (incomingPage || !turn->weakGrip) &&
-+          score >= std::clamp(commitThreshold, 0.4f, 1.2f) - 1e-6f;
++          score >= std::clamp(commitThreshold, 0.15f, 1.5f) - 1e-6f;
 +      releaseGestureLocked(
-+          *turn, commit, throwVelocity, minimumSpeedScale,
-+          maximumSpeedScale, velocityGain, steadyNowMs(), epochNowMs());
++          *turn, commit, decayedThrowVelocity, minimumSpeedScale,
++          maximumSpeedScale, velocityGain, nowSteadyMs, epochNowMs());
 +      accepted = true;
 +    }
 +    if (accepted) {
@@ -2659,12 +2726,27 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +                   sourceFace, true);
 +        }
 +      } else {
-+        const auto background = std::find_if(
-+            renderTurns.rbegin(), renderTurns.rend(),
-+            [](const RenderTurn &turn) {
-+              return turn.backgroundLeftImage != nullptr;
-+            });
-+        if (background != renderTurns.rend()) {
++        const RenderTurn *background = nullptr;
++        if (direction > 0) {
++          const auto newestTarget = std::find_if(
++              renderTurns.rbegin(), renderTurns.rend(),
++              [](const RenderTurn &turn) {
++                return turn.backgroundLeftImage != nullptr;
++              });
++          if (newestTarget != renderTurns.rend()) {
++            background = &*newestTarget;
++          }
++        } else {
++          const auto oldestSource = std::find_if(
++              renderTurns.begin(), renderTurns.end(),
++              [](const RenderTurn &turn) {
++                return turn.backgroundLeftImage != nullptr;
++              });
++          if (oldestSource != renderTurns.end()) {
++            background = &*oldestSource;
++          }
++        }
++        if (background != nullptr) {
 +          drawBackgroundPage(canvas, 0, viewportWidth, viewportHeight,
 +                             background->backgroundLeftImage);
 +        }
@@ -2733,9 +2815,9 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +  static constexpr size_t kMaximumPreparedPageCount = 8;
 +  static constexpr size_t kMaximumPreparedPageBytes =
 +      72 * 1024 * 1024;
-+  static constexpr double kMinimumDurationMs = 72.0;
++  static constexpr double kMinimumDurationMs = 16.0;
 +  static constexpr double kDefaultDurationMs = 260.0;
-+  static constexpr double kMaximumDurationMs = 900.0;
++  static constexpr double kMaximumDurationMs = 240000.0;
 +  static constexpr float kPi = 3.14159265358979323846f;
 +  static constexpr float kMinimumPressedEdgeX = 0.14f;
 +  static constexpr float kMaximumProfileBendAmplitude =
@@ -2845,6 +2927,7 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +    float driveStartRotation = 0;
 +    float driveSpeedScale = 1;
 +    float previousCurvature = 0;
++    double lastGestureUpdateAtSteadyMs = 0;
 +    double settleStartedAtSteadyMs = 0;
 +    double settleDurationMs = kMinimumDurationMs;
 +    double previousProfileAtSteadyMs = 0;
@@ -2972,13 +3055,24 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +    return std::to_string(contentRevision) + "@" + pageKey;
 +  }
 +
-+  static MotionTuning clampMotionTuning(MotionTuning tuning,
-+                                        float maximumReleaseX = 0.8f) {
++  static MotionTuning clampMotionTuning(MotionTuning tuning) {
++    // Direction selects geometry, never a second set of native-only bounds.
++    const float revealStart = std::clamp(
++        tuning.incomingRevealStartProgress, 0.0f, 0.85f);
 +    return {
-+        std::clamp(tuning.releaseX, 0.58f, maximumReleaseX),
-+        std::clamp(tuning.liftVelocity, 0.7f, 1.8f),
-+        std::clamp(tuning.liftToLeft, 1.4f, 2.6f),
-+        std::clamp(tuning.curvatureRelaxation, 3.5f, 14.0f),
++        std::clamp(tuning.releaseX, 0.15f, 1.0f),
++        std::clamp(tuning.liftVelocity, 0.1f, 5.0f),
++        std::clamp(tuning.liftToLeft, 0.25f, 6.0f),
++        std::clamp(tuning.curvatureRelaxation, 0.25f, 40.0f),
++        std::clamp(tuning.incomingLandingStartProgress, 0.05f, 0.85f),
++        revealStart,
++        std::clamp(tuning.incomingRevealEndProgress,
++                   revealStart + 0.02f, 0.95f),
++        std::clamp(tuning.incomingDragProgressScale, 0.25f, 3.0f),
++        std::clamp(tuning.incomingDragProgressExponent, 0.35f, 3.0f),
++        std::clamp(tuning.incomingSettleDurationSeconds, 0.15f, 1.5f),
++        std::clamp(tuning.incomingSettleEasingPower, 0.75f, 6.0f),
++        std::clamp(tuning.incomingRevertDurationSeconds, 0.1f, 1.5f),
 +    };
 +  }
 +
@@ -3064,7 +3158,7 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +                : 0.0f;
 +    const float remaining = std::clamp(1.0f - landedLength, 0.0f, 1.0f);
 +    const float relaxation =
-+        std::clamp(curvatureRelaxation, 3.5f, 14.0f);
++        std::clamp(curvatureRelaxation, 0.25f, 40.0f);
 +    const float curlRetention =
 +        std::pow(remaining, 1.0f + relaxation / 14.0f);
 +    const float bendAmplitude = startAmplitude * curlRetention;
@@ -3128,7 +3222,7 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +             ((desiredRotation - kGestureHingeRotation) / swingAngle);
 +    }
 +    const float relaxation =
-+        std::clamp(curvatureRelaxation, 3.5f, 14.0f);
++        std::clamp(curvatureRelaxation, 0.25f, 40.0f);
 +    const float curlRetention = std::clamp(
 +        (kPi - desiredRotation) / kGestureHingeBendAmplitude,
 +        0.0f, 1.0f);
@@ -3141,10 +3235,12 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +  static void updateGestureStateLocked(Turn &turn, float fingerX,
 +                                       float turnProgress) {
 +    turn.gestureFingerX = std::clamp(fingerX, -1.0f, 1.0f);
-+    turn.gestureProgress = std::clamp(turnProgress, 0.0f, 1.0f);
++    const float rawProgress = std::clamp(turnProgress, 0.0f, 1.0f);
 +    if (turn.direction < 0 && !turn.spread) {
++      turn.gestureProgress = incomingPageDragProgress(rawProgress, turn.tuning);
 +      return;
 +    }
++    turn.gestureProgress = rawProgress;
 +    if (turn.weakGrip) {
 +      const float travel = std::max(0.0f, 1.0f - turn.gestureFingerX);
 +      const float compression =
@@ -3164,31 +3260,54 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +                              turn.tuning.curvatureRelaxation);
 +  }
 +
-+  static float incomingPageShapeProgress(float progress) {
-+    const float safeProgress = std::clamp(progress, 0.0f, 1.0f);
-+    if (safeProgress <= kIncomingPagePreludeProgress) {
-+      return kIncomingPageLandingStartProgress;
-+    }
-+    const float landingProgress =
-+        (safeProgress - kIncomingPagePreludeProgress) /
-+        (1.0f - kIncomingPagePreludeProgress);
-+    return kIncomingPageLandingStartProgress +
-+           (1.0f - kIncomingPageLandingStartProgress) * landingProgress;
++  static float incomingPageDragProgress(float progress,
++                                        const MotionTuning &tuning) {
++    return std::clamp(
++        std::pow(std::clamp(progress, 0.0f, 1.0f),
++                 tuning.incomingDragProgressExponent) *
++            tuning.incomingDragProgressScale,
++        0.0f, 1.0f);
 +  }
 +
-+  static float incomingPageRemainingDurationMs(float progress) {
-+    return 1000.0f * kIncomingSettleDurationSeconds *
++  static float incomingPageShapeProgress(float progress,
++                                         const MotionTuning &tuning) {
++    const float safeProgress = std::clamp(progress, 0.0f, 1.0f);
++    if (safeProgress <= tuning.incomingRevealEndProgress) {
++      return tuning.incomingLandingStartProgress;
++    }
++    const float landingProgress =
++        (safeProgress - tuning.incomingRevealEndProgress) /
++        std::max(0.000001f, 1.0f - tuning.incomingRevealEndProgress);
++    return tuning.incomingLandingStartProgress +
++           (1.0f - tuning.incomingLandingStartProgress) * landingProgress;
++  }
++
++  static float incomingPageRevealProgress(float progress,
++                                          const MotionTuning &tuning) {
++    return std::clamp(
++        (std::clamp(progress, 0.0f, 1.0f) -
++         tuning.incomingRevealStartProgress) /
++            std::max(0.000001f,
++                     tuning.incomingRevealEndProgress -
++                         tuning.incomingRevealStartProgress),
++        0.0f, 1.0f);
++  }
++
++  static float incomingPageRemainingDurationMs(
++      float progress, const MotionTuning &tuning) {
++    return 1000.0f * tuning.incomingSettleDurationSeconds *
 +           (1.0f - std::clamp(progress, 0.0f, 1.0f)) /
-+           (1.0f - kIncomingPagePreludeProgress);
++           std::max(0.000001f, 1.0f - tuning.incomingRevealEndProgress);
 +  }
 +
 +  static float incomingPageDrivenProgress(float startProgress,
-+                                          float segmentProgress) {
++                                          float segmentProgress,
++                                          const MotionTuning &tuning) {
 +    const float safeStart = std::clamp(startProgress, 0.0f, 1.0f);
 +    const float safeSegment = std::clamp(segmentProgress, 0.0f, 1.0f);
-+    if (safeStart < kIncomingPagePreludeProgress) {
++    if (safeStart < tuning.incomingRevealEndProgress) {
 +      const float preludeFraction =
-+          (kIncomingPagePreludeProgress - safeStart) /
++          (tuning.incomingRevealEndProgress - safeStart) /
 +          std::max(0.000001f, 1.0f - safeStart);
 +      if (safeSegment < preludeFraction) {
 +        return safeStart + (1.0f - safeStart) * safeSegment;
@@ -3196,13 +3315,13 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +      const float landingSegment =
 +          (safeSegment - preludeFraction) /
 +          std::max(0.000001f, 1.0f - preludeFraction);
-+      const float eased =
-+          1.0f - (1.0f - landingSegment) * (1.0f - landingSegment);
-+      return kIncomingPagePreludeProgress +
-+             (1.0f - kIncomingPagePreludeProgress) * eased;
++      const float eased = 1.0f - std::pow(
++          1.0f - landingSegment, tuning.incomingSettleEasingPower);
++      return tuning.incomingRevealEndProgress +
++             (1.0f - tuning.incomingRevealEndProgress) * eased;
 +    }
-+    const float eased =
-+        1.0f - (1.0f - safeSegment) * (1.0f - safeSegment);
++    const float eased = 1.0f - std::pow(
++        1.0f - safeSegment, tuning.incomingSettleEasingPower);
 +    return safeStart + (1.0f - safeStart) * eased;
 +  }
 +
@@ -3223,9 +3342,10 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +      const float timeline =
 +          automaticProgressForTurn(turn, nowSteadyMs);
 +      if (turn.direction < 0 && !turn.spread) {
-+        const float progress = incomingPageDrivenProgress(0, timeline);
++        const float progress =
++            incomingPageDrivenProgress(0, timeline, turn.tuning);
 +        return {
-+            turnShape(incomingPageShapeProgress(progress),
++            turnShape(incomingPageShapeProgress(progress, turn.tuning),
 +                      turn.tuning.releaseX, 0,
 +                      turn.tuning.curvatureRelaxation),
 +            progress,
@@ -3264,7 +3384,7 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +      if (turn.direction < 0 && !turn.spread) {
 +        const float progress = turn.gestureProgress;
 +        return {
-+            turnShape(incomingPageShapeProgress(progress),
++            turnShape(incomingPageShapeProgress(progress, turn.tuning),
 +                      turn.tuning.releaseX, 0,
 +                      turn.tuning.curvatureRelaxation),
 +            progress,
@@ -3307,9 +3427,9 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +    if (turn.motionPhase == MotionPhase::GestureSettle) {
 +      const float progress =
 +          incomingPageDrivenProgress(turn.driveStartProgress,
-+                                     segmentProgress);
++                                     segmentProgress, turn.tuning);
 +      return {
-+          turnShape(incomingPageShapeProgress(progress),
++          turnShape(incomingPageShapeProgress(progress, turn.tuning),
 +                    turn.tuning.releaseX, 0,
 +                    turn.tuning.curvatureRelaxation),
 +          progress,
@@ -3322,7 +3442,7 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +      const float progress =
 +          turn.driveStartProgress * (1.0f - eased);
 +      return {
-+          turnShape(incomingPageShapeProgress(progress),
++          turnShape(incomingPageShapeProgress(progress, turn.tuning),
 +                    turn.tuning.releaseX, 0,
 +                    turn.tuning.curvatureRelaxation),
 +          progress,
@@ -3372,6 +3492,15 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +    turn.settling = true;
 +    turn.commitOnComplete = commit;
 +    turn.settleStartedAtSteadyMs = nowSteadyMs;
++    const float safeMinimumSpeed =
++        std::clamp(minimumSpeedScale, 0.1f, 4.0f);
++    const float safeMaximumSpeed =
++        std::clamp(maximumSpeedScale, safeMinimumSpeed, 8.0f);
++    turn.driveSpeedScale = std::clamp(
++        safeMinimumSpeed +
++            std::max(0.0f, throwVelocity) *
++                std::clamp(velocityGain, 0.0f, 4.0f),
++        safeMinimumSpeed, safeMaximumSpeed);
 +    if (turn.direction < 0 && !turn.spread) {
 +      turn.driveStartProgress = turn.gestureProgress;
 +      if (commit) {
@@ -3379,13 +3508,15 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +        turn.settleDurationMs = std::max(
 +            1000.0 / 60.0,
 +            static_cast<double>(incomingPageRemainingDurationMs(
-+                turn.driveStartProgress)));
++                turn.driveStartProgress, turn.tuning)) /
++                turn.driveSpeedScale);
 +        consumeGestureLocked(turn, nowEpochMs);
 +      } else {
 +        turn.motionPhase = MotionPhase::GestureRevert;
 +        turn.settleDurationMs = std::max(
 +            1000.0 / 60.0,
-+            static_cast<double>(incomingPageRemainingDurationMs(0) *
++            static_cast<double>(1000.0f *
++                                turn.tuning.incomingRevertDurationSeconds *
 +                                turn.driveStartProgress));
 +      }
 +    } else if (commit) {
@@ -3393,15 +3524,6 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +      turn.driveStartX = turn.pressedEdgeX;
 +      turn.driveStartProgress = turn.dragTurnProgress;
 +      turn.driveStartRotation = turn.heldRollTilt;
-+      const float safeMinimumSpeed =
-+          std::clamp(minimumSpeedScale, 0.5f, 1.5f);
-+      const float safeMaximumSpeed =
-+          std::clamp(maximumSpeedScale, safeMinimumSpeed, 3.0f);
-+      turn.driveSpeedScale = std::clamp(
-+          safeMinimumSpeed +
-+              std::max(0.0f, throwVelocity) *
-+                  std::clamp(velocityGain, 0.1f, 1.2f),
-+          safeMinimumSpeed, safeMaximumSpeed);
 +      const float propagationSpeed =
 +          turn.tuning.liftVelocity * turn.tuning.liftToLeft *
 +          kPropagationSpeedScale * turn.driveSpeedScale;
@@ -3578,9 +3700,8 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +
 +    float incomingReveal = 1.0f;
 +    if (turn.direction < 0 && !turn.spread) {
-+      incomingReveal = std::clamp(
-+          lifecycleProgress / kIncomingPagePreludeProgress,
-+          0.0f, 1.0f);
++      incomingReveal = incomingPageRevealProgress(
++          lifecycleProgress, turn.tuning);
 +      if (incomingReveal < 1.0f) {
 +        const float projectedOffset =
 +            -std::max(0.0f, renderTurn.maximumX) *
@@ -4125,7 +4246,11 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +    turn.pixelHeight = stock->pixelHeight;
 +    turn.direction = normalizedDirection;
 +    turn.spread = stock->spread;
-+    turn.tuning = rapidInput ? _rapidTuning : _automaticTuning;
++    turn.tuning = rapidInput
++                      ? (turn.direction == 1 ? _rapidForwardTuning
++                                             : _rapidBackwardTuning)
++                      : (turn.direction == 1 ? _automaticForwardTuning
++                                             : _automaticBackwardTuning);
 +    turn.directInput = directInput;
 +    if (directInput) {
 +      turn.notBeforeSteadyMs = nowSteadyMs;
@@ -4873,14 +4998,17 @@ index 0000000000000000000000000000000000000000..5b942dfef7c277c2e9e83db03d7b4565
 +  double _benchmarkIntervalMs = 100;
 +  double _benchmarkNextSteadyMs = 0;
 +  bool _inputEnabled = false;
-+  MotionTuning _automaticTuning = {0.72f, 1.5f, 2.2f, 6.75f};
-+  MotionTuning _rapidTuning = {0.72f, 1.5f, 2.2f, 6.75f};
-+  MotionTuning _gestureTuning = {0.72f, 1.35f, 2.0f, 7.0f};
++  MotionTuning _automaticForwardTuning = {0.72f, 1.5f, 2.2f, 6.75f};
++  MotionTuning _automaticBackwardTuning = {0.72f, 1.5f, 2.2f, 6.75f};
++  MotionTuning _rapidForwardTuning = {0.72f, 1.5f, 2.2f, 6.75f};
++  MotionTuning _rapidBackwardTuning = {0.72f, 1.5f, 2.2f, 6.75f};
++  MotionTuning _gestureForwardTuning = {0.72f, 1.35f, 2.0f, 7.0f};
++  MotionTuning _gestureBackwardTuning = {0.72f, 1.35f, 2.0f, 7.0f};
 +};
 +
 +} // namespace RNSkia
 diff --git a/cpp/rnskia/RNSkPictureView.h b/cpp/rnskia/RNSkPictureView.h
-index 0059ea1c7ed47adb189095bc9f1110525668d11a..aa8095afd5e4cab596a0a7105e7830925740dade 100644
+index 0059ea1c7ed47adb189095bc9f1110525668d11a..bceb016c73589038e77bafa8f8ebb4c147460925 100644
 --- a/cpp/rnskia/RNSkPictureView.h
 +++ b/cpp/rnskia/RNSkPictureView.h
 @@ -11,6 +11,7 @@
@@ -4901,7 +5029,7 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..aa8095afd5e4cab596a0a7105e783092
  
    virtual ~RNSkPictureRenderer() = default;
  
-@@ -52,31 +54,182 @@ public:
+@@ -52,31 +54,178 @@ public:
    }
  
    void setPicture(sk_sp<SkPicture> picture) {
@@ -4981,19 +5109,15 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..aa8095afd5e4cab596a0a7105e783092
 +  }
 +
 +  void configurePagerMotion(
-+      float automaticReleaseX, float automaticLiftVelocity,
-+      float automaticLiftToLeft, float automaticCurvatureRelaxation,
-+      float rapidReleaseX, float rapidLiftVelocity,
-+      float rapidLiftToLeft, float rapidCurvatureRelaxation,
-+      float gestureReleaseX, float gestureLiftVelocity,
-+      float gestureLiftToLeft, float gestureCurvatureRelaxation) {
++      RNSkPagerCompositor::MotionTuning automaticForward,
++      RNSkPagerCompositor::MotionTuning automaticBackward,
++      RNSkPagerCompositor::MotionTuning rapidForward,
++      RNSkPagerCompositor::MotionTuning rapidBackward,
++      RNSkPagerCompositor::MotionTuning gestureForward,
++      RNSkPagerCompositor::MotionTuning gestureBackward) {
 +    _pagerCompositor.configureMotion(
-+        {automaticReleaseX, automaticLiftVelocity, automaticLiftToLeft,
-+         automaticCurvatureRelaxation},
-+        {rapidReleaseX, rapidLiftVelocity, rapidLiftToLeft,
-+         rapidCurvatureRelaxation},
-+        {gestureReleaseX, gestureLiftVelocity, gestureLiftToLeft,
-+         gestureCurvatureRelaxation});
++        automaticForward, automaticBackward, rapidForward, rapidBackward,
++        gestureForward, gestureBackward);
 +  }
 +
 +  bool consumePagerInput(int direction) {
@@ -5018,11 +5142,11 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..aa8095afd5e4cab596a0a7105e783092
 +                       float throwAcceleration, float pageWeight,
 +                       float commitThreshold, float slowCommitEdgeX,
 +                       float minimumSpeedScale, float maximumSpeedScale,
-+                       float velocityGain) {
++                       float velocityGain, float idleDecaySeconds) {
 +    return _pagerCompositor.endGesture(
 +        fingerX, throwVelocity, throwAcceleration, pageWeight,
 +        commitThreshold, slowCommitEdgeX, minimumSpeedScale,
-+        maximumSpeedScale, velocityGain);
++        maximumSpeedScale, velocityGain, idleDecaySeconds);
 +  }
 +
 +  bool cancelPagerGesture() {
@@ -5088,7 +5212,7 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..aa8095afd5e4cab596a0a7105e783092
  };
  
  class RNSkPictureView : public RNSkView {
-@@ -108,5 +261,145 @@ public:
+@@ -108,5 +257,141 @@ public:
        }
      }
    }
@@ -5159,20 +5283,16 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..aa8095afd5e4cab596a0a7105e783092
 +  }
 +
 +  void configurePagerMotion(
-+      float automaticReleaseX, float automaticLiftVelocity,
-+      float automaticLiftToLeft, float automaticCurvatureRelaxation,
-+      float rapidReleaseX, float rapidLiftVelocity,
-+      float rapidLiftToLeft, float rapidCurvatureRelaxation,
-+      float gestureReleaseX, float gestureLiftVelocity,
-+      float gestureLiftToLeft, float gestureCurvatureRelaxation) {
++      RNSkPagerCompositor::MotionTuning automaticForward,
++      RNSkPagerCompositor::MotionTuning automaticBackward,
++      RNSkPagerCompositor::MotionTuning rapidForward,
++      RNSkPagerCompositor::MotionTuning rapidBackward,
++      RNSkPagerCompositor::MotionTuning gestureForward,
++      RNSkPagerCompositor::MotionTuning gestureBackward) {
 +    std::static_pointer_cast<RNSkPictureRenderer>(getRenderer())
 +        ->configurePagerMotion(
-+            automaticReleaseX, automaticLiftVelocity,
-+            automaticLiftToLeft, automaticCurvatureRelaxation,
-+            rapidReleaseX, rapidLiftVelocity, rapidLiftToLeft,
-+            rapidCurvatureRelaxation,
-+            gestureReleaseX, gestureLiftVelocity, gestureLiftToLeft,
-+            gestureCurvatureRelaxation);
++            automaticForward, automaticBackward, rapidForward, rapidBackward,
++            gestureForward, gestureBackward);
 +  }
 +
 +  bool consumePagerInput(int direction) {
@@ -5201,12 +5321,12 @@ index 0059ea1c7ed47adb189095bc9f1110525668d11a..aa8095afd5e4cab596a0a7105e783092
 +                       float throwAcceleration, float pageWeight,
 +                       float commitThreshold, float slowCommitEdgeX,
 +                       float minimumSpeedScale, float maximumSpeedScale,
-+                       float velocityGain) {
++                       float velocityGain, float idleDecaySeconds) {
 +    return std::static_pointer_cast<RNSkPictureRenderer>(getRenderer())
 +        ->endPagerGesture(
 +            fingerX, throwVelocity, throwAcceleration, pageWeight,
 +            commitThreshold, slowCommitEdgeX, minimumSpeedScale,
-+            maximumSpeedScale, velocityGain);
++            maximumSpeedScale, velocityGain, idleDecaySeconds);
 +  }
 +
 +  bool cancelPagerGesture() {

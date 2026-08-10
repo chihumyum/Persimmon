@@ -1,11 +1,24 @@
 import {
   DEFAULT_CURVATURE_RELAXATION,
+  MAX_CURVATURE_RELAXATION,
   MAX_PRESSED_ROLL_TILT,
+  MIN_CURVATURE_RELAXATION,
   MIN_PRESSED_EDGE_X,
   pressedRollHingeGeometry,
 } from "./rolled-page-strip";
 
-export interface PageTurnTuning {
+export interface IncomingPageTurnTuning {
+  incomingLandingStartProgress: number;
+  incomingRevealStartProgress: number;
+  incomingRevealEndProgress: number;
+  incomingDragProgressScale: number;
+  incomingDragProgressExponent: number;
+  incomingSettleDurationSeconds: number;
+  incomingSettleEasingPower: number;
+  incomingRevertDurationSeconds: number;
+}
+
+export interface PageTurnTuning extends Partial<IncomingPageTurnTuning> {
   releaseX: number;
   liftVelocity: number;
   liftToLeft: number;
@@ -47,15 +60,47 @@ export const DEFAULT_PAGE_TURN_TUNING: PageTurnTuning = {
   gestureMaximumSpeedScale: 2,
   gestureVelocityGain: 0.6,
   gestureIdleDecaySeconds: 0.09,
+  incomingLandingStartProgress: 0.3,
+  incomingRevealStartProgress: 0,
+  incomingRevealEndProgress: 0.28,
+  incomingDragProgressScale: 1,
+  incomingDragProgressExponent: 1,
+  incomingSettleDurationSeconds: 0.52,
+  incomingSettleEasingPower: 2,
+  incomingRevertDurationSeconds: 0.72,
+};
+
+export const DEFAULT_INCOMING_PAGE_TURN_TUNING: IncomingPageTurnTuning = {
+  incomingLandingStartProgress: 0.3,
+  incomingRevealStartProgress: 0,
+  incomingRevealEndProgress: 0.28,
+  incomingDragProgressScale: 1,
+  incomingDragProgressExponent: 1,
+  incomingSettleDurationSeconds: 0.52,
+  incomingSettleEasingPower: 2,
+  incomingRevertDurationSeconds: 0.72,
 };
 
 /** Only the quarter of a page nearest the spine uses the weak-grip response. */
 export const FULL_GESTURE_START_MIN_X = 0.25;
 export const WEAK_GRIP_MAX_COMPRESSION = 0.04;
-export const MIN_PAGE_WEIGHT = 0.5;
-export const MAX_PAGE_WEIGHT = 1.8;
-export const MIN_GESTURE_COMMIT_THRESHOLD = 0.25;
-export const MAX_GESTURE_COMMIT_THRESHOLD = 1.2;
+export const MIN_PAGE_TURN_RELEASE_X = 0.15;
+export const MAX_PAGE_TURN_RELEASE_X = 1;
+export const MIN_PAGE_TURN_LIFT_VELOCITY = 0.1;
+export const MAX_PAGE_TURN_LIFT_VELOCITY = 5;
+export const MIN_PAGE_TURN_LIFT_TO_LEFT = 0.25;
+export const MAX_PAGE_TURN_LIFT_TO_LEFT = 6;
+export const MIN_PAGE_WEIGHT = 0.1;
+export const MAX_PAGE_WEIGHT = 6;
+export const MIN_GESTURE_COMMIT_THRESHOLD = 0.05;
+export const MAX_GESTURE_COMMIT_THRESHOLD = 3;
+export const MIN_GESTURE_SPEED_SCALE = 0.1;
+export const MAX_GESTURE_MINIMUM_SPEED_SCALE = 4;
+export const MAX_GESTURE_SPEED_SCALE = 8;
+export const MIN_GESTURE_VELOCITY_GAIN = 0;
+export const MAX_GESTURE_VELOCITY_GAIN = 4;
+export const MIN_GESTURE_IDLE_DECAY_SECONDS = 0.005;
+export const MAX_GESTURE_IDLE_DECAY_SECONDS = 1;
 const WEAK_GRIP_COMPRESSION_PER_PAGE = 0.2;
 export const SLOW_COMMIT_EDGE_X =
   MIN_PRESSED_EDGE_X - pressedRollHingeGeometry().tiltDistance;
@@ -77,19 +122,40 @@ const COMMIT_ACCELERATION_GAIN = 0.035;
 
 export function clampPageTurnTuning(
   tuning: PageTurnTuning,
-  maximumReleaseX = 0.8,
+  maximumReleaseX = MAX_PAGE_TURN_RELEASE_X,
 ): PageTurnTuning {
   const gestureMinimumSpeedScale = clamp(
     tuning.gestureMinimumSpeedScale,
-    0.5,
-    1.5,
+    MIN_GESTURE_SPEED_SCALE,
+    MAX_GESTURE_MINIMUM_SPEED_SCALE,
   );
-  const safeMaximumReleaseX = clamp(maximumReleaseX, 0.58, 1);
+  const safeMaximumReleaseX = clamp(
+    maximumReleaseX,
+    MIN_PAGE_TURN_RELEASE_X,
+    MAX_PAGE_TURN_RELEASE_X,
+  );
+  const incoming = clampIncomingPageTurnTuning(tuning);
   return {
-    releaseX: clamp(tuning.releaseX, 0.58, safeMaximumReleaseX),
-    liftVelocity: clamp(tuning.liftVelocity, 0.7, 1.8),
-    liftToLeft: clamp(tuning.liftToLeft, 1.4, 2.6),
-    curvatureRelaxation: clamp(tuning.curvatureRelaxation, 3.5, 14),
+    releaseX: clamp(
+      tuning.releaseX,
+      MIN_PAGE_TURN_RELEASE_X,
+      safeMaximumReleaseX,
+    ),
+    liftVelocity: clamp(
+      tuning.liftVelocity,
+      MIN_PAGE_TURN_LIFT_VELOCITY,
+      MAX_PAGE_TURN_LIFT_VELOCITY,
+    ),
+    liftToLeft: clamp(
+      tuning.liftToLeft,
+      MIN_PAGE_TURN_LIFT_TO_LEFT,
+      MAX_PAGE_TURN_LIFT_TO_LEFT,
+    ),
+    curvatureRelaxation: clamp(
+      tuning.curvatureRelaxation,
+      MIN_CURVATURE_RELAXATION,
+      MAX_CURVATURE_RELAXATION,
+    ),
     pageWeight: clampPageWeight(tuning.pageWeight),
     gestureCommitThreshold: clamp(
       tuning.gestureCommitThreshold,
@@ -100,10 +166,92 @@ export function clampPageTurnTuning(
     gestureMaximumSpeedScale: clamp(
       tuning.gestureMaximumSpeedScale,
       gestureMinimumSpeedScale,
+      MAX_GESTURE_SPEED_SCALE,
+    ),
+    gestureVelocityGain: clamp(
+      tuning.gestureVelocityGain,
+      MIN_GESTURE_VELOCITY_GAIN,
+      MAX_GESTURE_VELOCITY_GAIN,
+    ),
+    gestureIdleDecaySeconds: clamp(
+      tuning.gestureIdleDecaySeconds,
+      MIN_GESTURE_IDLE_DECAY_SECONDS,
+      MAX_GESTURE_IDLE_DECAY_SECONDS,
+    ),
+    ...incoming,
+  };
+}
+
+export function clampIncomingPageTurnTuning(
+  tuning: Partial<IncomingPageTurnTuning>,
+): IncomingPageTurnTuning {
+  const revealStart = clamp(
+    finiteOrDefault(
+      tuning.incomingRevealStartProgress,
+      DEFAULT_INCOMING_PAGE_TURN_TUNING.incomingRevealStartProgress,
+    ),
+    0,
+    0.85,
+  );
+  const revealEnd = clamp(
+    finiteOrDefault(
+      tuning.incomingRevealEndProgress,
+      DEFAULT_INCOMING_PAGE_TURN_TUNING.incomingRevealEndProgress,
+    ),
+    revealStart + 0.02,
+    0.95,
+  );
+  return {
+    incomingLandingStartProgress: clamp(
+      finiteOrDefault(
+        tuning.incomingLandingStartProgress,
+        DEFAULT_INCOMING_PAGE_TURN_TUNING.incomingLandingStartProgress,
+      ),
+      0.05,
+      0.85,
+    ),
+    incomingRevealStartProgress: revealStart,
+    incomingRevealEndProgress: revealEnd,
+    incomingDragProgressScale: clamp(
+      finiteOrDefault(
+        tuning.incomingDragProgressScale,
+        DEFAULT_INCOMING_PAGE_TURN_TUNING.incomingDragProgressScale,
+      ),
+      0.25,
       3,
     ),
-    gestureVelocityGain: clamp(tuning.gestureVelocityGain, 0.1, 1.2),
-    gestureIdleDecaySeconds: clamp(tuning.gestureIdleDecaySeconds, 0.03, 0.2),
+    incomingDragProgressExponent: clamp(
+      finiteOrDefault(
+        tuning.incomingDragProgressExponent,
+        DEFAULT_INCOMING_PAGE_TURN_TUNING.incomingDragProgressExponent,
+      ),
+      0.35,
+      3,
+    ),
+    incomingSettleDurationSeconds: clamp(
+      finiteOrDefault(
+        tuning.incomingSettleDurationSeconds,
+        DEFAULT_INCOMING_PAGE_TURN_TUNING.incomingSettleDurationSeconds,
+      ),
+      0.15,
+      1.5,
+    ),
+    incomingSettleEasingPower: clamp(
+      finiteOrDefault(
+        tuning.incomingSettleEasingPower,
+        DEFAULT_INCOMING_PAGE_TURN_TUNING.incomingSettleEasingPower,
+      ),
+      0.75,
+      6,
+    ),
+    incomingRevertDurationSeconds: clamp(
+      finiteOrDefault(
+        tuning.incomingRevertDurationSeconds,
+        DEFAULT_INCOMING_PAGE_TURN_TUNING.incomingRevertDurationSeconds,
+      ),
+      0.1,
+      1.5,
+    ),
   };
 }
 
@@ -227,9 +375,9 @@ export function postHingeTurnProgressForFingerX(
   }
 
   const relaxation = Math.min(
-    14,
+    MAX_CURVATURE_RELAXATION,
     Math.max(
-      3.5,
+      MIN_CURVATURE_RELAXATION,
       Number.isFinite(curvatureRelaxation)
         ? curvatureRelaxation
         : DEFAULT_CURVATURE_RELAXATION,
@@ -324,4 +472,8 @@ export function gesturePressedChordForFingerX(
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
+}
+
+function finiteOrDefault(value: number | undefined, fallback: number): number {
+  return value !== undefined && Number.isFinite(value) ? value : fallback;
 }
