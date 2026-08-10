@@ -1,9 +1,11 @@
 import type { BookIR, BookPosition } from "@persimmon/book-core";
 import type { FontFamilyRecord } from "@persimmon/font-core";
 import {
-  DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
   LiveReader,
+  type AutomaticPageTurnTuning,
   type GesturePageTurnTuning,
+  type ReverseAutomaticPageTurnTuning,
+  type ReverseGesturePageTurnTuning,
   type ReaderAppearance,
   type ReaderLayoutMode,
   type ReaderPageTurnAnimation,
@@ -37,7 +39,10 @@ export interface ReaderSurfaceProps {
   topInset: number;
   bottomInset: number;
   toolbarVisible: boolean;
+  automaticPageTurnTuning: AutomaticPageTurnTuning;
+  reverseAutomaticPageTurnTuning: ReverseAutomaticPageTurnTuning;
   gesturePageTurnTuning: GesturePageTurnTuning;
+  reverseGesturePageTurnTuning: ReverseGesturePageTurnTuning;
   initialPosition?: BookPosition;
   fontFamilies: readonly FontFamilyRecord[];
   loadFontFace: (faceId: string) => Promise<Uint8Array | undefined>;
@@ -96,7 +101,10 @@ function FontBackedReaderSurface({
   topInset,
   bottomInset,
   toolbarVisible,
+  automaticPageTurnTuning,
+  reverseAutomaticPageTurnTuning,
   gesturePageTurnTuning,
+  reverseGesturePageTurnTuning,
   initialPosition,
   loadResource,
   onCenterPress,
@@ -149,7 +157,8 @@ function FontBackedReaderSurface({
       fontSize: appearance.fontSize,
       lineHeight: appearance.lineHeight,
       paragraphSpacing: appearance.paragraphSpacing,
-      horizontalMargin: appearance.horizontalMargin,
+      inlineMargin: appearance.horizontalMargin,
+      textAlignment: appearance.textAlignment,
       progressDisplay: appearance.progressDisplay,
     }),
     [appearance, bookFontFamilyNames, fontFamily],
@@ -191,8 +200,10 @@ function FontBackedReaderSurface({
       bottomInset={bottomInset}
       toolbarVisible={toolbarVisible}
       uiMessages={uiMessages}
-      automaticPageTurnTuning={DEFAULT_AUTOMATIC_PAGE_TURN_TUNING}
+      automaticPageTurnTuning={automaticPageTurnTuning}
+      reverseAutomaticPageTurnTuning={reverseAutomaticPageTurnTuning}
       gesturePageTurnTuning={gesturePageTurnTuning}
+      reverseGesturePageTurnTuning={reverseGesturePageTurnTuning}
       initialPosition={initialPosition}
       loadResource={loadResource}
       onCenterPress={onCenterPress}

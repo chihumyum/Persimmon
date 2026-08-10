@@ -18,6 +18,7 @@ const changed: ReaderAppearanceSettings = {
   horizontalMargin: 64,
   lineHeight: 1.4,
   paragraphSpacing: 1.7,
+  textAlignment: "justify",
 };
 
 describe("Reader typography preview model", () => {
@@ -45,7 +46,7 @@ describe("Reader typography preview model", () => {
     });
   });
 
-  it("resets numeric typography without replacing the selected font", () => {
+  it("resets typography without replacing the selected font", () => {
     const custom = {
       ...changed,
       font: { ...changed.font, selectedFontId: "custom" },
@@ -53,5 +54,6 @@ describe("Reader typography preview model", () => {
     const reset = resetReaderTypography(custom);
     expect(readerTypographyEquals(reset, DEFAULT_READER_APPEARANCE)).toBe(true);
     expect(reset.font.selectedFontId).toBe("custom");
+    expect(reset.textAlignment).toBe("book");
   });
 });

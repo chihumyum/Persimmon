@@ -44,15 +44,22 @@ export function updateReaderTypography(
 export function resetReaderTypography(
   current: ReaderAppearanceSettings,
 ): ReaderAppearanceSettings {
-  return TYPOGRAPHY_KEYS.reduce<ReaderAppearanceSettings>(
+  const numericReset = TYPOGRAPHY_KEYS.reduce<ReaderAppearanceSettings>(
     (next, key) => ({ ...next, [key]: DEFAULT_READER_APPEARANCE[key] }),
     current,
   );
+  return {
+    ...numericReset,
+    textAlignment: DEFAULT_READER_APPEARANCE.textAlignment,
+  };
 }
 
 export function readerTypographyEquals(
   left: ReaderAppearanceSettings,
   right: ReaderAppearanceSettings,
 ): boolean {
-  return TYPOGRAPHY_KEYS.every((key) => left[key] === right[key]);
+  return (
+    left.textAlignment === right.textAlignment &&
+    TYPOGRAPHY_KEYS.every((key) => left[key] === right[key])
+  );
 }

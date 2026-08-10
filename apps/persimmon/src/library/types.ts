@@ -17,12 +17,14 @@ import {
 import type {
   ReaderColorMode,
   ReaderPageTurnAnimation,
+  ReaderTextAlignment,
   ReaderThemeName,
 } from "@persimmon/reader-skia";
 
 export type {
   ReaderColorMode,
   ReaderPageTurnAnimation,
+  ReaderTextAlignment,
   ReaderThemeName,
 } from "@persimmon/reader-skia";
 export type { ReaderFontSettings } from "@persimmon/font-core";
@@ -103,11 +105,32 @@ export interface ReaderAppearanceSettings {
   readonly lineHeight: number;
   readonly paragraphSpacing: number;
   readonly horizontalMargin: number;
+  readonly textAlignment: ReaderTextAlignment;
   readonly progressDisplay: ReaderProgressDisplay;
 }
 
 export interface ReaderPageTurnTuning {
-  readonly gesture: ReaderGesturePageTurnTuning;
+  readonly click: ReaderDirectionalPageTurnTuning<
+    ReaderClickPageTurnTuning,
+    ReaderReverseClickPageTurnTuning
+  >;
+  readonly gesture: ReaderDirectionalPageTurnTuning<
+    ReaderGesturePageTurnTuning,
+    ReaderReverseGesturePageTurnTuning
+  >;
+}
+
+export interface ReaderDirectionalPageTurnTuning<Forward, Backward = Forward> {
+  readonly forward: Forward;
+  readonly backward: Backward;
+}
+
+export interface ReaderClickPageTurnTuning {
+  readonly releaseX: number;
+  readonly liftVelocity: number;
+  readonly liftToLeft: number;
+  readonly curvatureRelaxation: number;
+  readonly playbackSpeed: number;
 }
 
 export interface ReaderGesturePageTurnTuning {
@@ -123,22 +146,100 @@ export interface ReaderGesturePageTurnTuning {
   readonly idleDecaySeconds: number;
 }
 
+export interface ReaderReverseClickPageTurnTuning {
+  readonly releaseX: number;
+  readonly curvatureRelaxation: number;
+  readonly incomingLandingStartProgress: number;
+  readonly incomingRevealStartProgress: number;
+  readonly incomingRevealEndProgress: number;
+  readonly incomingSettleDurationSeconds: number;
+  readonly incomingSettleEasingPower: number;
+  readonly playbackSpeed: number;
+}
+
+export interface ReaderReverseGesturePageTurnTuning {
+  readonly releaseX: number;
+  readonly curvatureRelaxation: number;
+  readonly incomingLandingStartProgress: number;
+  readonly incomingRevealStartProgress: number;
+  readonly incomingRevealEndProgress: number;
+  readonly incomingDragProgressScale: number;
+  readonly incomingDragProgressExponent: number;
+  readonly incomingSettleDurationSeconds: number;
+  readonly incomingSettleEasingPower: number;
+  readonly incomingRevertDurationSeconds: number;
+  readonly pageWeight: number;
+  readonly commitThreshold: number;
+  readonly minimumSpeedScale: number;
+  readonly maximumSpeedScale: number;
+  readonly velocityGain: number;
+  readonly idleDecaySeconds: number;
+}
+
+export const DEFAULT_READER_CLICK_PAGE_TURN_TUNING: ReaderClickPageTurnTuning =
+  {
+    releaseX: 0.9,
+    liftVelocity: 0.5,
+    liftToLeft: 4,
+    curvatureRelaxation: 10,
+    playbackSpeed: 1,
+  };
+
 export const DEFAULT_READER_GESTURE_PAGE_TURN_TUNING: ReaderGesturePageTurnTuning =
   {
-    releaseX: 0.69,
-    liftVelocity: 0.9,
-    liftToLeft: 1.65,
-    curvatureRelaxation: 7,
-    pageWeight: 0.6,
-    commitThreshold: 0.53,
-    minimumSpeedScale: 0.95,
-    maximumSpeedScale: 2,
-    velocityGain: 0.6,
-    idleDecaySeconds: 0.09,
+    releaseX: 0.4,
+    liftVelocity: 1,
+    liftToLeft: 1,
+    curvatureRelaxation: 10,
+    pageWeight: 1,
+    commitThreshold: 1,
+    minimumSpeedScale: 1,
+    maximumSpeedScale: 5,
+    velocityGain: 0.2,
+    idleDecaySeconds: 0.1,
+  };
+
+export const DEFAULT_READER_REVERSE_CLICK_PAGE_TURN_TUNING: ReaderReverseClickPageTurnTuning =
+  {
+    releaseX: 0.4,
+    curvatureRelaxation: 10,
+    incomingLandingStartProgress: 0.15,
+    incomingRevealStartProgress: 0,
+    incomingRevealEndProgress: 0.18,
+    incomingSettleDurationSeconds: 0.7,
+    incomingSettleEasingPower: 3,
+    playbackSpeed: 1,
+  };
+
+export const DEFAULT_READER_REVERSE_GESTURE_PAGE_TURN_TUNING: ReaderReverseGesturePageTurnTuning =
+  {
+    releaseX: 0.6,
+    curvatureRelaxation: 10,
+    incomingLandingStartProgress: 0.15,
+    incomingRevealStartProgress: 0,
+    incomingRevealEndProgress: 0.1,
+    incomingDragProgressScale: 1,
+    incomingDragProgressExponent: 1,
+    incomingSettleDurationSeconds: 0.7,
+    incomingSettleEasingPower: 2,
+    incomingRevertDurationSeconds: 0.7,
+    pageWeight: 1,
+    commitThreshold: 0.15,
+    minimumSpeedScale: 0.8,
+    maximumSpeedScale: 5,
+    velocityGain: 0.2,
+    idleDecaySeconds: 0.1,
   };
 
 export const DEFAULT_READER_PAGE_TURN_TUNING: ReaderPageTurnTuning = {
-  gesture: DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
+  click: {
+    forward: DEFAULT_READER_CLICK_PAGE_TURN_TUNING,
+    backward: DEFAULT_READER_REVERSE_CLICK_PAGE_TURN_TUNING,
+  },
+  gesture: {
+    forward: DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
+    backward: DEFAULT_READER_REVERSE_GESTURE_PAGE_TURN_TUNING,
+  },
 };
 
 export const DEFAULT_READER_APPEARANCE: ReaderAppearanceSettings = {
@@ -149,6 +250,7 @@ export const DEFAULT_READER_APPEARANCE: ReaderAppearanceSettings = {
   lineHeight: 1.65,
   paragraphSpacing: 0.9,
   horizontalMargin: 32,
+  textAlignment: "book",
   progressDisplay: "footer",
 };
 

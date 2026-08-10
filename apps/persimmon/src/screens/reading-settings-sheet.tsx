@@ -51,6 +51,7 @@ import type {
   ReaderAppearanceSettings,
   ReaderColorMode,
   ReaderProgressDisplay,
+  ReaderTextAlignment,
 } from "../library/types";
 import type {
   ReaderSettingsPage,
@@ -614,6 +615,19 @@ export function ReadingSettingsSheet({
     progressOptions.find(
       (option) => option.value === appearance.progressDisplay,
     )?.label ?? progressOptions[0]!.label;
+  const textAlignmentOptions: readonly {
+    readonly value: ReaderTextAlignment;
+    readonly label: string;
+  }[] = [
+    { value: "book", label: t("reader.settings.textAlignmentBook") },
+    { value: "start", label: t("reader.settings.textAlignmentStart") },
+    { value: "justify", label: t("reader.settings.textAlignmentJustify") },
+    { value: "end", label: t("reader.settings.textAlignmentEnd") },
+  ];
+  const textAlignmentLabel =
+    textAlignmentOptions.find(
+      (option) => option.value === appearance.textAlignment,
+    )?.label ?? textAlignmentOptions[0]!.label;
   const colorModeOptions: readonly {
     readonly value: ReaderColorMode;
     readonly label: string;
@@ -736,6 +750,18 @@ export function ReadingSettingsSheet({
                   useBookEmbeddedFonts,
                 })
               }
+            />
+            <View style={[styles.divider, { backgroundColor: theme.border }]} />
+            <ReaderSettingsMenuRow<ReaderTextAlignment>
+              accessibilityLabel={t(
+                "reader.settings.textAlignmentValueAccessibility",
+                { value: textAlignmentLabel },
+              )}
+              options={textAlignmentOptions}
+              theme={theme}
+              title={t("reader.settings.textAlignment")}
+              value={appearance.textAlignment}
+              onChange={(value) => update("textAlignment", value)}
             />
             <View style={[styles.divider, { backgroundColor: theme.border }]} />
             <SettingsRow

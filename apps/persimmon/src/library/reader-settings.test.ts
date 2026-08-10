@@ -7,25 +7,71 @@ import {
 import { normalizeSettings } from "./reader-settings";
 import {
   DEFAULT_READER_APPEARANCE,
+  DEFAULT_READER_CLICK_PAGE_TURN_TUNING,
   DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
   DEFAULT_READER_PAGE_TURN_TUNING,
+  DEFAULT_READER_REVERSE_CLICK_PAGE_TURN_TUNING,
+  DEFAULT_READER_REVERSE_GESTURE_PAGE_TURN_TUNING,
   DEFAULT_READER_SETTINGS,
 } from "./types";
 
 describe("reader settings", () => {
-  it("uses the tuned gesture constants as defaults", () => {
-    expect(normalizeSettings({}).pageTurnTuning.gesture).toEqual({
-      releaseX: 0.69,
-      liftVelocity: 0.9,
-      liftToLeft: 1.65,
-      curvatureRelaxation: 7,
-      pageWeight: 0.6,
-      commitThreshold: 0.53,
-      minimumSpeedScale: 0.95,
-      maximumSpeedScale: 2,
-      velocityGain: 0.6,
-      idleDecaySeconds: 0.09,
-    });
+  it("uses the tuned tap and gesture constants as defaults", () => {
+    const expected = {
+      click: {
+        forward: {
+          releaseX: 0.9,
+          liftVelocity: 0.5,
+          liftToLeft: 4,
+          curvatureRelaxation: 10,
+          playbackSpeed: 1,
+        },
+        backward: {
+          releaseX: 0.4,
+          curvatureRelaxation: 10,
+          incomingLandingStartProgress: 0.15,
+          incomingRevealStartProgress: 0,
+          incomingRevealEndProgress: 0.18,
+          incomingSettleDurationSeconds: 0.7,
+          incomingSettleEasingPower: 3,
+          playbackSpeed: 1,
+        },
+      },
+      gesture: {
+        forward: {
+          releaseX: 0.4,
+          liftVelocity: 1,
+          liftToLeft: 1,
+          curvatureRelaxation: 10,
+          pageWeight: 1,
+          commitThreshold: 1,
+          minimumSpeedScale: 1,
+          maximumSpeedScale: 5,
+          velocityGain: 0.2,
+          idleDecaySeconds: 0.1,
+        },
+        backward: {
+          releaseX: 0.6,
+          curvatureRelaxation: 10,
+          incomingLandingStartProgress: 0.15,
+          incomingRevealStartProgress: 0,
+          incomingRevealEndProgress: 0.1,
+          incomingDragProgressScale: 1,
+          incomingDragProgressExponent: 1,
+          incomingSettleDurationSeconds: 0.7,
+          incomingSettleEasingPower: 2,
+          incomingRevertDurationSeconds: 0.7,
+          pageWeight: 1,
+          commitThreshold: 0.15,
+          minimumSpeedScale: 0.8,
+          maximumSpeedScale: 5,
+          velocityGain: 0.2,
+          idleDecaySeconds: 0.1,
+        },
+      },
+    };
+    expect(normalizeSettings({}).pageTurnTuning).toEqual(expected);
+    expect(DEFAULT_READER_PAGE_TURN_TUNING).toEqual(expected);
   });
 
   it("migrates old settings with default page-turn tuning", () => {
@@ -52,6 +98,7 @@ describe("reader settings", () => {
           lineHeight: 1.83,
           paragraphSpacing: -1,
           horizontalMargin: 999,
+          textAlignment: "end",
           progressDisplay: "both",
         },
         layout: "unknown",
@@ -75,12 +122,32 @@ describe("reader settings", () => {
         lineHeight: 1.85,
         paragraphSpacing: 0,
         horizontalMargin: 320,
+        textAlignment: "end",
         progressDisplay: "both",
       },
       layout: "single",
       pageTurnAnimation: "natural",
       rapidPageTurnEnabled: true,
-      pageTurnTuning: DEFAULT_READER_PAGE_TURN_TUNING,
+      pageTurnTuning: {
+        click: {
+          forward: {
+            releaseX: 0.15,
+            liftVelocity: 1.5,
+            liftToLeft: 4,
+            curvatureRelaxation: 20,
+            playbackSpeed: 4,
+          },
+          backward: {
+            ...DEFAULT_READER_REVERSE_CLICK_PAGE_TURN_TUNING,
+            releaseX: 0.25,
+            playbackSpeed: 3,
+          },
+        },
+        gesture: {
+          forward: DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
+          backward: DEFAULT_READER_REVERSE_GESTURE_PAGE_TURN_TUNING,
+        },
+      },
     });
   });
 
@@ -115,6 +182,14 @@ describe("reader settings", () => {
         appearance: { theme: "cool" },
       }).appearance.theme,
     ).toBe("cool");
+  });
+
+  it("defaults unknown text alignment values to following the book", () => {
+    expect(
+      normalizeSettings({
+        appearance: { textAlignment: "center" },
+      }).appearance.textAlignment,
+    ).toBe("book");
   });
 
   it("keeps new font settings and migrates old top-level font settings", () => {
@@ -152,7 +227,7 @@ describe("reader settings", () => {
         pageTurnTuning: {
           gesture: {
             ...DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
-            curvatureRelaxation: 20,
+            curvatureRelaxation: 100,
             commitThreshold: 0,
             minimumSpeedScale: 1.4,
             maximumSpeedScale: 0.5,
@@ -161,16 +236,24 @@ describe("reader settings", () => {
         },
       }).pageTurnTuning.gesture,
     ).toEqual({
-      ...DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
-      curvatureRelaxation: 14,
-      commitThreshold: 0.4,
-      minimumSpeedScale: 1.4,
-      maximumSpeedScale: 1.4,
-      idleDecaySeconds: 0.12,
+      forward: {
+        ...DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
+        curvatureRelaxation: 40,
+        commitThreshold: 0.05,
+        minimumSpeedScale: 1.4,
+        maximumSpeedScale: 1.4,
+        idleDecaySeconds: 0.12,
+      },
+      backward: {
+        ...DEFAULT_READER_REVERSE_GESTURE_PAGE_TURN_TUNING,
+        releaseX: 0.4,
+        curvatureRelaxation: 20,
+        commitThreshold: 0.15,
+      },
     });
   });
 
-  it("ignores obsolete rapid and click tuning while preserving gestures", () => {
+  it("ignores obsolete rapid tuning while preserving tap and gesture tuning", () => {
     const gesture = {
       ...DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
       liftVelocity: 1.5,
@@ -197,8 +280,95 @@ describe("reader settings", () => {
         },
       }).pageTurnTuning,
     ).toEqual({
-      gesture,
+      click: {
+        forward: {
+          releaseX: 0.58,
+          liftVelocity: 0.7,
+          liftToLeft: 1.4,
+          curvatureRelaxation: 14,
+          playbackSpeed: 2,
+        },
+        backward: {
+          ...DEFAULT_READER_REVERSE_CLICK_PAGE_TURN_TUNING,
+          releaseX: 0.58,
+          curvatureRelaxation: 14,
+          playbackSpeed: 2,
+        },
+      },
+      gesture: {
+        forward: gesture,
+        backward: {
+          ...DEFAULT_READER_REVERSE_GESTURE_PAGE_TURN_TUNING,
+          releaseX: 0.4,
+          commitThreshold: 1,
+        },
+      },
     });
+  });
+
+  it("bounds persisted tap constants independently of gesture constants", () => {
+    expect(
+      normalizeSettings({
+        pageTurnTuning: {
+          click: {
+            ...DEFAULT_READER_CLICK_PAGE_TURN_TUNING,
+            releaseX: 1,
+            liftVelocity: 0,
+            liftToLeft: 9,
+            curvatureRelaxation: 20,
+            playbackSpeed: 0,
+          },
+        },
+      }).pageTurnTuning,
+    ).toEqual({
+      click: {
+        forward: {
+          releaseX: 1,
+          liftVelocity: 0.1,
+          liftToLeft: 6,
+          curvatureRelaxation: 20,
+          playbackSpeed: 0.1,
+        },
+        backward: {
+          ...DEFAULT_READER_REVERSE_CLICK_PAGE_TURN_TUNING,
+          releaseX: 0.95,
+          curvatureRelaxation: 20,
+          playbackSpeed: 0.25,
+        },
+      },
+      gesture: {
+        forward: DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
+        backward: DEFAULT_READER_REVERSE_GESTURE_PAGE_TURN_TUNING,
+      },
+    });
+  });
+
+  it("keeps forward and backward constants independent", () => {
+    const settings = normalizeSettings({
+      pageTurnTuning: {
+        click: {
+          forward: DEFAULT_READER_CLICK_PAGE_TURN_TUNING,
+          backward: {
+            ...DEFAULT_READER_REVERSE_CLICK_PAGE_TURN_TUNING,
+            playbackSpeed: 0.8,
+          },
+        },
+        gesture: {
+          forward: DEFAULT_READER_GESTURE_PAGE_TURN_TUNING,
+          backward: {
+            ...DEFAULT_READER_REVERSE_GESTURE_PAGE_TURN_TUNING,
+            pageWeight: 1.2,
+            velocityGain: 2.4,
+          },
+        },
+      },
+    });
+
+    expect(settings.pageTurnTuning.click.forward.playbackSpeed).toBe(1);
+    expect(settings.pageTurnTuning.click.backward.playbackSpeed).toBe(0.8);
+    expect(settings.pageTurnTuning.gesture.forward.pageWeight).toBe(1);
+    expect(settings.pageTurnTuning.gesture.backward.pageWeight).toBe(1.2);
+    expect(settings.pageTurnTuning.gesture.backward.velocityGain).toBe(2.4);
   });
 
   it("falls back for corrupt settings", () => {

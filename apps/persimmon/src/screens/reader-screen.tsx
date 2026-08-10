@@ -399,7 +399,10 @@ export function ReaderScreen({
                 topInset={insets.top}
                 bottomInset={insets.bottom}
                 toolbarVisible={controlsVisible}
-                gesturePageTurnTuning={pageTurnTuning.gesture}
+                automaticPageTurnTuning={pageTurnTuning.click.forward}
+                reverseAutomaticPageTurnTuning={pageTurnTuning.click.backward}
+                gesturePageTurnTuning={pageTurnTuning.gesture.forward}
+                reverseGesturePageTurnTuning={pageTurnTuning.gesture.backward}
                 initialPosition={
                   currentPosition ?? navigationTarget ?? entry.locator?.position
                 }
