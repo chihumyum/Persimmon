@@ -8,6 +8,14 @@ derived_data="${PERSIMMON_IOS_DERIVED_DATA:-$app_root/ios/build/release-device}"
 development_team="${PERSIMMON_APPLE_TEAM_ID:-G7ZSY874L2}"
 app_path="$derived_data/Build/Products/Release-iphoneos/Persimmon.app"
 
+# pnpm patch hashes are part of a native package's real path. Refresh the Pods
+# project before building so it cannot keep compiling a superseded patched
+# dependency after `pnpm install` changes that path.
+(
+  cd "$app_root/ios"
+  pod install
+)
+
 NODE_ENV=production xcodebuild \
   -workspace "$app_root/ios/Persimmon.xcworkspace" \
   -scheme Persimmon \
