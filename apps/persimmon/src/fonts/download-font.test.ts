@@ -34,15 +34,29 @@ afterEach(() => {
 });
 
 describe("official font download", () => {
-  it("offers only the selected Chinese and English reading families", () => {
+  it("offers only the selected reading families", () => {
     expect(
       DOWNLOADABLE_FONT_CATALOG.families.map((family) => ({
         id: family.id,
         displayName: family.displayName,
+        category: family.category,
       })),
     ).toEqual([
-      { id: "download:lxgw-wenkai-screen", displayName: "霞鹜文楷屏幕阅读版" },
-      { id: "download:literata", displayName: "Literata" },
+      {
+        id: "download:lxgw-wenkai-screen",
+        displayName: "霞鹜文楷屏幕阅读版",
+        category: "serif",
+      },
+      {
+        id: "download:literata",
+        displayName: "Literata",
+        category: "serif",
+      },
+      {
+        id: "download:noto-sans-mono-cjk-sc",
+        displayName: "Noto Sans Mono CJK SC",
+        category: "mono",
+      },
     ]);
   });
 

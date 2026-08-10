@@ -23,13 +23,14 @@ MIT 组件允许使用、复制、修改、合并、发布、分发、再许可�
 
 ## 字体
 
-| 字体               | 许可                      | 来源                                                                  |
-| ------------------ | ------------------------- | --------------------------------------------------------------------- |
-| Noto Serif SC      | SIL Open Font License 1.1 | `@expo-google-fonts/noto-serif-sc`                                    |
-| Noto Sans SC       | SIL Open Font License 1.1 | `@expo-google-fonts/noto-sans-sc`                                     |
-| Noto Sans Math     | SIL Open Font License 1.1 | `@expo-google-fonts/noto-sans-math`                                   |
-| 霞鹜文楷屏幕阅读版 | SIL Open Font License 1.1 | 固定到 LXGW WenKai Screen v1.522                                      |
-| Literata           | SIL Open Font License 1.1 | 固定到 Google Fonts commit `7ff85c87f93ea6cca5f41c69f2e4edcb90240f26` |
+| 字体                  | 许可                      | 来源                                                                  |
+| --------------------- | ------------------------- | --------------------------------------------------------------------- |
+| Noto Serif SC         | SIL Open Font License 1.1 | `@expo-google-fonts/noto-serif-sc`                                    |
+| Noto Sans SC          | SIL Open Font License 1.1 | `@expo-google-fonts/noto-sans-sc`                                     |
+| Noto Sans Math        | SIL Open Font License 1.1 | `@expo-google-fonts/noto-sans-math`                                   |
+| 霞鹜文楷屏幕阅读版    | SIL Open Font License 1.1 | 固定到 LXGW WenKai Screen v1.522                                      |
+| Literata              | SIL Open Font License 1.1 | 固定到 Google Fonts commit `7ff85c87f93ea6cca5f41c69f2e4edcb90240f26` |
+| Noto Sans Mono CJK SC | SIL Open Font License 1.1 | 固定到 Noto CJK commit `f8d157532fbfaeda587e826d4cd5b21a49186f7c`     |
 
 SIL Open Font License 1.1: <https://openfontlicense.org>
 

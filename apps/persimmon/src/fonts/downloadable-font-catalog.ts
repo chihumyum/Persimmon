@@ -5,6 +5,8 @@ import {
 
 const GOOGLE_FONTS_COMMIT = "7ff85c87f93ea6cca5f41c69f2e4edcb90240f26";
 const GOOGLE_FONTS_ROOT = `https://raw.githubusercontent.com/google/fonts/${GOOGLE_FONTS_COMMIT}/ofl`;
+const NOTO_CJK_COMMIT = "f8d157532fbfaeda587e826d4cd5b21a49186f7c";
+const NOTO_CJK_SANS_ROOT = `https://raw.githubusercontent.com/notofonts/noto-cjk/${NOTO_CJK_COMMIT}/Sans`;
 
 export const DOWNLOADABLE_FONT_CATALOG: DownloadableFontCatalog =
   parseDownloadableFontCatalog({
@@ -63,6 +65,29 @@ export const DOWNLOADABLE_FONT_CATALOG: DownloadableFontCatalog =
             sha256:
               "d483dfaeba9cbf4ce71d32a52ee65df82f7e35b15fff8d1011cdb242d1fcd465",
             byteLength: 902_728,
+          },
+        ],
+      },
+      {
+        id: "download:noto-sans-mono-cjk-sc",
+        displayName: "Noto Sans Mono CJK SC",
+        category: "mono",
+        description: "覆盖简体中文与拉丁字符的开源等宽黑体，文件约 15.6 MB。",
+        license: {
+          name: "SIL Open Font License 1.1",
+          url: `${NOTO_CJK_SANS_ROOT}/LICENSE`,
+          redistributable: true,
+        },
+        faces: [
+          {
+            id: "download:noto-sans-mono-cjk-sc:400",
+            weight: 400,
+            style: "normal",
+            format: "otf",
+            url: `${NOTO_CJK_SANS_ROOT}/Mono/NotoSansMonoCJKsc-Regular.otf`,
+            sha256:
+              "ec04cc376b34887cedbdf84074e2e226ed2761eeabdcb9173fc1dd7bfd153ef7",
+            byteLength: 16_393_784,
           },
         ],
       },
