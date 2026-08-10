@@ -18,12 +18,10 @@ import {
   foregroundStyle,
   frame,
   glassEffect,
-  labelStyle,
   lineLimit,
   padding,
   shapes,
   shadow,
-  tint,
 } from "@expo/ui/swift-ui/modifiers";
 import { StyleSheet, View } from "react-native";
 
@@ -139,18 +137,27 @@ export function LibraryNativeSyncNotice({
           </Button>
           {onClose ? (
             <Button
-              label={closeAccessibilityLabel ?? "Close"}
               modifiers={[
                 buttonStyle("plain"),
-                labelStyle("iconOnly"),
-                tint(theme.secondaryText),
-                frame({ width: 44, height: 48 }),
                 accessibilityLabel(closeAccessibilityLabel ?? "Close"),
-                padding({ trailing: 8 }),
               ]}
-              systemImage="xmark"
               onPress={onClose}
-            />
+            >
+              {/* Keep the trailing visual inset inside the close hit target. */}
+              <ZStack
+                modifiers={[
+                  frame({ width: 44, height: 48 }),
+                  padding({ trailing: 8 }),
+                  contentShape(shapes.rectangle()),
+                ]}
+              >
+                <Image
+                  color={theme.secondaryText}
+                  size={17}
+                  systemName="xmark"
+                />
+              </ZStack>
+            </Button>
           ) : null}
         </ZStack>
       </Host>
