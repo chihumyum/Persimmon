@@ -16,6 +16,14 @@
     "production": {
       "environment": "production",
       "autoIncrement": true
+    },
+    "production-apk": {
+      "distribution": "internal",
+      "environment": "production",
+      "autoIncrement": true,
+      "android": {
+        "buildType": "apk"
+      }
     }
   },
   "submit": {
