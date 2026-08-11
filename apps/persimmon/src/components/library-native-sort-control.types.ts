@@ -8,7 +8,6 @@ export interface LibraryNativeSortOption {
 
 export interface LibraryNativeSortControlProps {
   readonly accessibilityLabel: string;
-  readonly iconOnly: boolean;
   readonly options: readonly LibraryNativeSortOption[];
   readonly theme: ReaderTheme;
   readonly value: LibrarySort;

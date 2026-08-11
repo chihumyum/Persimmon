@@ -80,9 +80,8 @@ export const ptBR = {
     filters: {
       all: "Todos",
       reading: "Lendo",
-      unread: "Não lidos",
+      unread: "Pendentes",
       finished: "Concluídos",
-      withCount: "{{label}} {{count}}",
     },
     sort: {
       default: "Ordenar",

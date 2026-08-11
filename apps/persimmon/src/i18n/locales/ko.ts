@@ -76,10 +76,9 @@ export const ko = {
     title: "모든 책",
     filters: {
       all: "전체",
-      reading: "읽는 중",
-      unread: "읽지 않음",
+      reading: "독서중",
+      unread: "미독",
       finished: "완독",
-      withCount: "{{label}} {{count}}",
     },
     sort: {
       default: "정렬",

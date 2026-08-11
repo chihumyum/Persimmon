@@ -80,10 +80,9 @@ export const de = {
     title: "Alle Bücher",
     filters: {
       all: "Alle",
-      reading: "Wird gelesen",
+      reading: "Lesend",
       unread: "Ungelesen",
-      finished: "Beendet",
-      withCount: "{{label}} {{count}}",
+      finished: "Fertig",
     },
     sort: {
       default: "Sortieren",

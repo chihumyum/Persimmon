@@ -82,7 +82,6 @@ export const ja = {
       reading: "読書中",
       unread: "未読",
       finished: "読了",
-      withCount: "{{label}} {{count}}",
     },
     sort: {
       default: "並べ替え",

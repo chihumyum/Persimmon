@@ -49,7 +49,6 @@ import {
 } from "../library/library-sync-banner";
 import {
   arrangeLibraryGridEntries,
-  readingStatusForEntry,
   searchLibraryEntries,
   type LibraryFilter,
   type LibrarySort,
@@ -460,22 +459,6 @@ export function LibraryScreen({
     () => searchLibraryEntries(entries, searchQuery),
     [entries, searchQuery],
   );
-  const counts = useMemo(
-    () => ({
-      all: entries.length,
-      reading: entries.filter(
-        (entry) => readingStatusForEntry(entry) === "reading",
-      ).length,
-      unread: entries.filter(
-        (entry) => readingStatusForEntry(entry) === "unread",
-      ).length,
-      finished: entries.filter(
-        (entry) => readingStatusForEntry(entry) === "finished",
-      ).length,
-    }),
-    [entries],
-  );
-
   const dismissConnectionPrompt = () => {
     setConnectionPromptDismissed(true);
     void dismissGoogleDrivePrompt();
@@ -628,15 +611,7 @@ export function LibraryScreen({
         <View style={styles.controls}>
           <LibraryNativeFilterControl
             accessibilityLabel={t("library.title")}
-            options={filterOptions.map((option) => ({
-              ...option,
-              label: compact
-                ? option.label
-                : t("library.filters.withCount", {
-                    label: option.label,
-                    count: counts[option.value],
-                  }),
-            }))}
+            options={filterOptions}
             theme={theme}
             value={filter}
             onChange={setFilter}
@@ -645,7 +620,6 @@ export function LibraryScreen({
             accessibilityLabel={t("library.sort.currentAccessibility", {
               label: sortLabel,
             })}
-            iconOnly={compact}
             options={sortOptions}
             theme={theme}
             value={sort}

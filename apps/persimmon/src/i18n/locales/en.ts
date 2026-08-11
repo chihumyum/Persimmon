@@ -82,7 +82,6 @@ export const en = {
       reading: "Reading",
       unread: "Unread",
       finished: "Finished",
-      withCount: "{{label}} {{count}}",
     },
     sort: {
       default: "Sort",

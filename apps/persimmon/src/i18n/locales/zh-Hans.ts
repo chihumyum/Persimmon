@@ -75,7 +75,6 @@ export const zhHans = {
       reading: "在读",
       unread: "未读",
       finished: "读完",
-      withCount: "{{label}} {{count}}",
     },
     sort: {
       default: "排序",

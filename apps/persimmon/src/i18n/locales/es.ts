@@ -81,9 +81,8 @@ export const es = {
     filters: {
       all: "Todos",
       reading: "Leyendo",
-      unread: "No leídos",
+      unread: "Pendientes",
       finished: "Terminados",
-      withCount: "{{label}} {{count}}",
     },
     sort: {
       default: "Ordenar",

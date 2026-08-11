@@ -75,10 +75,9 @@ export const zhHant = {
     title: "所有書籍",
     filters: {
       all: "全部",
-      reading: "閱讀中",
+      reading: "在讀",
       unread: "未讀",
-      finished: "已讀完",
-      withCount: "{{label}} {{count}}",
+      finished: "讀完",
     },
     sort: {
       default: "排序",

@@ -80,10 +80,9 @@ export const fr = {
     title: "Tous les livres",
     filters: {
       all: "Tous",
-      reading: "En cours",
-      unread: "Non lus",
+      reading: "Lecture",
+      unread: "Non-lus",
       finished: "Terminés",
-      withCount: "{{label}} {{count}}",
     },
     sort: {
       default: "Trier",
