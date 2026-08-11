@@ -1,10 +1,10 @@
-import { FieldGroup, Host } from "@expo/ui";
 import type { ReaderTheme } from "@persimmon/reader-skia";
 import { StyleSheet, View } from "react-native";
 import { useTranslation } from "react-i18next";
 
 import { LibraryNativeEmptyState } from "../components/library-native-empty-state";
 import { LibraryNativeSearchField } from "../components/library-native-search-field";
+import { LibraryNativeSearchResultsSurface } from "../components/library-native-search-results-surface";
 import { LibraryNativeSheet } from "../components/library-native-sheet";
 import { LibraryNativeActionRow } from "../components/library-native-settings-row";
 import type { LibraryBookSummary } from "../library/repository";
@@ -56,34 +56,23 @@ export function LibrarySearchModal({
           />
         ) : null}
         {query && entries.length > 0 ? (
-          <Host
-            colorScheme={theme.colorScheme}
-            seedColor={theme.accent}
-            style={styles.resultsHost}
-            useViewportSizeMeasurement
-          >
-            <FieldGroup
-              style={{
-                backgroundColor: theme.panel,
-              }}
-            >
-              <FieldGroup.Section>
-                {entries.map((entry) => (
-                  <LibraryNativeActionRow
-                    accessibilityLabel={t("library.search.openAccessibility", {
-                      title: entry.title,
-                    })}
-                    description={entry.author ?? t("common.unknownAuthor")}
-                    key={entry.id}
-                    showsChevron
-                    theme={theme}
-                    title={entry.title}
-                    onPress={() => onOpen(entry.id)}
-                  />
-                ))}
-              </FieldGroup.Section>
-            </FieldGroup>
-          </Host>
+          <View style={styles.resultsHost}>
+            <LibraryNativeSearchResultsSurface theme={theme}>
+              {entries.map((entry) => (
+                <LibraryNativeActionRow
+                  accessibilityLabel={t("library.search.openAccessibility", {
+                    title: entry.title,
+                  })}
+                  description={entry.author ?? t("common.unknownAuthor")}
+                  key={entry.id}
+                  showsChevron
+                  theme={theme}
+                  title={entry.title}
+                  onPress={() => onOpen(entry.id)}
+                />
+              ))}
+            </LibraryNativeSearchResultsSurface>
+          </View>
         ) : null}
       </View>
     </LibraryNativeSheet>
