@@ -12,6 +12,8 @@
     "native:ios": "pnpm --filter @persimmon/app run native:ios",
     "native:ios:device": "pnpm --filter @persimmon/app run native:ios:device",
     "native:ios:release:device": "pnpm --filter @persimmon/app run native:ios:release:device",
+    "release:ios": "tsx scripts/build-mobile-production.ts ios",
+    "release:android": "tsx scripts/build-mobile-production.ts android",
     "native:android": "pnpm --filter @persimmon/app run native:android",
     "native:android:device": "pnpm --filter @persimmon/app run native:android:device",
     "native:android:release:device": "cd apps/persimmon/android && NODE_ENV=production ./gradlew :app:createBundleReleaseJsAndAssets --rerun-tasks -PreactNativeArchitectures=arm64-v8a --no-daemon && NODE_ENV=production ./gradlew :app:installRelease -PreactNativeArchitectures=arm64-v8a --no-daemon && rm -f app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/app-release.dm",

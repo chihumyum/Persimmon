@@ -80,6 +80,21 @@ pnpm dev:native
 [真机验收清单](docs/mvp-acceptance.md#native-真机签字清单)。商店签名、元数据和审核仍按
 [发布清单](docs/release-checklist.md)单独完成。
 
+## Production builds
+
+提交并推送所有改动后，在仓库根目录手动选择平台，一键构建并下载正式签名产物：
+
+```bash
+pnpm release:ios
+pnpm release:android
+```
+
+脚本会先确认工作区干净且 `HEAD` 与上游分支一致，然后等待 EAS `production`
+构建完成，将 IPA / APK 和 SHA-256 校验文件下载到忽略提交的 `dist/ios/` 或
+`dist/android/`。上传 App
+Store 时，在 Transporter 中选择生成的 IPA 并交付。GitHub 的 Android 发布 workflow 只允许手动触发，普通
+`push` 不会再启动或消耗 EAS 构建。
+
 ## MVP scope
 
 目标是普通小说类、可重排、无 DRM 的 EPUB。当前不支持 fixed-layout、DRM、脚本、MathML、复杂 SVG

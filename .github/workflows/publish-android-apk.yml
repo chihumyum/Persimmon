@@ -1,19 +1,7 @@
-name: Publish Android APK
+name: Publish Android APK (manual)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/publish-android-apk.yml"
-      - ".node-version"
-      - "apps/persimmon/**"
-      - "packages/**"
-      - "patches/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
 
 concurrency:
   group: publish-android-apk
