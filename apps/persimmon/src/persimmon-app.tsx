@@ -284,11 +284,7 @@ export function PersimmonApp() {
   }, [hydrated, refreshLibrary]);
 
   useEffect(() => {
-    if (
-      hydrated &&
-      screen.kind === "library" &&
-      syncStatus.phase === "idle"
-    ) {
+    if (hydrated && screen.kind === "library" && syncStatus.phase === "idle") {
       void refreshLibrary();
     }
   }, [hydrated, refreshLibrary, screen.kind, syncStatus]);

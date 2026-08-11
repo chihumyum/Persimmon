@@ -1,0 +1,125 @@
+name: Publish Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/publish-android-apk.yml"
+      - ".node-version"
+      - "apps/persimmon/**"
+      - "packages/**"
+      - "patches/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+
+concurrency:
+  group: publish-android-apk
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build and publish signed APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.17.1
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.23.1
+          cache: pnpm
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android verification tools
+        run: sdkmanager "build-tools;36.0.0"
+
+      - name: Set up Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify project
+        run: pnpm verify
+
+      - name: Build signed production APK
+        working-directory: apps/persimmon
+        run: |
+          eas build \
+            --platform android \
+            --profile production-apk \
+            --non-interactive \
+            --wait \
+            --json > "$RUNNER_TEMP/eas-build.json"
+
+      - name: Download exact EAS artifact
+        run: |
+          build_url="$(jq -r '.[0].artifacts.applicationArchiveUrl // .[0].artifacts.buildUrl' "$RUNNER_TEMP/eas-build.json")"
+          test -n "$build_url"
+          test "$build_url" != "null"
+
+          mkdir -p dist
+          curl \
+            --fail \
+            --location \
+            --retry 3 \
+            --retry-all-errors \
+            "$build_url" \
+            --output dist/Persimmon-android-latest.apk
+
+      - name: Verify package and production signature
+        run: |
+          apk="dist/Persimmon-android-latest.apk"
+          aapt="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          apksigner="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+
+          unzip -tq "$apk"
+          "$aapt" dump badging "$apk" | tee "$RUNNER_TEMP/apk-badging.txt"
+          grep -q "package: name='dev.chihum.persimmon'" "$RUNNER_TEMP/apk-badging.txt"
+          grep -q "targetSdkVersion:'36'" "$RUNNER_TEMP/apk-badging.txt"
+          "$apksigner" verify --verbose --print-certs "$apk" | tee "$RUNNER_TEMP/apk-signing.txt"
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" "$RUNNER_TEMP/apk-signing.txt"
+          grep -q "Signer #1 certificate SHA-256 digest: a7c15175e5f30ad9d8674ed326a64eba02715ce86c38b87c5d38b276981f88db" "$RUNNER_TEMP/apk-signing.txt"
+
+          cd dist
+          sha256sum Persimmon-android-latest.apk > Persimmon-android-latest.apk.sha256
+
+      - name: Upload latest APK to Cloudflare R2
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          pnpm dlx wrangler@4.119.0 r2 object put \
+            "persimmon-downloads/android/Persimmon-android-latest.apk" \
+            --remote \
+            --file dist/Persimmon-android-latest.apk \
+            --content-type application/vnd.android.package-archive \
+            --content-disposition 'attachment; filename="Persimmon-android-latest.apk"' \
+            --cache-control "no-cache, no-store, max-age=0, must-revalidate"
+
+          pnpm dlx wrangler@4.119.0 r2 object put \
+            "persimmon-downloads/android/Persimmon-android-latest.apk.sha256" \
+            --remote \
+            --file dist/Persimmon-android-latest.apk.sha256 \
+            --content-type text/plain \
+            --cache-control "no-cache, no-store, max-age=0, must-revalidate"
