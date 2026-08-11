@@ -16,6 +16,7 @@ import { UiText as Text } from "../components/ui-text";
 import { uiRadius } from "../components/ui-tokens";
 import {
   licensesDocument,
+  PRIVACY_POLICY_URL,
   privacyDocument,
   type LegalDocument,
 } from "../legal/legal-content";
@@ -90,6 +91,14 @@ export function AppAboutSettingsSection({
   const versionLabel = buildVersion ? `${version} (${buildVersion})` : version;
   const supportEmail = publicSupportEmail();
 
+  const openPrivacyPolicy = async () => {
+    try {
+      await Linking.openURL(PRIVACY_POLICY_URL);
+    } catch {
+      onOpenDocument(privacyDocument(i18n.resolvedLanguage));
+    }
+  };
+
   const sendFeedback = async () => {
     const subject = t("settings.about.feedbackSubject", {
       version: versionLabel,
@@ -128,7 +137,7 @@ export function AppAboutSettingsSection({
       <View style={styles.linkGroup}>
         <SettingsLinkRow
           label={t("settings.about.privacy")}
-          onPress={() => onOpenDocument(privacyDocument(i18n.resolvedLanguage))}
+          onPress={() => void openPrivacyPolicy()}
           theme={theme}
         />
         <SettingsLinkRow

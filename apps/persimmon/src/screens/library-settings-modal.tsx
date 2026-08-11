@@ -22,6 +22,7 @@ import { SettingsCard } from "../components/settings-card";
 import { formatTime, translate, type AppLanguagePreference } from "../i18n";
 import {
   licensesDocument,
+  PRIVACY_POLICY_URL,
   privacyDocument,
   type LegalDocument,
 } from "../legal/legal-content";
@@ -302,6 +303,13 @@ export function LibrarySettingsModal({
       );
     }
   };
+  const openPrivacyPolicy = async () => {
+    try {
+      await Linking.openURL(PRIVACY_POLICY_URL);
+    } catch {
+      setLegalDocument(privacyDocument(i18n.resolvedLanguage));
+    }
+  };
 
   if (legalDocument) {
     return (
@@ -468,9 +476,7 @@ export function LibrarySettingsModal({
             showsChevron
             theme={theme}
             title={t("settings.about.privacy")}
-            onPress={() =>
-              setLegalDocument(privacyDocument(i18n.resolvedLanguage))
-            }
+            onPress={() => void openPrivacyPolicy()}
           />
           <ReaderSettingsActionRow
             description={
