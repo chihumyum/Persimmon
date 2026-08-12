@@ -1,7 +1,7 @@
 packages:
   - apps/*
   - packages/*
-  - vendor/react-native-skia-page-turn/packages/*
+  - vendor/react-native-natural-page-turn/packages/*
 
 onlyBuiltDependencies:
   - "@shopify/react-native-skia"

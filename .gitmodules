@@ -1,4 +1,4 @@
-[submodule "vendor/react-native-skia-page-turn"]
-	path = vendor/react-native-skia-page-turn
-	url = https://github.com/chihumyum/react-native-skia-page-turn.git
+[submodule "vendor/react-native-natural-page-turn"]
+	path = vendor/react-native-natural-page-turn
+	url = https://github.com/chihumyum/react-native-natural-page-turn.git
 	branch = main

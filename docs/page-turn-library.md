@@ -1,6 +1,6 @@
 # Page-turn library integration
 
-Persimmon consumes the private `chihumyum/react-native-skia-page-turn`
+Persimmon consumes the private `chihumyum/react-native-natural-page-turn`
 repository as a pinned Git submodule. The public-package boundary is the source
 of truth for normalized paper geometry, gesture worklets, Skia mesh rendering,
 shaders, and generic page surface contracts.
@@ -26,7 +26,7 @@ moving branch during application builds.
 Develop and verify changes in the library repository first:
 
 ```bash
-cd vendor/react-native-skia-page-turn
+cd vendor/react-native-natural-page-turn
 git switch main
 git pull --ff-only
 pnpm check
@@ -40,7 +40,7 @@ submodule pointer together with any integration changes, and run `pnpm verify`.
 `packages/page-turn-core` remains in this integration branch as an unreferenced
 rollback copy. `@persimmon/reader-skia` does not depend on it: all runtime core
 imports resolve to `@chihumyum/page-turn-core`, and the fallback Skia mesh/frame
-path resolves to `@chihumyum/react-native-skia-page-turn`.
+path resolves to `@chihumyum/react-native-natural-page-turn`.
 
 Remove the legacy package only after remote installation acceptance and a
 separate explicit cleanup decision.

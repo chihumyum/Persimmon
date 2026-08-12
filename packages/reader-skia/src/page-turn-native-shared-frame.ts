@@ -11,7 +11,7 @@ import {
   type PageTurnPaperRect,
   type PageTurnPaperUniforms,
   type PageTurnShadowUniforms,
-} from "@chihumyum/react-native-skia-page-turn/advanced";
+} from "@chihumyum/react-native-natural-page-turn/advanced";
 
 export interface PageTurnNativeSharedFrame {
   readonly shadowUniforms: SharedValue<PageTurnShadowUniforms>;

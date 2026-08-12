@@ -6,19 +6,19 @@ export default defineConfig({
     alias: {
       "@chihumyum/page-turn-core": fileURLToPath(
         new URL(
-          "./vendor/react-native-skia-page-turn/packages/page-turn-core/src/index.ts",
+          "./vendor/react-native-natural-page-turn/packages/page-turn-core/src/index.ts",
           import.meta.url,
         ),
       ),
-      "@chihumyum/react-native-skia-page-turn/advanced": fileURLToPath(
+      "@chihumyum/react-native-natural-page-turn/advanced": fileURLToPath(
         new URL(
-          "./vendor/react-native-skia-page-turn/packages/react-native-skia-page-turn/src/advanced.ts",
+          "./vendor/react-native-natural-page-turn/packages/react-native-natural-page-turn/src/advanced.ts",
           import.meta.url,
         ),
       ),
-      "@chihumyum/react-native-skia-page-turn": fileURLToPath(
+      "@chihumyum/react-native-natural-page-turn": fileURLToPath(
         new URL(
-          "./vendor/react-native-skia-page-turn/packages/react-native-skia-page-turn/src/index.ts",
+          "./vendor/react-native-natural-page-turn/packages/react-native-natural-page-turn/src/index.ts",
           import.meta.url,
         ),
       ),

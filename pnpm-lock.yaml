@@ -202,10 +202,10 @@ importers:
     dependencies:
       '@chihumyum/page-turn-core':
         specifier: workspace:*
-        version: link:../../vendor/react-native-skia-page-turn/packages/page-turn-core
-      '@chihumyum/react-native-skia-page-turn':
+        version: link:../../vendor/react-native-natural-page-turn/packages/page-turn-core
+      '@chihumyum/react-native-natural-page-turn':
         specifier: workspace:*
-        version: link:../../vendor/react-native-skia-page-turn/packages/react-native-skia-page-turn
+        version: link:../../vendor/react-native-natural-page-turn/packages/react-native-natural-page-turn
       '@persimmon/book-core':
         specifier: workspace:*
         version: link:../book-core
@@ -235,9 +235,9 @@ importers:
         specifier: ~19.2.17
         version: 19.2.17
 
-  vendor/react-native-skia-page-turn/packages/page-turn-core: {}
+  vendor/react-native-natural-page-turn/packages/page-turn-core: {}
 
-  vendor/react-native-skia-page-turn/packages/react-native-skia-page-turn:
+  vendor/react-native-natural-page-turn/packages/react-native-natural-page-turn:
     dependencies:
       '@chihumyum/page-turn-core':
         specifier: workspace:*
