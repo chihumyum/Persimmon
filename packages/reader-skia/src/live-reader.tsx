@@ -74,7 +74,7 @@ import {
 } from "./page-capture-rasterizer";
 import { selectPageCaptureQuality } from "./page-capture-quality";
 import { buildPageCapturePlan } from "./page-capture-plan";
-import { PageTurnMesh } from "@chihumyum/react-native-skia-page-turn";
+import { PageTurnMesh } from "@chihumyum/react-native-skia-page-turn/advanced";
 import { PAGE_TURN_MAX_PERSPECTIVE_SCALE } from "./page-turn-perspective";
 import {
   PAGE_TURN_LANE_HARD_LIMIT,
