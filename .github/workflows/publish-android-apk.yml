@@ -1,7 +1,12 @@
-name: Publish Android APK (manual)
+name: Publish existing Android APK (manual)
 
 on:
   workflow_dispatch:
+    inputs:
+      eas_build_id:
+        description: Finished EAS Android production-apk build ID
+        required: true
+        type: string
 
 concurrency:
   group: publish-android-apk
@@ -12,9 +17,9 @@ permissions:
 
 jobs:
   publish:
-    name: Build and publish signed APK
+    name: Download and publish signed APK
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 30
 
     steps:
       - name: Check out repository
@@ -47,22 +52,24 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify project
-        run: pnpm verify
-
-      - name: Build signed production APK
+      - name: Find existing production APK
         working-directory: apps/persimmon
+        env:
+          EAS_BUILD_ID: ${{ inputs.eas_build_id }}
         run: |
-          eas build \
-            --platform android \
-            --profile production-apk \
-            --non-interactive \
-            --wait \
-            --json > "$RUNNER_TEMP/eas-build.json"
+          if ! [[ "$EAS_BUILD_ID" =~ ^[0-9a-f-]{36}$ ]]; then
+            echo "Invalid EAS build ID: $EAS_BUILD_ID" >&2
+            exit 1
+          fi
+
+          eas build:view "$EAS_BUILD_ID" --json > "$RUNNER_TEMP/eas-build.json"
+          test "$(jq -r '.platform' "$RUNNER_TEMP/eas-build.json")" = "ANDROID"
+          test "$(jq -r '.status' "$RUNNER_TEMP/eas-build.json")" = "FINISHED"
+          test "$(jq -r '.buildProfile' "$RUNNER_TEMP/eas-build.json")" = "production-apk"
 
       - name: Download exact EAS artifact
         run: |
-          build_url="$(jq -r '.[0].artifacts.applicationArchiveUrl // .[0].artifacts.buildUrl' "$RUNNER_TEMP/eas-build.json")"
+          build_url="$(jq -r '.artifacts.applicationArchiveUrl // .artifacts.buildUrl' "$RUNNER_TEMP/eas-build.json")"
           test -n "$build_url"
           test "$build_url" != "null"
 
@@ -73,41 +80,10 @@ jobs:
             --retry 3 \
             --retry-all-errors \
             "$build_url" \
-            --output dist/Persimmon-android-latest.apk
+            --output dist/Persimmon-android-source.apk
 
-      - name: Verify package and production signature
-        run: |
-          apk="dist/Persimmon-android-latest.apk"
-          aapt="$ANDROID_HOME/build-tools/36.0.0/aapt"
-          apksigner="$ANDROID_HOME/build-tools/36.0.0/apksigner"
-
-          unzip -tq "$apk"
-          "$aapt" dump badging "$apk" | tee "$RUNNER_TEMP/apk-badging.txt"
-          grep -q "package: name='dev.chihum.persimmon'" "$RUNNER_TEMP/apk-badging.txt"
-          grep -q "targetSdkVersion:'36'" "$RUNNER_TEMP/apk-badging.txt"
-          "$apksigner" verify --verbose --print-certs "$apk" | tee "$RUNNER_TEMP/apk-signing.txt"
-          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" "$RUNNER_TEMP/apk-signing.txt"
-          grep -q "Signer #1 certificate SHA-256 digest: a7c15175e5f30ad9d8674ed326a64eba02715ce86c38b87c5d38b276981f88db" "$RUNNER_TEMP/apk-signing.txt"
-
-          cd dist
-          sha256sum Persimmon-android-latest.apk > Persimmon-android-latest.apk.sha256
-
-      - name: Upload latest APK to Cloudflare R2
+      - name: Verify and publish APK to Cloudflare R2
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          pnpm dlx wrangler@4.119.0 r2 object put \
-            "persimmon-downloads/android/Persimmon-android-latest.apk" \
-            --remote \
-            --file dist/Persimmon-android-latest.apk \
-            --content-type application/vnd.android.package-archive \
-            --content-disposition 'attachment; filename="Persimmon-android-latest.apk"' \
-            --cache-control "no-cache, no-store, max-age=0, must-revalidate"
-
-          pnpm dlx wrangler@4.119.0 r2 object put \
-            "persimmon-downloads/android/Persimmon-android-latest.apk.sha256" \
-            --remote \
-            --file dist/Persimmon-android-latest.apk.sha256 \
-            --content-type text/plain \
-            --cache-control "no-cache, no-store, max-age=0, must-revalidate"
+        run: pnpm publish:android:apk -- dist/Persimmon-android-source.apk

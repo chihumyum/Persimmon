@@ -95,6 +95,17 @@ pnpm release:android
 Store 时，在 Transporter 中选择生成的 IPA 并交付。GitHub 的 Android 发布 workflow 只允许手动触发，普通
 `push` 不会再启动或消耗 EAS 构建。
 
+将已经构建好的正式 APK 校验并发布到官网的 Cloudflare
+R2 固定下载地址，不会触发新构建：
+
+```bash
+pnpm publish:android:apk -- dist/android/Persimmon-0.1.0-build-9.apk
+```
+
+GitHub Actions 中的 `Publish existing Android APK (manual)`
+workflow 执行相同操作；手动运行时输入一个已经完成的 EAS `production-apk` Build
+ID。两种方式都会在上传前重新验证包名、target SDK、APK v2签名和正式证书。
+
 ## MVP scope
 
 目标是普通小说类、可重排、无 DRM 的 EPUB。当前不支持 fixed-layout、DRM、脚本、MathML、复杂 SVG
