@@ -299,6 +299,7 @@ export interface LibraryScreenProps {
   readonly onDelete: (entry: LibraryBookSummary) => void;
   readonly onDisconnectGoogleDrive: () => void;
   readonly onDismissError: () => void;
+  readonly onExport: (entry: LibraryBookSummary) => Promise<void>;
   readonly onImport: () => void;
   readonly onLanguagePreferenceChange: (
     preference: AppLanguagePreference,
@@ -328,6 +329,7 @@ export function LibraryScreen({
   onDelete,
   onDisconnectGoogleDrive,
   onDismissError,
+  onExport,
   onImport,
   onLanguagePreferenceChange,
   onOpen,
@@ -714,6 +716,7 @@ export function LibraryScreen({
         theme={theme}
         onClose={() => setDetailsEntry(undefined)}
         onDelete={onDelete}
+        onExport={onExport}
         onOpen={onOpen}
         onSync={syncBook}
       />

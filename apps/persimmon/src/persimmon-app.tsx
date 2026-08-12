@@ -19,6 +19,7 @@ import {
   View,
 } from "react-native";
 
+import { exportEpub } from "./export-epub";
 import { BUILTIN_FONT_FAMILIES } from "./fonts/builtin-fonts";
 import { downloadFontFamily } from "./fonts/download-font";
 import { DOWNLOADABLE_FONT_CATALOG } from "./fonts/downloadable-font-catalog";
@@ -642,6 +643,17 @@ export function PersimmonApp() {
     }
   }, []);
 
+  const exportEntry = useCallback(async (entry: LibraryBookSummary) => {
+    try {
+      await exportEpub(entry);
+    } catch (exportError: unknown) {
+      Alert.alert(
+        translate("library.error.title"),
+        userFacingError(exportError),
+      );
+    }
+  }, []);
+
   const clearLocalData = useCallback(async () => {
     setDataClearing("local");
     setError(null);
@@ -772,6 +784,7 @@ export function PersimmonApp() {
         void googleDriveSyncService.disconnect();
       }}
       onDismissError={() => setError(null)}
+      onExport={exportEntry}
       onColorModeChange={updateColorMode}
       onImport={importBook}
       onLanguagePreferenceChange={updateLanguagePreference}

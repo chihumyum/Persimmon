@@ -149,6 +149,7 @@ export const ja = {
       builtIn: "組み込みコンテンツ",
       added: "ライブラリに追加されました",
       continueReading: "読み続ける",
+      exportEpub: "EPUBを書き出す",
       deleteEverywhere: "ライブラリとクラウドから削除する",
     },
     settings: {
@@ -427,6 +428,8 @@ export const ja = {
       progressSaveFailed:
         "読書の進捗を保存できませんでした。Persimmonが自動的に再試行します。",
       settingsSaveFailed: "読書設定を保存できませんでした。",
+      exportUnavailable: "この端末ではファイル書き出し画面を開けません。",
+      exportFailed: "EPUBを書き出せませんでした。もう一度お試しください。",
       cloudRepairUnavailable:
         "クラウドには、この本を修復できるEPUBがありません。元のファイルをもう一度インポートしてください。",
       deleteTitle: "本を削除する",

@@ -141,6 +141,7 @@ export const zhHans = {
       builtIn: "内置内容",
       added: "加入书架",
       continueReading: "继续阅读",
+      exportEpub: "导出 EPUB",
       deleteEverywhere: "从书架和云端删除",
     },
     settings: {
@@ -402,6 +403,8 @@ export const zhHans = {
       loadFailed: "无法读取本地书架：{{message}}",
       progressSaveFailed: "阅读进度保存失败，将自动重试。",
       settingsSaveFailed: "阅读设置保存失败。",
+      exportUnavailable: "当前设备无法打开文件导出面板。",
+      exportFailed: "EPUB 导出失败，请重试。",
       cloudRepairUnavailable:
         "云端没有可用于修复这本书的 EPUB，请重新导入原文件。",
       deleteTitle: "删除书籍",

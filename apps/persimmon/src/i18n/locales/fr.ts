@@ -148,6 +148,7 @@ export const fr = {
       builtIn: "Contenu intégré",
       added: "Ajouté à la bibliothèque",
       continueReading: "Continuer la lecture",
+      exportEpub: "Exporter l’EPUB",
       deleteEverywhere: "Supprimer de la bibliothèque et du cloud",
     },
     settings: {
@@ -432,6 +433,9 @@ export const fr = {
         "La progression de lecture n’a pas pu être enregistrée. Persimmon réessaiera automatiquement.",
       settingsSaveFailed:
         "Les réglages de lecture n’ont pas pu être enregistrés.",
+      exportUnavailable:
+        "Cet appareil ne peut pas ouvrir la feuille d’exportation de fichiers.",
+      exportFailed: "L’EPUB n’a pas pu être exporté. Réessayez.",
       cloudRepairUnavailable:
         "Le cloud ne possède pas d’EPUB pouvant réparer ce livre. Importez à nouveau le fichier d’origine.",
       deleteTitle: "Supprimer le livre",

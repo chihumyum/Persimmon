@@ -143,6 +143,7 @@ export const ko = {
       builtIn: "내장 콘텐츠",
       added: "서재에 추가됨",
       continueReading: "계속 읽기",
+      exportEpub: "EPUB 내보내기",
       deleteEverywhere: "서재와 클라우드에서 삭제",
     },
     settings: {
@@ -407,6 +408,8 @@ export const ko = {
       progressSaveFailed:
         "읽기 진행률을 저장할 수 없습니다. Persimmon이 자동으로 다시 시도합니다.",
       settingsSaveFailed: "읽기 설정을 저장할 수 없습니다.",
+      exportUnavailable: "이 기기에서는 파일 내보내기 화면을 열 수 없습니다.",
+      exportFailed: "EPUB을 내보낼 수 없습니다. 다시 시도하세요.",
       cloudRepairUnavailable:
         "클라우드에 이 책을 복구할 EPUB이 없습니다. 원본 파일을 다시 가져오세요.",
       deleteTitle: "책 삭제",

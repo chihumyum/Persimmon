@@ -149,6 +149,7 @@ export const es = {
       builtIn: "Contenido incorporado",
       added: "Añadido a la biblioteca",
       continueReading: "Continuar leyendo",
+      exportEpub: "Exportar EPUB",
       deleteEverywhere: "Eliminar de la biblioteca y la nube",
     },
     settings: {
@@ -440,6 +441,9 @@ export const es = {
       progressSaveFailed:
         "No se pudo guardar el progreso de la lectura. Persimmon lo intentará de nuevo automáticamente.",
       settingsSaveFailed: "No se pudo guardar la configuración de lectura.",
+      exportUnavailable:
+        "Este dispositivo no puede abrir el panel de exportación de archivos.",
+      exportFailed: "No se pudo exportar el EPUB. Inténtalo de nuevo.",
       cloudRepairUnavailable:
         "La nube no tiene un EPUB que pueda reparar este libro. Importa el archivo original de nuevo.",
       deleteTitle: "Eliminar libro",

@@ -29,6 +29,7 @@ export interface BookDetailsModalProps {
   readonly theme: ReaderTheme;
   readonly onClose: () => void;
   readonly onDelete: (entry: LibraryBookSummary) => void;
+  readonly onExport: (entry: LibraryBookSummary) => Promise<void>;
   readonly onOpen: (bookId: string) => void;
   readonly onSync: (entry: LibraryBookSummary) => void;
 }
@@ -38,6 +39,7 @@ export function BookDetailsModal({
   theme,
   onClose,
   onDelete,
+  onExport,
   onOpen,
   onSync,
 }: BookDetailsModalProps) {
@@ -45,9 +47,13 @@ export function BookDetailsModal({
   const { bottom: bottomInset } = useSafeAreaInsets();
   const contentBottomInset = Platform.OS === "android" ? 0 : bottomInset;
   const [displayEntry, setDisplayEntry] = useState(entry);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    if (entry) setDisplayEntry(entry);
+    if (entry) {
+      setDisplayEntry(entry);
+      setExporting(false);
+    }
   }, [entry]);
 
   if (!displayEntry) return null;
@@ -158,6 +164,22 @@ export function BookDetailsModal({
                 onPress={() => {
                   onClose();
                   onSync(displayEntry);
+                }}
+              />
+            ) : null}
+            {displayEntry.status === "ready" && !displayEntry.builtIn ? (
+              <ReaderSettingsActionRow
+                disabled={exporting}
+                loading={exporting}
+                theme={theme}
+                title={t("library.details.exportEpub")}
+                onPress={() => {
+                  setExporting(true);
+                  void onExport(displayEntry)
+                    .catch(() => undefined)
+                    .finally(() => {
+                      setExporting(false);
+                    });
                 }}
               />
             ) : null}

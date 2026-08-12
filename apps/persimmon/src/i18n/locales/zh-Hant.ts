@@ -139,6 +139,7 @@ export const zhHant = {
       builtIn: "內建內容",
       added: "已加入書庫",
       continueReading: "繼續閱讀",
+      exportEpub: "匯出 EPUB",
       deleteEverywhere: "從書庫和雲端刪除",
     },
     settings: {
@@ -390,6 +391,8 @@ export const zhHant = {
       loadFailed: "無法載入本機書庫：{{message}}",
       progressSaveFailed: "無法儲存閱讀進度。Persimmon 會自動重試。",
       settingsSaveFailed: "無法儲存閱讀設定。",
+      exportUnavailable: "目前的裝置無法開啟檔案匯出面板。",
+      exportFailed: "無法匯出 EPUB，請再試一次。",
       cloudRepairUnavailable:
         "雲端沒有可修復這本書的 EPUB。請再次匯入原始檔案。",
       deleteTitle: "刪除書籍",

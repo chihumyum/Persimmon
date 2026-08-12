@@ -148,6 +148,7 @@ export const en = {
       builtIn: "Built-in content",
       added: "Added to Library",
       continueReading: "Continue Reading",
+      exportEpub: "Export EPUB",
       deleteEverywhere: "Delete from Library and Cloud",
     },
     settings: {
@@ -430,6 +431,8 @@ export const en = {
       progressSaveFailed:
         "Reading progress could not be saved. Persimmon will retry automatically.",
       settingsSaveFailed: "Reading settings could not be saved.",
+      exportUnavailable: "This device cannot open the file export sheet.",
+      exportFailed: "The EPUB could not be exported. Try again.",
       cloudRepairUnavailable:
         "The cloud does not have an EPUB that can repair this book. Import the original file again.",
       deleteTitle: "Delete Book",
