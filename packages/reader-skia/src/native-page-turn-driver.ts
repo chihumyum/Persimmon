@@ -13,7 +13,7 @@ import {
   setPageTurnWorkletTuning,
   type ReleasedPageTurnGesture,
   type PageTurnTuning,
-} from "@persimmon/page-turn-core";
+} from "@chihumyum/page-turn-core";
 import { Gesture } from "react-native-gesture-handler";
 import { PixelRatio } from "react-native";
 import {

@@ -1,4 +1,4 @@
-import { DEFAULT_PAGE_PROFILE_POINTS } from "@persimmon/page-turn-core";
+import { DEFAULT_PAGE_PROFILE_POINTS } from "@chihumyum/page-turn-core";
 import { NATIVE_PAGE_PROFILE_RUNS } from "./page-turn-native-frame";
 import type { PageTurnFace } from "./page-turn-stack";
 import { DEFAULT_READER_THEME } from "./reader-theme";

@@ -1,4 +1,4 @@
-import type { PageTurnWorkletState } from "@persimmon/page-turn-core";
+import type { PageTurnWorkletState } from "@chihumyum/page-turn-core";
 import { useEffect, useMemo, useRef } from "react";
 import { useSharedValue, type SharedValue } from "react-native-reanimated";
 import { scheduleOnUI } from "react-native-worklets";
@@ -11,7 +11,7 @@ import {
   type PageTurnPaperRect,
   type PageTurnPaperUniforms,
   type PageTurnShadowUniforms,
-} from "./page-turn-native-frame";
+} from "@chihumyum/react-native-skia-page-turn";
 
 export interface PageTurnNativeSharedFrame {
   readonly shadowUniforms: SharedValue<PageTurnShadowUniforms>;

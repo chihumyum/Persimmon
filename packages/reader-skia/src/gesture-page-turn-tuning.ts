@@ -1,7 +1,7 @@
 import {
   clampPageTurnTuning,
   type PageTurnTuning,
-} from "@persimmon/page-turn-core";
+} from "@chihumyum/page-turn-core";
 
 import { FORWARD_GESTURE_PAGE_TURN_TUNING_RANGES } from "./page-turn-tuning-ranges";
 

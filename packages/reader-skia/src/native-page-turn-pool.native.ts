@@ -9,7 +9,7 @@ import {
   playReleasedPageTurnWorklet,
   setPageTurnWorkletTuning,
   type PageTurnTuning,
-} from "@persimmon/page-turn-core";
+} from "@chihumyum/page-turn-core";
 import { useCallback, useEffect, useMemo } from "react";
 import {
   useFrameCallback,

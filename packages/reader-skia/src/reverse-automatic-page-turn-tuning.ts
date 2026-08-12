@@ -3,7 +3,7 @@ import {
   DEFAULT_PAGE_TURN_TUNING,
   clampIncomingPageTurnTuning,
   type PageTurnTuning,
-} from "@persimmon/page-turn-core";
+} from "@chihumyum/page-turn-core";
 
 export interface ReverseAutomaticPageTurnTuning {
   readonly releaseX: number;

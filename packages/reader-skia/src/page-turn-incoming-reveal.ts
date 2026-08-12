@@ -2,7 +2,7 @@ import {
   DEFAULT_PAGE_PROFILE_POINTS,
   incomingPageRevealProgress,
   type IncomingPageTurnTuning,
-} from "@persimmon/page-turn-core";
+} from "@chihumyum/page-turn-core";
 
 import { projectPageTurnBookX } from "./page-turn-perspective";
 

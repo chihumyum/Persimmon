@@ -1,7 +1,7 @@
 import {
   automaticPageTurnSolverDurationSeconds,
   automaticPageTurnSolverDurationSecondsForDirection,
-} from "@persimmon/page-turn-core";
+} from "@chihumyum/page-turn-core";
 
 import {
   AUTOMATIC_PAGE_TURN_MAXIMUM_RELEASE_X,

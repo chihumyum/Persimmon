@@ -2,7 +2,7 @@ import {
   DEFAULT_PAGE_PROFILE_POINTS,
   PAGE_TURN_WORKLET_COMPLETED,
   type PageTurnWorkletState,
-} from "@persimmon/page-turn-core";
+} from "@chihumyum/page-turn-core";
 
 import { updateDynamicPageTurnShadow } from "./page-turn-shadow-physics";
 import { pageTurnXScale } from "./page-turn-direction";

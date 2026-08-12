@@ -25,6 +25,19 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      - name: Checkout private page-turn library
+        env:
+          PAGE_TURN_DEPLOY_KEY: ${{ secrets.PAGE_TURN_DEPLOY_KEY }}
+        run: |
+          test -n "$PAGE_TURN_DEPLOY_KEY"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$PAGE_TURN_DEPLOY_KEY" > "$HOME/.ssh/page_turn_deploy_key"
+          chmod 600 "$HOME/.ssh/page_turn_deploy_key"
+          ssh-keyscan -t ed25519 github.com >> "$HOME/.ssh/known_hosts"
+          GIT_SSH_COMMAND="ssh -i $HOME/.ssh/page_turn_deploy_key -o IdentitiesOnly=yes" \
+            git -c url."git@github.com:".insteadOf=https://github.com/ \
+              submodule update --init --depth 1
+
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
         with:

@@ -1,4 +1,4 @@
-import type { ReleasedPageTurnGesture } from "@persimmon/page-turn-core";
+import type { ReleasedPageTurnGesture } from "@chihumyum/page-turn-core";
 
 import { PAGE_TURN_LANE_HARD_LIMIT } from "./page-turn-concurrency";
 import { samePageAddress, type PageAddress } from "./section-navigation";

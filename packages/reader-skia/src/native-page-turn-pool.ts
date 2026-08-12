@@ -4,7 +4,7 @@ import type { GesturePageTurnTuning } from "./gesture-page-turn-tuning";
 import type { ReverseAutomaticPageTurnTuning } from "./reverse-automatic-page-turn-tuning";
 import type { ReverseGesturePageTurnTuning } from "./reverse-gesture-page-turn-tuning";
 import type { PAGE_TURN_LANE_HARD_LIMIT } from "./page-turn-concurrency";
-import type { ReleasedPageTurnGesture } from "@persimmon/page-turn-core";
+import type { ReleasedPageTurnGesture } from "@chihumyum/page-turn-core";
 
 export interface NativeProgrammaticPageTurnCommand {
   readonly id: string;

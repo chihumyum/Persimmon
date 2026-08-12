@@ -6,7 +6,7 @@ import {
   movePageTurnWorkletDrag,
   playPageTurnWorklet,
   type PageTurnWorkletState,
-} from "@persimmon/page-turn-core";
+} from "@chihumyum/page-turn-core";
 import { describe, expect, it } from "vitest";
 
 import {

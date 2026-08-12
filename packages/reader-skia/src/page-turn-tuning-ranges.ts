@@ -18,7 +18,7 @@ import {
   MIN_PAGE_TURN_LIFT_VELOCITY,
   MIN_PAGE_TURN_RELEASE_X,
   MIN_PAGE_WEIGHT,
-} from "@persimmon/page-turn-core";
+} from "@chihumyum/page-turn-core";
 
 export interface PageTurnTuningRange {
   readonly minimum: number;

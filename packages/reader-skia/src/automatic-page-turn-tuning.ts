@@ -2,7 +2,7 @@ import {
   DEFAULT_PAGE_TURN_TUNING,
   clampPageTurnTuning,
   type PageTurnTuning,
-} from "@persimmon/page-turn-core";
+} from "@chihumyum/page-turn-core";
 
 import { FORWARD_CLICK_PAGE_TURN_TUNING_RANGES } from "./page-turn-tuning-ranges";
 

@@ -4,7 +4,7 @@ import {
   clampIncomingPageTurnTuning,
   clampPageTurnTuning,
   type PageTurnTuning,
-} from "@persimmon/page-turn-core";
+} from "@chihumyum/page-turn-core";
 
 export interface ReverseGesturePageTurnTuning {
   readonly releaseX: number;
