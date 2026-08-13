@@ -371,10 +371,7 @@ async function releaseNotes(
   if (customNotes.trim()) {
     paragraphs.push(customNotes.trim());
   }
-  paragraphs.push(
-    "Download the APK and its SHA-256 checksum below.",
-    "> Persimmon is proprietary software. The automatically generated Source code archives on this page contain only the public website source, not the Persimmon app source.",
-  );
+  paragraphs.push("Download the APK and its SHA-256 checksum below.");
   return `${paragraphs.join("\n\n")}\n`;
 }
 
