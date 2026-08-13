@@ -95,16 +95,29 @@ pnpm release:android
 Store 时，在 Transporter 中选择生成的 IPA 并交付。GitHub 的 Android 发布 workflow 只允许手动触发，普通
 `push` 不会再启动或消耗 EAS 构建。
 
-将已经构建好的正式 APK 校验并发布到官网的 Cloudflare
-R2 固定下载地址，不会触发新构建：
+将已经构建好的正式 APK 校验并同时发布为版本化 GitHub
+Release，以及官网 Cloudflare R2 的固定下载地址；该命令不会触发新构建：
 
 ```bash
 pnpm publish:android:apk -- dist/android/Persimmon-0.1.0-build-9.apk
 ```
 
-GitHub Actions 中的 `Publish existing Android APK (manual)`
-workflow 执行相同操作；手动运行时输入一个已经完成的 EAS `production-apk` Build
-ID。两种方式都会在上传前重新验证包名、target SDK、APK v2签名和正式证书。
+本地命令默认读取当前 `gh` 登录状态和 Wrangler 登录状态；可以通过
+`--notes-file <path>` 加入更新说明。`--prerelease`
+只发布 GitHub 预发布版本，不覆盖 R2 的当前稳定 APK；只有明确传入 `--r2-only`
+时才保留旧的仅更新 R2 行为。
+
+GitHub Actions 中的 `Publish Android APK publicly (manual)`
+workflow 会下载指定的 EAS `production-apk` Build ID，然后调用同一个
+`publish:android:apk`
+入口；可选填写更新说明并标记 pre-release。本地与 CI 都会在发布前验证包名、target
+SDK、APK v2 签名、正式证书与 SHA-256，并在上传后重新下载核对。普通
+`push`、debug 和 preview 构建都不会公开发布。
+
+该 workflow 需要在私有仓库 Actions secrets 中配置
+`PERSIMMON_READER_RELEASE_TOKEN`：使用 fine-grained personal access
+token，仅授权 `chihumyum/persimmon-reader`，Repository
+permissions 只授予 Contents read/write。
 
 ## MVP scope
 

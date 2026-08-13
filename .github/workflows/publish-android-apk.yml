@@ -1,4 +1,4 @@
-name: Publish existing Android APK (manual)
+name: Publish Android APK publicly (manual)
 
 on:
   workflow_dispatch:
@@ -7,6 +7,15 @@ on:
         description: Finished EAS Android production-apk build ID
         required: true
         type: string
+      release_notes:
+        description: Optional public release notes
+        required: false
+        type: string
+      prerelease:
+        description: Publish as a GitHub pre-release
+        required: true
+        default: false
+        type: boolean
 
 concurrency:
   group: publish-android-apk
@@ -95,8 +104,11 @@ jobs:
             "$build_url" \
             --output dist/Persimmon-android-source.apk
 
-      - name: Verify and publish APK to Cloudflare R2
+      - name: Publish verified APK to GitHub Releases and Cloudflare R2
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          GH_TOKEN: ${{ secrets.PERSIMMON_READER_RELEASE_TOKEN }}
+          PERSIMMON_RELEASE_NOTES: ${{ inputs.release_notes }}
+          PERSIMMON_RELEASE_PRERELEASE: ${{ inputs.prerelease }}
         run: pnpm publish:android:apk -- dist/Persimmon-android-source.apk
