@@ -8,3 +8,4 @@ apps/persimmon/ios/
 apps/persimmon/modules/*/android/build/
 apps/persimmon/modules/*/ios/build/
 pnpm-lock.yaml
+vendor/react-native-natural-page-turn/

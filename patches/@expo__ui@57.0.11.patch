@@ -1,9 +1,9 @@
 diff --git a/android/build.gradle b/android/build.gradle
-index afdfadeb347dfce47194ca9b7cbfec41f4ec0775..5c7f7b0096eb7ae985f764740bd76e2f79cce835 100644
+index 0c4185fab0f13d2472429255a99751e504905441..082eb539ff68df67802face4ed87bce74dd597b9 100644
 --- a/android/build.gradle
 +++ b/android/build.gradle
 @@ -39,6 +39,7 @@ dependencies {
-
+ 
    implementation 'androidx.compose.foundation:foundation-android:1.10.6'
    implementation 'androidx.compose.ui:ui-android:1.10.6'
 +  implementation 'androidx.activity:activity-compose:1.8.2'
@@ -11,16 +11,16 @@ index afdfadeb347dfce47194ca9b7cbfec41f4ec0775..5c7f7b0096eb7ae985f764740bd76e2f
    implementation 'androidx.compose.material3:material3-android:1.5.0-alpha17'
    implementation 'androidx.lifecycle:lifecycle-runtime:2.10.0'
 diff --git a/android/src/main/java/expo/modules/ui/ExpoUIModule.kt b/android/src/main/java/expo/modules/ui/ExpoUIModule.kt
-index 435cb67dc6c8a2a0db1602e0374f3ed07bec9dea..ee846164a2faf2863af58448cfc37ea2e41ecbfb 100644
+index 5f2b07c5503ab320966da05119059d9694f03444..5fc2c098063adb8a381409f8835aa3327a27cc4a 100644
 --- a/android/src/main/java/expo/modules/ui/ExpoUIModule.kt
 +++ b/android/src/main/java/expo/modules/ui/ExpoUIModule.kt
-@@ -184,10 +184,18 @@ class ExpoUIModule : Module() {
+@@ -191,10 +191,18 @@ class ExpoUIModule : Module() {
        val hide by AsyncFunction()
        val expand by AsyncFunction()
        val partialExpand by AsyncFunction()
 +      val onBackRequest by Event<Unit>()
        val onDismissRequest by Event<Unit>()
-
+ 
        Content { props ->
 -        ModalBottomSheetContent(props, hide, expand, partialExpand) { onDismissRequest(Unit) }
 +        ModalBottomSheetContent(
@@ -33,14 +33,14 @@ index 435cb67dc6c8a2a0db1602e0374f3ed07bec9dea..ee846164a2faf2863af58448cfc37ea2
 +        )
        }
      }
-
+ 
 diff --git a/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt b/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
 index e800ec2adafaa7120724b30b65ef37bfbe8a72c2..dddb23d211fabae0fd5049fb825841cf61978d5c 100644
 --- a/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
 +++ b/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
 @@ -3,6 +3,13 @@
  package expo.modules.ui
-
+ 
  import android.graphics.Color
 +import android.os.Build
 +import android.view.Window
@@ -66,7 +66,7 @@ index e800ec2adafaa7120724b30b65ef37bfbe8a72c2..dddb23d211fabae0fd5049fb825841cf
 @@ -22,6 +32,13 @@ import expo.modules.kotlin.views.OptimizedComposeProps
  import kotlinx.coroutines.withContext
  import kotlin.coroutines.cancellation.CancellationException
-
+ 
 +private fun configureNavigationBar(window: Window) {
 +  window.navigationBarColor = Color.TRANSPARENT
 +  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -123,9 +123,9 @@ index e800ec2adafaa7120724b30b65ef37bfbe8a72c2..dddb23d211fabae0fd5049fb825841cf
 +    }
      Children(UIComposableScope(), filter = { !isSlotView(it) })
    }
-
+ 
 diff --git a/build/jetpack-compose/ModalBottomSheet/index.d.ts b/build/jetpack-compose/ModalBottomSheet/index.d.ts
-index ddf89aa5ac11610459f6db8abd96a3673f01054f..ceb651192b4bbde1023901921f943f37e936d4a7 100644
+index ddf89aa5ac11610459f6db8abd96a3673f01054f..32f0056aa6c8d3a4e8d55fd09761b258a2aec8fc 100644
 --- a/build/jetpack-compose/ModalBottomSheet/index.d.ts
 +++ b/build/jetpack-compose/ModalBottomSheet/index.d.ts
 @@ -44,6 +44,12 @@ export interface ModalBottomSheetProps {
@@ -162,7 +162,7 @@ index 36de99f5d92b1b0f2c340ba4508109f1a0b6045b..b884f8e4a77cc3b98518379d1f12e6dc
  /**
   * Controls the visibility of the drag indicator on a sheet.
 diff --git a/expo-module.config.json b/expo-module.config.json
-index 3cba55eeb8648170464bdeaad9d1515141d57c92..0ebfddaa1dea66cfe4db659048f58939feae87a5 100644
+index d6d6fbf586eea92a69b7dfb6d44b17499a2ae388..0ebfddaa1dea66cfe4db659048f58939feae87a5 100644
 --- a/expo-module.config.json
 +++ b/expo-module.config.json
 @@ -6,12 +6,6 @@
@@ -173,12 +173,32 @@ index 3cba55eeb8648170464bdeaad9d1515141d57c92..0ebfddaa1dea66cfe4db659048f58939
 -    "publication": {
 -      "groupId": "expo.modules.ui",
 -      "artifactId": "expo.modules.ui",
--      "version": "57.0.10",
+-      "version": "57.0.11",
 -      "repository": "local-maven-repo"
 -    }
 +    "modules": ["expo.modules.ui.ExpoUIModule"]
    }
  }
+diff --git a/expo-module.config.json.rej b/expo-module.config.json.rej
+new file mode 100644
+index 0000000000000000000000000000000000000000..50f1312f1456285fb61d0b9ad8b09d97f87cb861
+--- /dev/null
++++ b/expo-module.config.json.rej
+@@ -0,0 +1,14 @@
++@@ -6,12 +6,6 @@
++     "modules": ["ExpoUIModule"]
++   },
++   "android": {
++-    "modules": ["expo.modules.ui.ExpoUIModule"],
++-    "publication": {
++-      "groupId": "expo.modules.ui",
++-      "artifactId": "expo.modules.ui",
++-      "version": "57.0.10",
++-      "repository": "local-maven-repo"
++-    }
+++    "modules": ["expo.modules.ui.ExpoUIModule"]
++   }
++ }
 diff --git a/ios/Modifiers/PresentationModifiers.swift b/ios/Modifiers/PresentationModifiers.swift
 index f38528425a883a5d4dc0c1ad85e62dd278fc24b3..3deb9b0757cd9c23081e846cdbcf4d79c6f010ed 100644
 --- a/ios/Modifiers/PresentationModifiers.swift
@@ -189,7 +209,7 @@ index f38528425a883a5d4dc0c1ad85e62dd278fc24b3..3deb9b0757cd9c23081e846cdbcf4d79
    @Field var selection: Either<PresentationDetentPreset, PresentationDetentItem>?
 +  @Field var allowsUserSelection: Bool = true
    var eventDispatcher: EventDispatcher?
-
+ 
    init() {}
 @@ -71,6 +72,7 @@ internal struct PresentationDetentsModifier: ViewModifier, Record {
          detents: parseDetents(),
@@ -206,7 +226,7 @@ index f38528425a883a5d4dc0c1ad85e62dd278fc24b3..3deb9b0757cd9c23081e846cdbcf4d79
 +  let allowsUserSelection: Bool
    let eventDispatcher: EventDispatcher?
    let wrappedContent: WrappedContent
-
+ 
 @@ -116,12 +119,14 @@ private struct PresentationDetentsSelectionView<WrappedContent: View>: View {
      detents: Set<PresentationDetent>,
      rawDetents: [Either<PresentationDetentPreset, PresentationDetentItem>],
@@ -225,7 +245,7 @@ index f38528425a883a5d4dc0c1ad85e62dd278fc24b3..3deb9b0757cd9c23081e846cdbcf4d79
 @@ -130,9 +135,17 @@ private struct PresentationDetentsSelectionView<WrappedContent: View>: View {
      self._selectedDetent = State(initialValue: initialSelection ?? firstOrderedDetent ?? .large)
    }
-
+ 
 +  private var activeDetents: Set<PresentationDetent> {
 +    allowsUserSelection ? detents : [selectedDetent]
 +  }
@@ -282,7 +302,7 @@ index edd61228b9881de7ab542e535124fef67fc0b6ec..4083e3f2978d5ee0d28ba96a06030dd4
 +    enableHandlePanningGesture,
      backgroundStyle,
    ]);
-
+ 
 diff --git a/src/jetpack-compose/ModalBottomSheet/index.tsx b/src/jetpack-compose/ModalBottomSheet/index.tsx
 index ea749156c15b4929ac692dc0a513d7b00430552c..504871d9310383ebd2d3801cf29e6b596863e14d 100644
 --- a/src/jetpack-compose/ModalBottomSheet/index.tsx
@@ -303,7 +323,7 @@ index ea749156c15b4929ac692dc0a513d7b00430552c..504871d9310383ebd2d3801cf29e6b59
 @@ -101,7 +107,12 @@ export interface ModalBottomSheetProps {
    modifiers?: ModifierConfig[];
  }
-
+ 
 -type NativeModalBottomSheetProps = Omit<ModalBottomSheetProps, 'onDismissRequest'> & {
 +type NativeModalBottomSheetProps = Omit<
 +  ModalBottomSheetProps,
@@ -313,10 +333,10 @@ index ea749156c15b4929ac692dc0a513d7b00430552c..504871d9310383ebd2d3801cf29e6b59
 +  onBackRequest?: () => void;
    onDismissRequest: () => void;
  };
-
+ 
 @@ -111,13 +122,20 @@ const ModalBottomSheetNativeView: ComponentType<NativeModalBottomSheetProps> = r
  );
-
+ 
  function transformProps(props: ModalBottomSheetProps): NativeModalBottomSheetProps {
 -  const { modifiers, onDismissRequest, ...restProps } = props;
 +  const { modifiers, onBackRequest, onDismissRequest, ...restProps } = props;
@@ -361,6 +381,6 @@ index a73238902a2163cadb800ddd24bd031b5725f7e3..3d5a9a5dcab46813b37e1cd1442b8aac
 +    selection: options?.selection,
 +    allowsUserSelection: options?.allowsUserSelection ?? true,
 +  };
-
+ 
    const { onSelectionChange } = options ?? {};
    if (onSelectionChange) {

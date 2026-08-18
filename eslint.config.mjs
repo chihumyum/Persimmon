@@ -15,6 +15,7 @@ export default tseslint.config(
       "apps/persimmon/android/**",
       "apps/persimmon/ios/**",
       "epubs-for-test/**",
+      "vendor/react-native-natural-page-turn/**",
     ],
   },
   eslint.configs.recommended,
