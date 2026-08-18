@@ -1,125 +1,149 @@
 # Persimmon
 
-Persimmon（柿子）是一个 Expo + React Native Skia
-EPUB 阅读器。它不使用 WebView：EPUB 会先被编译成版本化、平台无关的
-`BookIR`，再经过共享分页器生成
-`PageScene`，最后由原生 Skia 绘制。产品只面向 iOS 和 Android，不再发布 Web 版本。
+<p align="right"><a href="./README.zh-CN.md">简体中文</a></p>
 
-当前 MVP 已具备：
+Persimmon is a local-first EPUB reader for iOS and Android. It compiles
+reflowable EPUB books into a platform-independent document model, paginates them
+without a WebView, and renders the result with React Native Skia.
 
-- EPUB 2/3 可重排书籍解析、HTML5 容错、NCX / nav 目录、封面与图片；
-- 安全 CSS 白名单（对齐、粗斜体、段间距、隐藏内容），不执行书内脚本；
-- Native 文件系统本地书库，原 EPUB、章节、资源和进度分开存储；
-- 极简书架、按书名或作者搜索、保留原始比例的混排封面、筛选与排序；
-- 统一设置页，包含隐私政策、邮件 / 系统分享反馈、版本、开放源代码许可，以及分离的本机 /
-  Google Drive 数据清理；
-- 书卡长按原生菜单中的详情、下载 / 同步和删除操作；
-- Google Drive `appDataFolder` 在 iOS /
-  Android 自动拉取原 EPUB、删除状态、稳定阅读位置和显示进度；
-- 支持跟随系统、简体中文或 English 的 App 内语言覆盖；系统“按 App 语言”在重新构建原生客户端后同样可用；EPUB 的排版 locale 独立跟随书籍语言元数据；
-- 章节级懒分页、浮层目录跳转、字号重排、稳定位置续读和图片 LRU；
-- 从 `play-books-page-turning` 移植的连续曲率翻页，支持点按、拖拽、完成与回弹；
-- Android 系统返回键先关闭 Reader 浮层，再返回书架；
-- iOS / Android 无 UI bundle 门禁。
+The project is an early public preview. The Android APK is available now; iOS
+can be built from source, but there is no public App Store or TestFlight build.
 
-架构说明见 [docs/architecture.md](docs/architecture.md)，应用 UI
-token 与组件规范见
-[docs/design-system.md](docs/design-system.md)，当前验收证据与真机清单见
-[docs/mvp-acceptance.md](docs/mvp-acceptance.md)，Google
-Cloud 凭证创建和双设备验收见
-[docs/google-drive-sync.md](docs/google-drive-sync.md)，发布前剩余事项见
-[docs/release-checklist.md](docs/release-checklist.md)。
+## Download
 
-## Workspace
+- [Download the latest Android APK](https://downloads.persimmon.cc/android/Persimmon-android-latest.apk)
+- [Support, privacy, and terms](https://persimmon.cc)
 
-- `apps/persimmon`：Expo 应用、书架、平台存储与文件选择；
-- `packages/book-core`：BookIR、稳定 locator 与数据校验；
-- `packages/epub-import`：受限 ZIP / OPF / XHTML / CSS 编译；
-- `packages/layout`：平台无关的段落测量接口、分页与位置索引；
-- `packages/page-turn-core`：连续曲率几何、手势判定与回弹运动学；
-- `packages/reader-skia`：SkParagraph、Skia 页面、图片缓存与原生翻页 shader。
+Android packages published by this project use the application ID
+`dev.chihum.persimmon`. Release artifacts are checked for their package name,
+target SDK, signing certificate, APK v2 signature, and SHA-256 checksum before
+publication.
+
+## What works
+
+- Import DRM-free, reflowable EPUB 2 and EPUB 3 books.
+- Parse OPF, XHTML, NCX and navigation documents with bounded ZIP and content
+  processing.
+- Build a native local library with the original EPUB, metadata, cover,
+  resources, and reading progress stored separately.
+- Search, filter, and sort the library; inspect, export, sync, or delete books.
+- Read with chapter-aware pagination, table-of-contents navigation, typography
+  controls, themes, local fonts, and persistent positions.
+- Render native Skia pages and an interactive, physically tuned page-turn
+  animation.
+- Optionally synchronize books and progress through the user's private Google
+  Drive `appDataFolder`, without a Persimmon account.
+- Use the interface in English, Simplified or Traditional Chinese, Japanese,
+  Korean, German, French, Spanish, and Brazilian Portuguese.
+
+Google Drive sync is implemented on both platforms, but access from distributed
+builds also depends on the project's Google OAuth publishing and test-user
+status. See [the sync guide](docs/google-drive-sync.md) before relying on it in
+a custom build.
+
+## Deliberate limits
+
+Persimmon focuses on ordinary, reflowable books. It does not currently support
+DRM, fixed-layout EPUB, PDF, MOBI, book scripts, MathML, browser-complete CSS,
+or persistent highlights and annotations. EPUB content is treated as untrusted:
+scripts are not executed and CSS is reduced to an explicit safe subset.
+
+## Architecture
+
+The data path is:
+
+```text
+EPUB archive -> versioned BookIR -> shared paginator -> PageScene -> native Skia
+```
+
+The workspace separates EPUB import, the platform-neutral book model, layout,
+page-turn mechanics, Skia rendering, and the Expo application. The page-turn
+renderer is included as the public
+[`react-native-natural-page-turn`](https://github.com/chihumyum/react-native-natural-page-turn)
+Git submodule.
+
+See [architecture](docs/architecture.md),
+[design system](docs/design-system.md), and
+[page-turn integration](docs/page-turn-library.md) for more detail.
 
 ## Development
 
-使用 Node 22 和 pnpm 10：
+Requirements:
+
+- Node.js 22.23.1
+- pnpm 10.17.1 through Corepack
+- Xcode for iOS native builds
+- Android Studio and Android SDK for Android native builds
+
+Clone the repository with its public submodule:
 
 ```bash
+git clone --recurse-submodules https://github.com/chihumyum/Persimmon.git
+cd Persimmon
 corepack enable
-pnpm install
+pnpm install --frozen-lockfile
+```
+
+Start the Expo development server for a project-specific development build:
+
+```bash
 pnpm dev:native
 ```
 
-核心验证：
+Install native development builds with `pnpm native:ios:device` or
+`pnpm native:android:device`. Expo Go is not supported.
+
+## Verification
+
+Run the same aggregate gate used by GitHub Actions:
 
 ```bash
 pnpm verify
-pnpm test:epubs
 ```
 
-- `pnpm verify`：格式、lint、全量类型、单测、Expo Doctor，以及 iOS / Android
-  bundle；
-- `pnpm test:epubs`：解析本地忽略目录 `epubs-for-test/` 中的私有测试书。
+It checks formatting, lint, TypeScript, unit tests, Expo dependency and project
+health, and production JavaScript bundles for both iOS and Android. Maintainers
+also test a private EPUB corpus and signed builds, but neither private books nor
+publishing credentials are required for normal development or pull requests.
 
-## Native development build
+Historical physical-device results are recorded in
+[the MVP acceptance document](docs/mvp-acceptance.md). They are evidence for the
+named revision and date, not a claim that every later commit has been retested
+on hardware.
 
-Persimmon 使用项目专用 Expo development build，不依赖 Expo Go。安装开发客户端：
+## Releases
+
+`pnpm release:android` and `pnpm release:ios` build and verify production
+artifacts but do not publish them. An existing signed Android APK can be checked
+without changing GitHub or Cloudflare:
 
 ```bash
-pnpm native:ios:device
-pnpm native:android:device
+pnpm publish:android:apk -- --dry-run path/to/Persimmon.apk
 ```
 
-日常 TypeScript 修改只需：
+A stable Android publication writes the same verified APK to this repository's
+GitHub Releases and the stable Cloudflare R2 download. A GitHub prerelease never
+replaces the stable R2 object. Publishing is maintainer-only and manually
+dispatched.
 
-```bash
-pnpm dev:native
-```
+## Contributing and security
 
-修改 Native 依赖、Expo 配置或 SDK 后需要重建客户端。2026-08-03，维护者已确认 iOS
-/ Android 真机功能与性能验收通过；自动门禁和签字边界记录在
-[真机验收清单](docs/mvp-acceptance.md#native-真机签字清单)。商店签名、元数据和审核仍按
-[发布清单](docs/release-checklist.md)单独完成。
+Focused bug fixes, tests, accessibility improvements, and EPUB compatibility
+work are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull
+request. Use [GitHub Issues](https://github.com/chihumyum/Persimmon/issues) for
+public bugs and feature proposals. Please follow [SECURITY.md](SECURITY.md) for
+vulnerabilities instead of opening a public issue.
 
-## Production builds
+The maintainer controls the roadmap and reviews contributions on a best-effort
+basis; there is no support or response-time commitment.
 
-提交并推送所有改动后，在仓库根目录手动选择平台，一键构建并下载正式签名产物：
+## License and brand
 
-```bash
-pnpm release:ios
-pnpm release:android
-```
+Source code and documentation are licensed under the
+[Apache License 2.0](LICENSE), except for separately identified third-party
+material and Persimmon brand assets. The Persimmon name, logo, application icon,
+product screenshots, and trade dress are not granted under Apache-2.0. See
+[TRADEMARKS.md](TRADEMARKS.md) and [NOTICE](NOTICE).
 
-脚本会先确认工作区干净且 `HEAD` 与上游分支一致，然后等待 EAS `production`
-构建完成，将 IPA / APK 和 SHA-256 校验文件下载到忽略提交的 `dist/ios/` 或
-`dist/android/`。上传 App
-Store 时，在 Transporter 中选择生成的 IPA 并交付。GitHub 的 Android 发布 workflow 只允许手动触发，普通
-`push` 不会再启动或消耗 EAS 构建。
-
-将已经构建好的正式 APK 校验并同时发布为版本化 GitHub
-Release，以及官网 Cloudflare R2 的固定下载地址；该命令不会触发新构建：
-
-```bash
-pnpm publish:android:apk -- dist/android/Persimmon-0.1.0-build-9.apk
-```
-
-本地命令默认读取当前 `gh` 登录状态和 Wrangler 登录状态；可以通过
-`--notes-file <path>` 加入更新说明。`--prerelease`
-只发布 GitHub 预发布版本，不覆盖 R2 的当前稳定 APK；只有明确传入 `--r2-only`
-时才保留旧的仅更新 R2 行为。
-
-GitHub Actions 中的 `Publish Android APK publicly (manual)`
-workflow 会下载指定的 EAS `production-apk` Build ID，然后调用同一个
-`publish:android:apk`
-入口；可选填写更新说明并标记 pre-release。本地与 CI 都会在发布前验证包名、target
-SDK、APK v2 签名、正式证书与 SHA-256，并在上传后重新下载核对。普通
-`push`、debug 和 preview 构建都不会公开发布。
-
-该 workflow 需要在私有仓库 Actions secrets 中配置
-`PERSIMMON_READER_RELEASE_TOKEN`：使用 fine-grained personal access
-token，仅授权 `chihumyum/persimmon-reader`，Repository
-permissions 只授予 Contents read/write。
-
-## MVP scope
-
-目标是普通小说类、可重排、无 DRM 的 EPUB。当前不支持 fixed-layout、DRM、脚本、MathML、复杂 SVG
-/ 表格、选择与批注。书内 CSS 只进入显式安全白名单，不追求浏览器级 CSS 兼容。
+The root package remains marked `private` to prevent accidental npm publication;
+that field does not restrict use under the repository license.

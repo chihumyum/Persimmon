@@ -1,107 +1,102 @@
-# iOS TestFlight / Android APK 测试清单
+# Release checklist
 
-更新日期：2026-08-08
+Updated: 2026-08-19
 
-当前阶段只面向维护者自用测试：iOS 通过 TestFlight Internal
-Testing，Android 通过 EAS Internal Distribution 安装 APK。暂不提交 App
-Store 正式审核，也不使用 Google Play。
+This document separates source readiness, signed-build verification, public
+distribution, and app-store submission. Passing repository checks is not proof
+that a new binary has been installed on physical devices or accepted by a store.
 
-## 已完成
+## Current distribution status
 
-- [x] 设置页包含隐私政策、反馈、App 版本、开放源代码许可、了解开发者；
-- [x] “清空本机数据”和“清空 Google Drive 数据”分离，并有破坏性操作二次确认；
-- [x] Bundle ID 与 Android package 均为 `dev.chihum.persimmon`；
-- [x] 用户可见版本为 `0.1.0`，EAS preview / production 自动递增构建号；
-- [x] 公开支持邮箱固定为 `support@persimmon.cc`，并同步配置到 EAS
-      preview 与 production 环境；
-- [x] Google Drive iOS / Android OAuth Client ID 已作为公开默认值接入；
-- [x] EAS Android keystore 已存在，SHA-1 为
-      `0F:04:1A:5A:94:B6:61:24:70:11:19:13:16:6B:5D:AA:C9:3B:E0:62`；
-- [x] Android preview profile 使用 internal distribution，生成可直接安装的 APK；
-- [x] Android 禁用系统备份和旧外部存储、悬浮窗、未使用振动权限；
-- [x] iOS 已声明 `ITSAppUsesNonExemptEncryption=false`；
-- [x] 维护者确认双端真机功能与性能验收通过；
-- [x] 2026-08-08 完整运行 `pnpm verify`：格式、lint、类型、450 项测试、Expo
-      Doctor 与双端生产 bundle 全部通过。
-- [x] iOS 开发团队 `9843R35CWM`
-      已写入 Expo 配置，真机 Release 脚本允许 Xcode 自动更新签名资料。
+- Android: a public preview APK is distributed from `persimmon.cc` through a
+  stable Cloudflare R2 URL.
+- GitHub: future Android releases belong to `chihumyum/Persimmon`; the website
+  repository is not an application release repository.
+- iOS: source and build tooling are present, but there is no public App Store or
+  TestFlight distribution.
+- Google Play: no public listing is claimed.
 
-## Android APK
+## Source gate
 
-- [x] EAS preview / production 环境包含 `EXPO_PUBLIC_SUPPORT_EMAIL`；
-- [x] 排除旧 APK、QA 产物、CNG 原生工程和本地缓存，缩小 EAS 上传包；
-- [x] 本地 EAS preview 构建已生成正式 keystore 签名 APK：
-      `artifacts/Persimmon-0.1.0-preview-build3.apk`；
-- [x] 已验证 package `dev.chihum.persimmon`、版本 `0.1.0 (3)`、target SDK
-      36、APK Signature Scheme v2 和签名证书；
-- [x] APK SHA-256：
-      `ece8da2c17cc84f124fa8b519617aad162872e4f1fcae97b78740d8158045f44`；
-- [ ] 确认旧 debug 签名版不再需要本地数据，然后卸载旧版并安装当前 APK；
-- [ ] 在 Google Cloud 的 Android OAuth Client 中确认 package 与上述 SHA-1；
-- [ ] 使用 APK 验证 Google Drive 连接、上传、另一端下载及进度同步；
-- [ ] 下一版 APK 覆盖安装，确认书籍、设置和阅读进度保留。
+Before creating a production build:
 
-当前真机安装的是 `0.1.0 (1)`，证书为 Android Debug SHA-1
-`5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25`。Android系统不允许不同签名覆盖安装，卸载会删除旧版私有数据，因此未自动执行。
+- [ ] The worktree is clean and `HEAD` matches its upstream branch.
+- [ ] The public page-turn submodule is initialized at the recorded gitlink.
+- [ ] `pnpm install --frozen-lockfile` succeeds with Node 22.23.1 and pnpm
+      10.17.1.
+- [ ] `pnpm verify` passes, including Expo Doctor and iOS/Android production
+      JavaScript bundles.
+- [ ] Gitleaks reports no unexplained findings.
+- [ ] Production dependency advisories have been reviewed; unresolved build tool
+      findings are recorded with their reachability and upstream status.
+- [ ] No APK, IPA, signing material, private EPUB, or generated CNG project is
+      tracked.
 
-构建命令：
+## Application identity
 
-```bash
-cd apps/persimmon
-fnm exec --using=22.23.1 -- pnpm dlx eas-cli@latest build \
-  --platform android --profile preview --local
-```
+- Bundle ID and Android application ID: `dev.chihum.persimmon`.
+- User-visible version: `0.1.0` until an intentional version change is made.
+- Apple development team default: `G7ZSY874L2`.
+- Public support address: `support@persimmon.cc`.
+- Android public releases must target SDK 36 and carry the recorded production
+  signing certificate.
 
-## iOS TestFlight
+## Android build and publication
 
-- [ ] 续费 Apple Developer Program；
-- [ ] 在 Xcode Settings > Accounts 登录续费后的 Apple ID，并刷新团队资料；
-- [ ] 在 App Store Connect 接受最新协议并创建 Persimmon App 记录；
-- [ ] 交互验证 EAS 上已有的 Apple Distribution Certificate；
-- [ ] 生成 production IPA；
-- [ ] 使用 EAS Submit 上传 App Store Connect；
-- [ ] 建立 Internal Testing 分组，只添加维护者本人；
-- [ ] 从 TestFlight 安装并验证 Google Drive 双端同步。
+1. Run `pnpm release:android` or select an already finished EAS `production-apk`
+   build.
+2. Run `pnpm publish:android:apk -- --dry-run <apk>` and verify package name,
+   version, target SDK, APK v2 signature, production certificate, and SHA-256.
+3. Review release notes and the source commit that will be tagged.
+4. Manually dispatch the Android publish workflow from `main` in the
+   `production` environment.
+5. The workflow creates a draft GitHub Release, uploads the versioned APK and
+   checksum, downloads and verifies them, updates and verifies stable R2 for a
+   stable release, then publishes the GitHub Release.
+6. For a prerelease, confirm that the stable R2 APK and checksum did not change.
+7. Install the downloaded GitHub artifact on a physical device and exercise
+   import, reading, relaunch persistence, export, and Google Drive if OAuth is
+   available to that build.
 
-构建与上传命令：
+Never recreate a historical GitHub Release unless its artifact, tag, source
+commit, signing certificate, and checksum can all be proven to match.
 
-```bash
-cd apps/persimmon
-pnpm dlx eas-cli@latest build --platform ios --profile production
-pnpm dlx eas-cli@latest submit --platform ios --profile production
-```
+## iOS build boundary
 
-2026-08-08 已实际尝试 EAS
-production 与本地 Release 真机构建。EAS 因 Distribution
-Certificate 尚未交互验证而停止；本地 Xcode 因团队账号无有效凭据、无法取得
-`dev.chihum.persimmon` Provisioning
-Profile 而停止。两者都需要先续费并登录 Apple，当前没有代码侧构建错误证据。
+`pnpm release:ios` can request a production EAS build, but successful App Store
+distribution additionally requires an active Apple Developer membership, current
+agreements, valid distribution credentials and provisioning, an App Store
+Connect record, privacy metadata, screenshots, review information, and a
+physical-device acceptance pass for the exact archive.
 
-## Google Drive 自用测试
+Until those steps are completed, documentation must say that iOS can be built
+from source rather than claiming public availability.
 
-Google Auth Platform 暂时可以保持 External +
-Testing，并把维护者 Google 账号加入 Test users。需要确认：
+## Google Drive boundary
 
-- [ ] Google Drive API 已启用；
-- [ ] Data Access 包含 `https://www.googleapis.com/auth/drive.appdata`；
-- [ ] iOS Client 对应 Bundle ID `dev.chihum.persimmon`；
-- [ ] Android Client 对应 package `dev.chihum.persimmon` 和当前 EAS SHA-1；
-- [ ] 在两台设备连接同一 Google 账号，完成 EPUB 与阅读进度双向同步验收。
+The app requests only `https://www.googleapis.com/auth/drive.appdata` for its
+private application data folder. A signed build must still be covered by the
+correct iOS client ID or Android package/signing SHA-1, and the Google Auth app
+must be in a publishing state that permits the intended user.
 
-Testing 状态只用于当前自用阶段；正式公开发布前再处理 OAuth
-Production、公开隐私政策和可能的验证。
+Verify on two devices before describing sync as release-accepted:
 
-## 暂缓到公开发布
+- [ ] Connect the same Google account on both devices.
+- [ ] Upload and recover an EPUB.
+- [ ] Converge reading progress in both directions.
+- [ ] Confirm deletion and local/Drive clearing remain distinct.
+- [ ] Relaunch after offline and foreground/background transitions.
 
-- App Store 截图、商店文案、App Privacy、年龄分级与正式 App Review；
-- `persimmon.cc` 隐私政策、支持页和 Android APK 公共下载页；
-- Android 官网版本检查与更新提示；
-- Android Developer Console 身份与 package 注册；
-- 不采集阅读内容的崩溃监控方案。
+## Store work not implied by APK publication
 
-## 发布边界
+App Store and Google Play submission require their own identity, policy,
+screenshots, content rating, privacy disclosures, review credentials, and signed
+store artifact. A public source repository or direct APK does not satisfy those
+requirements.
 
-`apps/persimmon/ios` 与 `apps/persimmon/android` 是 Expo
-CNG 生成目录，不提交。配置变化后通过
-`expo prebuild --clean`、`expo config --type public`
-和最终签名包验证，不能只依据静态检查宣布商店发布完成。
+## Native project boundary
+
+`apps/persimmon/ios` and `apps/persimmon/android` are generated by Expo CNG and
+are not committed. Native dependency or configuration changes must be checked
+through a clean prebuild and an exact signed artifact; static TypeScript checks
+alone are insufficient.

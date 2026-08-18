@@ -2,6 +2,10 @@
 
 Persimmon 使用开源软件与字体。各项目保留各自作者的版权，依赖包随附的版权与许可文本优先于本页摘要。
 
+Persimmon 自有源码和文档采用 Apache License
+2.0；名称、Logo、应用图标和品牌视觉不在该授权内，详见仓库根目录的
+`LICENSE`、`NOTICE` 和 `TRADEMARKS.md`。
+
 ## 直接运行时组件
 
 | 组件                                                                                     | 主要许可                         |
@@ -11,6 +15,7 @@ Persimmon 使用开源软件与字体。各项目保留各自作者的版权，�
 | i18next、react-i18next                                                                   | MIT                              |
 | Google Sign-In for React Native                                                          | MIT；Google SDK 另受适用条款约束 |
 | fflate、parse5、@xmldom/xmldom                                                           | MIT                              |
+| @chihumyum/page-turn-core、@chihumyum/react-native-natural-page-turn                     | MIT                              |
 | Skia 及其第三方组件                                                                      | BSD 3-Clause 或组件各自许可      |
 
 主要许可文本：

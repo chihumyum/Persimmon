@@ -1,0 +1,10 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Historical local migration marker, not a credential"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "line"
+regexes = ['''const LEGACY_MIGRATION_KEY = "legacy-v1-migrated";''']
+paths = ['''^apps/persimmon/src/library/repository\.ts$''']

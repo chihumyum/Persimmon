@@ -1,102 +1,85 @@
-# MVP 验收
+# MVP acceptance evidence
 
-本文把“代码可编译”和“用户实际可读”分开记录，避免把未执行的 Native 真机测试写成已通过。
+This document keeps automated checks, historical physical-device evidence, and
+release acceptance separate. It must not be read as a promise that every commit
+has been installed and retested on hardware.
 
-## 自动门禁
+## Automated gate
+
+The repository gate is:
 
 ```bash
 pnpm verify
+```
+
+It checks:
+
+| Area            | Command or behavior                                                                                             |
+| --------------- | --------------------------------------------------------------------------------------------------------------- |
+| Formatting      | Prettier check across the main repository, excluding generated files and the independently maintained submodule |
+| Static analysis | ESLint and TypeScript across application and workspace packages                                                 |
+| Behavior        | Vitest unit and integration tests                                                                               |
+| Expo health     | Expo Doctor dependency and project checks                                                                       |
+| Bundling        | Production JavaScript exports for iOS and Android                                                               |
+
+GitHub Actions runs the same gate for pull requests and pushes to `main` without
+repository secrets. The public page-turn project is cloned as an ordinary HTTPS
+submodule.
+
+## Private EPUB corpus
+
+Maintainers may additionally run:
+
+```bash
 pnpm test:epubs
 ```
 
-2026-08-03 当前工作区：
+It scans the ignored `epubs-for-test/` directory. The corpus contains a mix of
+languages, book sizes, images, navigation formats, and imperfect publisher
+markup, but its copyrighted files and reading-library inventory are not project
+fixtures and are never required for contributors or CI.
 
-| 门禁                           | 当前结果                     |
-| ------------------------------ | ---------------------------- |
-| Prettier / ESLint / TypeScript | 本次通过                     |
-| Unit tests                     | 89 files，426 tests 本次通过 |
-| Android Kotlin native module   | 本次编译通过                 |
-| iOS Swift native module        | 本次 simulator SDK 编译通过  |
-| Expo Doctor                    | 20 / 20 本次通过             |
-| iOS / Android JS bundle        | 两端本次通过                 |
+Warnings from corpus validation are explicit recovery outcomes, not silent
+success. Typical accepted warnings include a missing navigation fragment that
+falls back to a section start, an empty section that is skipped, or an image
+reference absent from the manifest.
 
-单测与私有 EPUB 验证覆盖：
+## Historical native-device sign-off
 
-1. 文件选择与 Worker 导入；
-2. 封面 / 图片资源落库和读取；
-3. CSS 白名单与两章目录；
-4. 连续翻页和章节跨越；
-5. 目录跳转；
-6. 进度防抖保存；
-7. 页面刷新、重新打开和断点续读；
-8. 删除书籍及关联本地数据；
-9. 字体、字号、行距、段距、页边距与页眉进度的修改和持久化；
-10. 书架按书名 / 作者搜索、设置入口和主题切换；
-11. 浮层目录跳转，以及书籍详情中的同步 / 下载 / 删除入口。
+On 2026-08-03, the maintainer reported that the then-current iOS and Android
+builds passed the following physical-device scenarios. Raw Instruments and
+Android Studio traces were not committed, so this is historical maintainer
+evidence rather than a reproducible check for current `main`.
 
-同步引擎单测另外覆盖：
+- First launch, permissions, file selection, and language overrides.
+- Import of text-heavy and image-containing reflowable EPUBs.
+- Library search, filtering, settings, native menus, export, and deletion.
+- Table-of-contents navigation and overlay/back behavior.
+- Repeated taps, drag completion, drag cancellation, and position stability
+  through typography changes.
+- Background/foreground transitions, forced relaunch, rotation, and safe areas.
+- Local data deletion without accidental Google Drive deletion, and the inverse.
+- Two-device Google Drive book and progress convergence for the test accounts
+  available at that time.
+- No observed sustained memory growth or obvious page-turn long-frame problem on
+  the devices used.
 
-- 新设备采用远端书籍后，会把采用结果持久化到自己的设备文档；
-- 远端 locator 与 `publicationProgress` 一起落本地；
-- `needs-reimport` 不会被误判成用户删除并产生墓碑；
-- 高频进度写入始终串行，并把突发回调折叠到最新位置。
+This sign-off does not cover later dependency updates, current OAuth publishing
+status, production signing, store review, or the exact APK currently offered for
+download.
 
-## 私有 EPUB 验收
+## Release acceptance
 
-`pnpm test:epubs` 会扫描被 Git 忽略的 `epubs-for-test/`。当前 5 本全部通过：
+An Android or iOS release is accepted only when the exact signed artifact is
+verified and installed after the source gate. Follow
+[release-checklist.md](release-checklist.md) and record the artifact checksum,
+source commit, platform, build type, and device scenarios separately.
 
-| 书籍              | sections |  blocks | resources |
-| ----------------- | -------: | ------: | --------: |
-| Project Hail Mary |       42 |   6,318 |        36 |
-| 七王国的骑士      |       20 |   2,576 |         7 |
-| 国家为什么会失败  |       86 |   1,877 |       147 |
-| 28 册科幻合集     |      833 | 101,772 |       150 |
-| 红楼梦            |      137 |   8,554 |       165 |
+## Outside the current MVP
 
-警告是显式、可统计的恢复结果，不等于静默失败。主要剩余警告为目录 fragment 找不到时回退到 section
-start、空 section 跳过和未 manifest 图片跳过。
-
-## Native 真机签字清单
-
-2026-08-03，维护者确认 iOS 与 Android 物理设备上的功能与性能验收均已通过。这里记录的是维护者的真机签字；本次代码整理没有伪装成重新执行过设备测试，原始 Instruments
-/ Android Studio trace 也未提交到仓库。
-
-- [x] 首次启动、权限与文件选择正常；
-- [x] 在书架设置分别选择“跟随系统 / 简体中文 /
-      English”，冷启动及回前台后 UI 文案、系统菜单和可访问文本一致切换；
-- [x] 重新构建原生客户端后，iOS /
-      Android 的系统“按 App 语言”入口可见，并在选择“跟随系统”时生效；
-- [x] 英文界面不残留中文错误提示；中文 EPUB 与英文 EPUB 分别按书籍语言排版；
-- [x] 导入一本文字书和一本含图片书；
-- [x] 接近 50
-      MiB 安全上限的大书导入有明确忙碌状态；超过限制时明确拒绝且不损坏书库；
-- [x] 不同比例封面保持完整内容、共享基线且没有白色补边；
-- [x] 搜索只命中书名或作者，设置中可切换主题并管理 Google Drive；
-- [x] 长按书卡出现平台原生菜单，详情、下载 / 同步和删除均执行正确；
-- [x] Reader 目录作为浮层出现，不挤压或重排正文；
-- [x] Android 系统返回先关闭浮层，再从 Reader 返回书架而不是桌面；
-- [x] 书籍、封面、图片、目录可读；
-- [x] 连续 20 次点按翻页，最终位置正确；
-- [x] 右侧拖拽完成与短拖回弹；
-- [x] 字号调整后位置基本不跳；
-- [x] 锁屏 / 后台 / 前台后继续阅读；
-- [x] 强制退出后书架与进度恢复；
-- [x] 旋转与安全区无裁切（iPad / Android tablet 也检查）；
-- [x] 删除书籍后原 EPUB、section、resource 和进度一并消失；
-- [x] 存储空间不足显示可理解错误，旧书不损坏；
-- [x] 新设备连接同一 Drive 后无需手动同步即可拉回书籍和阅读百分比；
-- [x] 两端并发阅读、后台 / 前台与强退重启后，进度不回退；
-- [x] Xcode Instruments / Android Studio 中无持续内存增长；
-- [x] 典型设备翻页无明显长帧；维护者确认性能验收通过，原始 P50 / P95 frame
-      time 与峰值内存数据未入库。
-
-结论：Native 实测状态为
-**passed（维护者确认）**。商店签名、内测轨道与审核不属于此签字，继续由
-[release-checklist.md](release-checklist.md) 追踪。
-
-## MVP 明确不验收
-
-- fixed-layout、DRM；
-- MathML、复杂 SVG / table、完整 CSS；
-- 持久化高亮、批注与同步；
-- App Store / Play 签名、上架和发布监控；这些事项移至独立发布清单。
+- DRM and fixed-layout EPUB.
+- PDF, MOBI, book scripts, MathML, complex SVG/table layout, and full browser
+  CSS.
+- Persistent highlights and annotations.
+- Claims of App Store or Google Play availability before those stores actually
+  accept and distribute the application.

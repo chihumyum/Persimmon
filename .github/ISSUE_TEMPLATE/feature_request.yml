@@ -1,0 +1,34 @@
+name: Feature proposal
+description: Propose a focused product or compatibility improvement
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What reading or development problem should be solved?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description:
+        Describe the smallest useful outcome, not only an implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label:
+            I understand that the maintainer controls the roadmap and does not
+            promise a response or implementation timeline.
+          required: true

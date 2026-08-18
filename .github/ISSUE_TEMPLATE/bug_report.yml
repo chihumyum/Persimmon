@@ -1,0 +1,68 @@
+name: Bug report
+description: Report a reproducible Persimmon problem
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not upload copyrighted books, private reading data, credentials, or security vulnerabilities.
+        Report vulnerabilities through SECURITY.md instead.
+  - type: input
+    id: version
+    attributes:
+      label: Persimmon version
+      description: Include the version and build number shown in the app.
+      placeholder: 0.1.0 (9)
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Android APK
+        - Android development build
+        - iOS development build
+        - iOS local release build
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest reliable sequence of actions.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: book
+    attributes:
+      label: Book characteristics
+      description:
+        Describe EPUB version, DRM/fixed-layout status, language, and
+        approximate size without attaching the book.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmation
+      options:
+        - label:
+            I checked that the book is DRM-free and reflowable EPUB 2 or EPUB 3.
+          required: true
+        - label:
+            This report does not contain private data or a security
+            vulnerability.
+          required: true
