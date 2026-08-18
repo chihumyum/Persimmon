@@ -10,6 +10,7 @@ repository, reserved brand material includes:
 - `apps/persimmon/assets/icons/persimmon.icon/**`
 - `apps/persimmon/assets/icons/android/app-icon-*.png`
 - `artifacts/**`
+- `docs/media/**`
 
 You may use these assets to build and test an unmodified local copy of
 Persimmon. If you distribute a modified build or a separate product, replace the

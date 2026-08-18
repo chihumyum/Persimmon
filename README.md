@@ -2,12 +2,55 @@
 
 <p align="right"><a href="./README.zh-CN.md">简体中文</a></p>
 
+<p align="center"><em>Read. Nothing else.</em></p>
+
 Persimmon is a local-first EPUB reader for iOS and Android. It compiles
 reflowable EPUB books into a platform-independent document model, paginates them
 without a WebView, and renders the result with React Native Skia.
 
 The project is an early public preview. The Android APK is available now; iOS
 can be built from source, but there is no public App Store or TestFlight build.
+
+## Why Persimmon
+
+- **A focused reading surface.** The interface leaves room for the book instead
+  of surrounding it with social features, ads, or unrelated tools.
+- **Page turns tuned for touch.** The animation follows the gesture, stays fluid
+  through repeated swipes, and supports quickly thumbing backward through pages.
+- **Optional sync without another account.** Books and reading progress can
+  synchronize through the user's own private Google Drive `appDataFolder`.
+
+<p align="center">
+
+https://github.com/user-attachments/assets/a7dd5166-b9cd-491d-8166-04f7361ee171
+
+</p>
+
+<p align="center">
+
+https://github.com/user-attachments/assets/57c71d41-e69f-4fd6-9cf0-4000cb227ba9
+
+</p>
+
+## Interface
+
+Real screens from Persimmon on iPhone, iPad, and Android.
+
+<p align="center">
+  <img src="./docs/media/library-google-drive-sync.png" width="30%" alt="Persimmon library with Google Drive sync" />
+  &nbsp;
+  <img src="./docs/media/reader-style-controls.png" width="30%" alt="Persimmon reading style controls" />
+  &nbsp;
+  <img src="./docs/media/android-settings-google-drive.jpg" width="30%" alt="Persimmon settings and Google Drive sync on Android" />
+  <br />
+  <sub>Library and sync · Reading controls · App settings</sub>
+</p>
+
+<p align="center">
+  <img src="./docs/media/ipad-font-picker.png" width="90%" alt="Persimmon iPad reading view and font picker" />
+  <br />
+  <sub>iPad reading view and local font selection</sub>
+</p>
 
 ## Download
 

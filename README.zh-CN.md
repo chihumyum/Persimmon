@@ -2,12 +2,54 @@
 
 <p align="right"><a href="./README.md">English</a></p>
 
+<p align="center"><em>Read. Nothing else.</em></p>
+
 Persimmon（柿子）是一个本地优先的 iOS / Android
 EPUB 阅读器。它不使用 WebView：可重排 EPUB 会先编译成平台无关、带版本的文档模型，再由共享分页器生成页面，最后交给 React
 Native Skia 原生绘制。
 
 项目目前处于早期公开预览阶段。Android
 APK 已可下载；iOS 可以从源码构建，但还没有公开的 App Store 或 TestFlight 版本。
+
+## 为什么是 Persimmon
+
+- **把空间留给书。** 界面围绕阅读本身，不加入社交、广告或与阅读无关的工具。
+- **为触控反复调校的翻页。**
+  动画跟随手势，连续快速滑动时依然流畅，也支持像用拇指拨动纸书一样快速往回翻页。
+- **不需要再注册一个账号。** 可选同步直接使用用户自己的 Google Drive 私有
+  `appDataFolder`，同步书籍与阅读进度。
+
+<p align="center">
+
+https://github.com/user-attachments/assets/a7dd5166-b9cd-491d-8166-04f7361ee171
+
+</p>
+
+<p align="center">
+
+https://github.com/user-attachments/assets/57c71d41-e69f-4fd6-9cf0-4000cb227ba9
+
+</p>
+
+## 界面
+
+以下是 Persimmon 在 iPhone、iPad 和 Android 上的真实界面。
+
+<p align="center">
+  <img src="./docs/media/library-google-drive-sync.png" width="30%" alt="带有 Google Drive 同步状态的 Persimmon 书库" />
+  &nbsp;
+  <img src="./docs/media/reader-style-controls.png" width="30%" alt="Persimmon 阅读样式控制" />
+  &nbsp;
+  <img src="./docs/media/android-settings-google-drive.jpg" width="30%" alt="Persimmon Android 设置与 Google Drive 同步" />
+  <br />
+  <sub>书库与同步 · 阅读控制 · App 设置</sub>
+</p>
+
+<p align="center">
+  <img src="./docs/media/ipad-font-picker.png" width="90%" alt="Persimmon iPad 阅读界面与字体选择器" />
+  <br />
+  <sub>iPad 阅读界面与本地字体选择</sub>
+</p>
 
 ## 下载
 
