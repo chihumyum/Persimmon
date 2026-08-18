@@ -26,5 +26,8 @@ export default defineConfig({
   },
   test: {
     exclude: ["e2e/**", "**/node_modules/**", "**/dist/**", "**/.expo/**"],
+    // Exhaustive page-turn curve coverage can exceed Vitest's 5 s default on
+    // shared CI runners even though the same deterministic sweep passes.
+    testTimeout: 15_000,
   },
 });
