@@ -10,6 +10,10 @@ updates:
         - "@expo/*"
         - "expo*"
     open-pull-requests-limit: 5
+    ignore:
+      # This package carries a version-specific Android rendering patch.
+      # Upgrade it manually together with patches/@shopify__react-native-skia@*.patch.
+      - dependency-name: "@shopify/react-native-skia"
     groups:
       expo-and-react-native:
         patterns:
