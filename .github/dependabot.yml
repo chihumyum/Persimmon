@@ -14,6 +14,10 @@ updates:
       # This package carries a version-specific Android rendering patch.
       # Upgrade it manually together with patches/@shopify__react-native-skia@*.patch.
       - dependency-name: "@shopify/react-native-skia"
+      # Expo SDK selects the compatible React Native core versions.
+      # Upgrade these through the Expo SDK workflow instead of independently.
+      - dependency-name: "react-native"
+      - dependency-name: "@react-native/*"
     groups:
       expo-and-react-native:
         patterns:
