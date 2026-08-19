@@ -8,8 +8,10 @@ Persimmon is a local-first EPUB reader for iOS and Android. It compiles
 reflowable EPUB books into a platform-independent document model, paginates them
 without a WebView, and renders the result with React Native Skia.
 
-The project is an early public preview. The Android APK is available now; iOS
-can be built from source, but there is no public App Store or TestFlight build.
+Download the Android APK from this repository's
+[Releases](https://github.com/chihumyum/Persimmon/releases) or the
+[Persimmon website](https://persimmon.cc). For iOS, follow the website's App
+Store link.
 
 ## Why Persimmon
 
