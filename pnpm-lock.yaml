@@ -47,8 +47,8 @@ importers:
         specifier: 4.16.1
         version: 4.16.1(@typescript-eslint/utils@8.46.4(eslint@9.39.1)(typescript@5.9.3))(eslint@9.39.1)
       expo-doctor:
-        specifier: 1.20.1
-        version: 1.20.1
+        specifier: 1.20.2
+        version: 1.20.2
       fflate:
         specifier: 0.8.3
         version: 0.8.3
@@ -2623,8 +2623,8 @@ packages:
       expo: '*'
       react-native: '*'
 
-  expo-doctor@1.20.1:
-    resolution: {integrity: sha512-u0QYTm3hTZbuMuNdnvscA1X6Xm31ilQ6uxrf8FfzO0ddpOEBrgVEYp8jXgFOBwrRf6DqJoD2j3eKUTWTqvKVzg==}
+  expo-doctor@1.20.2:
+    resolution: {integrity: sha512-KA32iZLrbviecZV0FAIsJHTfa1DomzLH6EjMXHsfbiV5ETQ8llo/cxA6Qga5FhG/5JSlkt23/yeWDaLZQJwnug==}
     engines: {node: ^20.19.4 || ^22.13.0 || ^24.3.0 || >= 25.0.0}
     hasBin: true
 
@@ -6954,7 +6954,7 @@ snapshots:
       expo-dev-menu-interface: 57.0.0(expo@57.0.14)
       react-native: 0.86.2(@babel/core@7.29.7)(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.3)
 
-  expo-doctor@1.20.1: {}
+  expo-doctor@1.20.2: {}
 
   expo-document-picker@57.0.1(expo@57.0.14):
     dependencies:
