@@ -1,0 +1,46 @@
+diff --git a/dist/detector.js b/dist/detector.js
+index 6b9ef6f78b905eed1469035e979b10bf8172b411..554251f95b7fcdfd633597e470138a1ba5721ca1 100644
+--- a/dist/detector.js
++++ b/dist/detector.js
+@@ -12,7 +12,6 @@ const firstBytes = {
+     0x49: 'tiff',
+     0x4d: 'tiff',
+     0x52: 'webp',
+-    0x69: 'icns',
+     0x89: 'png',
+     0xff: 'jpg',
+ };
+diff --git a/dist/types/index.js b/dist/types/index.js
+index f7cce831e173b7d6291461c8945ab13a51e4f2e8..a906580e16065e7cc36788111357265c20ebf04a 100644
+--- a/dist/types/index.js
++++ b/dist/types/index.js
+@@ -6,14 +6,10 @@ const bmp_1 = require("./bmp");
+ const cur_1 = require("./cur");
+ const dds_1 = require("./dds");
+ const gif_1 = require("./gif");
+-const heif_1 = require("./heif");
+-const icns_1 = require("./icns");
+ const ico_1 = require("./ico");
+ const j2c_1 = require("./j2c");
+ const jp2_1 = require("./jp2");
+ const jpg_1 = require("./jpg");
+-const jxl_1 = require("./jxl");
+-const jxl_stream_1 = require("./jxl-stream");
+ const ktx_1 = require("./ktx");
+ const png_1 = require("./png");
+ const pnm_1 = require("./pnm");
+@@ -27,14 +23,10 @@ exports.typeHandlers = {
+     cur: cur_1.CUR,
+     dds: dds_1.DDS,
+     gif: gif_1.GIF,
+-    heif: heif_1.HEIF,
+-    icns: icns_1.ICNS,
+     ico: ico_1.ICO,
+     j2c: j2c_1.J2C,
+     jp2: jp2_1.JP2,
+     jpg: jpg_1.JPG,
+-    jxl: jxl_1.JXL,
+-    'jxl-stream': jxl_stream_1.JXLStream,
+     ktx: ktx_1.KTX,
+     png: png_1.PNG,
+     pnm: pnm_1.PNM,

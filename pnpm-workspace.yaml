@@ -10,3 +10,4 @@ onlyBuiltDependencies:
 patchedDependencies:
   "@expo/ui@57.0.11": patches/@expo__ui@57.0.11.patch
   "@shopify/react-native-skia@2.6.2": patches/@shopify__react-native-skia@2.6.2.patch
+  "image-size@1.2.1": patches/image-size@1.2.1.patch

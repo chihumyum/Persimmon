@@ -102,7 +102,7 @@ See [architecture](docs/architecture.md),
 
 Requirements:
 
-- Node.js 22.23.1
+- Node.js 22.23.1 (default) or 24.19.0
 - pnpm 10.17.1 through Corepack
 - Xcode for iOS native builds
 - Android Studio and Android SDK for Android native builds
