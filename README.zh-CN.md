@@ -16,8 +16,7 @@ APK 已可下载；iOS 可以从源码构建，但还没有公开的 App Store �
 - **把空间留给书。** 界面围绕阅读本身，不加入社交、广告或与阅读无关的工具。
 - **为触控反复调校的翻页。**
   动画跟随手势，连续快速滑动时依然流畅，也支持像用拇指拨动纸书一样快速往回翻页。
-- **不需要再注册一个账号。** 可选同步直接使用用户自己的 Google Drive 私有
-  `appDataFolder`，同步书籍与阅读进度。
+- **免费的云同步。** 在设备间同步书籍与阅读进度，无需 Persimmon 订阅。
 
 <p align="center">
 
@@ -51,14 +50,6 @@ https://github.com/user-attachments/assets/57c71d41-e69f-4fd6-9cf0-4000cb227ba9
   <sub>iPad 阅读界面与本地字体选择</sub>
 </p>
 
-## 下载
-
-- [下载最新版 Android APK](https://downloads.persimmon.cc/android/Persimmon-android-latest.apk)
-- [支持、隐私政策与使用条款](https://persimmon.cc)
-
-官方 Android 包名为 `dev.chihum.persimmon`。发布前会验证包名、target
-SDK、签名证书、APK v2 签名和 SHA-256。
-
 ## 已实现
 
 - 导入无 DRM、可重排的 EPUB 2 / EPUB 3。
@@ -67,8 +58,7 @@ SDK、签名证书、APK v2 签名和 SHA-256。
 - 搜索、筛选和排序书库，并查看、导出、同步或删除书籍。
 - 章节级分页、目录跳转、排版和主题设置、本地字体、稳定位置续读。
 - Skia 原生页面和可交互、经过物理参数调校的翻页动画。
-- 可选使用用户自己的 Google Drive 私有 `appDataFolder`
-  同步书籍与进度，无需 Persimmon 账号。
+- 使用免费的云同步在设备间同步书籍与阅读进度。
 - 英语、简繁中文、日语、韩语、德语、法语、西班牙语和巴西葡萄牙语界面。
 
 Google Drive 同步已在双端实现，但分发版能否登录还取决于 Google

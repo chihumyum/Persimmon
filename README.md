@@ -17,8 +17,8 @@ can be built from source, but there is no public App Store or TestFlight build.
   of surrounding it with social features, ads, or unrelated tools.
 - **Page turns tuned for touch.** The animation follows the gesture, stays fluid
   through repeated swipes, and supports quickly thumbing backward through pages.
-- **Optional sync without another account.** Books and reading progress can
-  synchronize through the user's own private Google Drive `appDataFolder`.
+- **Free cloud sync.** Keep books and reading progress synchronized across
+  devices without a Persimmon subscription.
 
 <p align="center">
 
@@ -52,16 +52,6 @@ Real screens from Persimmon on iPhone, iPad, and Android.
   <sub>iPad reading view and local font selection</sub>
 </p>
 
-## Download
-
-- [Download the latest Android APK](https://downloads.persimmon.cc/android/Persimmon-android-latest.apk)
-- [Support, privacy, and terms](https://persimmon.cc)
-
-Android packages published by this project use the application ID
-`dev.chihum.persimmon`. Release artifacts are checked for their package name,
-target SDK, signing certificate, APK v2 signature, and SHA-256 checksum before
-publication.
-
 ## What works
 
 - Import DRM-free, reflowable EPUB 2 and EPUB 3 books.
@@ -74,8 +64,7 @@ publication.
   controls, themes, local fonts, and persistent positions.
 - Render native Skia pages and an interactive, physically tuned page-turn
   animation.
-- Optionally synchronize books and progress through the user's private Google
-  Drive `appDataFolder`, without a Persimmon account.
+- Synchronize books and progress across devices with free cloud sync.
 - Use the interface in English, Simplified or Traditional Chinese, Japanese,
   Korean, German, French, Spanish, and Brazilian Portuguese.
 
