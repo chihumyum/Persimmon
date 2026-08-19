@@ -3,6 +3,11 @@ packages:
   - packages/*
   - vendor/react-native-natural-page-turn/packages/*
 
+# Dependabot enforces a 72-hour release-age window, while the pinned Expo SDK
+# can require a newer @expo/metro-runtime release to resolve the existing lockfile.
+minimumReleaseAgeExclude:
+  - "@expo/metro-runtime"
+
 onlyBuiltDependencies:
   - "@shopify/react-native-skia"
   - esbuild
