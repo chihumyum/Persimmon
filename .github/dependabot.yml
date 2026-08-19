@@ -11,12 +11,14 @@ updates:
         - "expo*"
     open-pull-requests-limit: 5
     ignore:
-      # This package carries a version-specific Android rendering patch.
-      # Upgrade it manually together with patches/@shopify__react-native-skia@*.patch.
+      # These packages carry version-specific local patches.
+      # Upgrade them manually together with their files under patches/.
+      - dependency-name: "@expo/ui"
       - dependency-name: "@shopify/react-native-skia"
-      # Expo SDK selects the compatible React Native core versions.
-      # Upgrade these through the Expo SDK workflow instead of independently.
-      - dependency-name: "react-native"
+      - dependency-name: "image-size"
+      # Expo SDK selects the compatible React Native family versions.
+      # Upgrade them through the Expo SDK workflow instead of independently.
+      - dependency-name: "react-native*"
       - dependency-name: "@react-native/*"
     groups:
       expo-and-react-native:
