@@ -10,7 +10,8 @@ Native Skia 原生绘制。
 
 Android APK 可以从本仓库的
 [Releases](https://github.com/chihumyum/Persimmon/releases) 或
-[Persimmon 官网](https://persimmon.cc) 下载。iOS App 可通过官网的 App Store 跳转链接下载。
+[Persimmon 官网](https://persimmon.cc) 下载。iOS App 可通过官网的 App
+Store 跳转链接下载。
 
 ## 为什么是 Persimmon
 
