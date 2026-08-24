@@ -26,6 +26,8 @@ const R2_APK_KEY = "android/Persimmon-android-latest.apk";
 const R2_CHECKSUM_KEY = `${R2_APK_KEY}.sha256`;
 const PUBLIC_DOWNLOAD_ORIGIN = "https://downloads.persimmon.cc";
 const GITHUB_RELEASE_REPOSITORY = "chihumyum/Persimmon";
+const GITHUB_RELEASE_TARGET =
+  process.env.PERSIMMON_RELEASE_TARGET?.trim() || "main";
 const WRANGLER_VERSION = "4.119.0";
 
 interface Options {
@@ -432,7 +434,7 @@ async function createOrUpdateDraftGithubRelease(
       "--repo",
       GITHUB_RELEASE_REPOSITORY,
       "--target",
-      "main",
+      GITHUB_RELEASE_TARGET,
       "--title",
       release.releaseTitle,
       "--notes-file",

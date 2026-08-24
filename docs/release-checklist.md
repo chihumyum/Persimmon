@@ -43,20 +43,25 @@ Before creating a production build:
 
 ## Android build and publication
 
-1. Run `pnpm release:android` or select an already finished EAS `production-apk`
-   build.
-2. Run `pnpm publish:android:apk -- --dry-run <apk>` and verify package name,
-   version, target SDK, APK v2 signature, production certificate, and SHA-256.
-3. Review release notes and the source commit that will be tagged.
-4. Manually dispatch the Android publish workflow from `main` in the
-   `production` environment.
-5. The workflow creates a draft GitHub Release, uploads the versioned APK and
+1. Review release notes and the exact `main` commit that will be tagged.
+2. Manually dispatch the Android build-and-publish workflow from `main` in the
+   `production` environment. Leave the EAS build ID blank to create a new
+   `production-apk` build; provide a finished build ID only when recovering a
+   failed publication for the same source commit.
+3. The workflow waits for EAS, verifies that the build belongs to the workflow
+   commit, and checks the package name, version, target SDK, APK v2 signature,
+   production certificate, and SHA-256.
+4. The workflow creates a draft GitHub Release, uploads the versioned APK and
    checksum, downloads and verifies them, updates and verifies stable R2 for a
    stable release, then publishes the GitHub Release.
-6. For a prerelease, confirm that the stable R2 APK and checksum did not change.
-7. Install the downloaded GitHub artifact on a physical device and exercise
+5. For a prerelease, confirm that the stable R2 APK and checksum did not change.
+6. Install the downloaded GitHub artifact on a physical device and exercise
    import, reading, relaunch persistence, export, and Google Drive if OAuth is
    available to that build.
+
+For a local preflight or an unusual recovery, `pnpm release:android` still
+downloads a signed build and `pnpm publish:android:apk -- --dry-run <apk>`
+verifies it without changing GitHub or R2.
 
 Never recreate a historical GitHub Release unless its artifact, tag, source
 commit, signing certificate, and checksum can all be proven to match.

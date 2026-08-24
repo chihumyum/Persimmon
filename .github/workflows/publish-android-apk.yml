@@ -1,11 +1,12 @@
-name: Publish Android APK publicly (manual)
+name: Build and publish Android APK publicly (manual)
 
 on:
   workflow_dispatch:
     inputs:
       eas_build_id:
-        description: Finished EAS Android production-apk build ID
-        required: true
+        description:
+          Optional finished EAS production-apk build ID (leave blank to build)
+        required: false
         type: string
       release_notes:
         description: Optional public release notes
@@ -26,11 +27,11 @@ permissions:
 
 jobs:
   publish:
-    name: Download and publish signed APK
+    name: Build, verify, and publish signed APK
     if: github.ref == 'refs/heads/main'
     environment: production
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 180
 
     steps:
       - name: Check out repository
@@ -66,20 +67,42 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Find existing production APK
+      - name: Build or select the exact production APK
         working-directory: apps/persimmon
         env:
           EAS_BUILD_ID: ${{ inputs.eas_build_id }}
         run: |
-          if ! [[ "$EAS_BUILD_ID" =~ ^[0-9a-f-]{36}$ ]]; then
-            echo "Invalid EAS build ID: $EAS_BUILD_ID" >&2
-            exit 1
+          if [[ -n "$EAS_BUILD_ID" ]]; then
+            if ! [[ "$EAS_BUILD_ID" =~ ^[0-9a-f-]{36}$ ]]; then
+              echo "Invalid EAS build ID: $EAS_BUILD_ID" >&2
+              exit 1
+            fi
+            eas build:view "$EAS_BUILD_ID" --json > "$RUNNER_TEMP/eas-build.json"
+          else
+            eas build \
+              --platform android \
+              --profile production-apk \
+              --non-interactive \
+              --wait \
+              --json > "$RUNNER_TEMP/eas-build-list.json"
+            test "$(jq 'length' "$RUNNER_TEMP/eas-build-list.json")" = "1"
+            jq '.[0]' "$RUNNER_TEMP/eas-build-list.json" > "$RUNNER_TEMP/eas-build.json"
           fi
 
-          eas build:view "$EAS_BUILD_ID" --json > "$RUNNER_TEMP/eas-build.json"
           test "$(jq -r '.platform' "$RUNNER_TEMP/eas-build.json")" = "ANDROID"
           test "$(jq -r '.status' "$RUNNER_TEMP/eas-build.json")" = "FINISHED"
           test "$(jq -r '.buildProfile' "$RUNNER_TEMP/eas-build.json")" = "production-apk"
+          test "$(jq -r '.gitCommitHash' "$RUNNER_TEMP/eas-build.json")" = "$GITHUB_SHA"
+
+          build_id="$(jq -r '.id' "$RUNNER_TEMP/eas-build.json")"
+          test -n "$build_id"
+          test "$build_id" != "null"
+          {
+            echo "### Android production build"
+            echo
+            echo "- EAS build ID: \`$build_id\`"
+            echo "- Source commit: \`$GITHUB_SHA\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Download exact EAS artifact
         run: |
@@ -103,4 +126,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PERSIMMON_RELEASE_NOTES: ${{ inputs.release_notes }}
           PERSIMMON_RELEASE_PRERELEASE: ${{ inputs.prerelease }}
+          PERSIMMON_RELEASE_TARGET: ${{ github.sha }}
         run: pnpm publish:android:apk -- dist/Persimmon-android-source.apk

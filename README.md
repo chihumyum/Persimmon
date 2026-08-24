@@ -157,8 +157,10 @@ pnpm publish:android:apk -- --dry-run path/to/Persimmon.apk
 
 A stable Android publication writes the same verified APK to this repository's
 GitHub Releases and the stable Cloudflare R2 download. A GitHub prerelease never
-replaces the stable R2 object. Publishing is maintainer-only and manually
-dispatched.
+replaces the stable R2 object. Maintainers can manually dispatch the Android
+workflow from `main` and leave the EAS build ID blank for a one-click build,
+verification, GitHub Release, and R2 publication. An existing finished build ID
+can be supplied only to recover a failed publication for the same source commit.
 
 ## Contributing and security
 
