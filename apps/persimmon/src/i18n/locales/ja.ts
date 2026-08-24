@@ -259,12 +259,12 @@ export const ja = {
       version: "バージョン",
       copyright: "© 2026 Persimmon. All rights reserved.",
     },
-    developer: {
-      label: "開発者について",
-      websiteAccessibility: "Qihang Yang のウェブサイト chihum.dev を開く",
-      websiteFailedTitle: "開発者ウェブサイトを開けませんでした",
-      websiteFailedMessage:
-        "後でもう一度お試しいただくか、ブラウザで chihum.dev を開いてください。",
+    sourceCode: {
+      label: "ソースコードを見る",
+      accessibility: "GitHub で Persimmon のソースコードを開く",
+      failedTitle: "ソースコードを開けませんでした",
+      failedMessage:
+        "後でもう一度お試しいただくか、ブラウザで github.com/chihumyum/Persimmon を開いてください。",
     },
   },
   reader: {

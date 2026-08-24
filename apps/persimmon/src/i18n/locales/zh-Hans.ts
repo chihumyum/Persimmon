@@ -241,11 +241,12 @@ export const zhHans = {
       version: "版本",
       copyright: "© 2026 Persimmon. All rights reserved.",
     },
-    developer: {
-      label: "了解开发者",
-      websiteAccessibility: "打开 Qihang Yang 的个人网站 chihum.dev",
-      websiteFailedTitle: "无法打开开发者网站",
-      websiteFailedMessage: "请稍后重试，或在浏览器中访问 chihum.dev。",
+    sourceCode: {
+      label: "查看源代码",
+      accessibility: "在 GitHub 上打开 Persimmon 源代码",
+      failedTitle: "无法打开源代码",
+      failedMessage:
+        "请稍后重试，或在浏览器中访问 github.com/chihumyum/Persimmon。",
     },
   },
   reader: {

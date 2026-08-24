@@ -32,7 +32,8 @@ import { uiSize, uiSpace, uiTypography } from "../components/ui-tokens";
 import { type DataClearTarget } from "./app-data-settings-section";
 import { SettingsDocumentSurface } from "./settings-document-modal";
 
-const DEVELOPER_WEBSITE_URL = "https://chihum.dev";
+const SOURCE_CODE_URL = "https://github.com/chihumyum/Persimmon";
+const SOURCE_CODE_REPOSITORY = "github.com/chihumyum/Persimmon";
 
 export function syncDescription(status: GoogleDriveSyncStatus): string {
   switch (status.phase) {
@@ -293,13 +294,13 @@ export function LibrarySettingsModal({
       );
     }
   };
-  const openDeveloperWebsite = async () => {
+  const openSourceCode = async () => {
     try {
-      await Linking.openURL(DEVELOPER_WEBSITE_URL);
+      await Linking.openURL(SOURCE_CODE_URL);
     } catch {
       Alert.alert(
-        t("settings.developer.websiteFailedTitle"),
-        t("settings.developer.websiteFailedMessage"),
+        t("settings.sourceCode.failedTitle"),
+        t("settings.sourceCode.failedMessage"),
       );
     }
   };
@@ -492,6 +493,14 @@ export function LibrarySettingsModal({
             onPress={() => void sendFeedback()}
           />
           <ReaderSettingsActionRow
+            accessibilityLabel={t("settings.sourceCode.accessibility")}
+            description={SOURCE_CODE_REPOSITORY}
+            showsChevron
+            theme={theme}
+            title={t("settings.sourceCode.label")}
+            onPress={() => void openSourceCode()}
+          />
+          <ReaderSettingsActionRow
             showsChevron
             theme={theme}
             title={t("settings.about.licenses")}
@@ -503,14 +512,6 @@ export function LibrarySettingsModal({
             theme={theme}
             title={t("settings.about.version")}
             value={versionLabel}
-          />
-          <ReaderSettingsActionRow
-            accessibilityLabel={t("settings.developer.websiteAccessibility")}
-            showsChevron
-            theme={theme}
-            title={t("settings.developer.label")}
-            tone="accent"
-            onPress={() => void openDeveloperWebsite()}
           />
         </SettingsSection>
       </ScrollView>

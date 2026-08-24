@@ -256,12 +256,12 @@ export const ptBR = {
       version: "Versão",
       copyright: "© 2026 Persimmon. Todos os direitos reservados.",
     },
-    developer: {
-      label: "Conheça o desenvolvedor",
-      websiteAccessibility: "Abrir o site de Qihang Yang, chihum.dev",
-      websiteFailedTitle: "Não foi possível abrir o site do desenvolvedor",
-      websiteFailedMessage:
-        "Tente novamente mais tarde ou visite chihum.dev no navegador.",
+    sourceCode: {
+      label: "Ver código-fonte",
+      accessibility: "Abrir o código-fonte do Persimmon no GitHub",
+      failedTitle: "Não foi possível abrir o código-fonte",
+      failedMessage:
+        "Tente novamente mais tarde ou visite github.com/chihumyum/Persimmon no navegador.",
     },
   },
   reader: {

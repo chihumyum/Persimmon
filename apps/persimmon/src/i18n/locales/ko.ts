@@ -249,12 +249,12 @@ export const ko = {
       version: "버전",
       copyright: "© 2026 Persimmon. All rights reserved.",
     },
-    developer: {
-      label: "개발자 만나기",
-      websiteAccessibility: "Qihang Yang의 웹사이트 chihum.dev 열기",
-      websiteFailedTitle: "개발자 웹사이트를 열 수 없음",
-      websiteFailedMessage:
-        "나중에 다시 시도하거나 브라우저에서 chihum.dev를 방문하세요.",
+    sourceCode: {
+      label: "소스 코드 보기",
+      accessibility: "GitHub에서 Persimmon 소스 코드 열기",
+      failedTitle: "소스 코드를 열 수 없음",
+      failedMessage:
+        "나중에 다시 시도하거나 브라우저에서 github.com/chihumyum/Persimmon을 방문하세요.",
     },
   },
   reader: {
