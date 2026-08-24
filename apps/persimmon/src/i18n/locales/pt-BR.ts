@@ -257,7 +257,8 @@ export const ptBR = {
       copyright: "© 2026 Persimmon. Todos os direitos reservados.",
     },
     sourceCode: {
-      label: "Ver código-fonte",
+      label: "Visitar o repositório",
+      description: "Faça um fork, relate problemas ou contribua com código",
       accessibility: "Abrir o código-fonte do Persimmon no GitHub",
       failedTitle: "Não foi possível abrir o código-fonte",
       failedMessage:

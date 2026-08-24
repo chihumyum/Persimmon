@@ -33,7 +33,6 @@ import { type DataClearTarget } from "./app-data-settings-section";
 import { SettingsDocumentSurface } from "./settings-document-modal";
 
 const SOURCE_CODE_URL = "https://github.com/chihumyum/Persimmon";
-const SOURCE_CODE_REPOSITORY = "github.com/chihumyum/Persimmon";
 
 export function syncDescription(status: GoogleDriveSyncStatus): string {
   switch (status.phase) {
@@ -494,7 +493,7 @@ export function LibrarySettingsModal({
           />
           <ReaderSettingsActionRow
             accessibilityLabel={t("settings.sourceCode.accessibility")}
-            description={SOURCE_CODE_REPOSITORY}
+            description={t("settings.sourceCode.description")}
             showsChevron
             theme={theme}
             title={t("settings.sourceCode.label")}

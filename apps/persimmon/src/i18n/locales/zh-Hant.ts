@@ -238,7 +238,8 @@ export const zhHant = {
       copyright: "© 2026 Persimmon. All rights reserved.",
     },
     sourceCode: {
-      label: "檢視原始碼",
+      label: "瀏覽程式碼倉庫",
+      description: "歡迎 Fork、提交 Issue 或貢獻程式碼",
       accessibility: "在 GitHub 上開啟 Persimmon 原始碼",
       failedTitle: "無法開啟原始碼",
       failedMessage:

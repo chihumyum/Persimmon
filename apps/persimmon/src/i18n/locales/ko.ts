@@ -250,7 +250,8 @@ export const ko = {
       copyright: "© 2026 Persimmon. All rights reserved.",
     },
     sourceCode: {
-      label: "소스 코드 보기",
+      label: "저장소 방문하기",
+      description: "Fork, 이슈 제보, 코드 기여를 환영합니다",
       accessibility: "GitHub에서 Persimmon 소스 코드 열기",
       failedTitle: "소스 코드를 열 수 없음",
       failedMessage:

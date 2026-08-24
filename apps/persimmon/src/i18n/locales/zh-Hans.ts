@@ -242,7 +242,8 @@ export const zhHans = {
       copyright: "© 2026 Persimmon. All rights reserved.",
     },
     sourceCode: {
-      label: "查看源代码",
+      label: "访问代码仓库",
+      description: "欢迎 Fork、提交 Issue 或贡献代码",
       accessibility: "在 GitHub 上打开 Persimmon 源代码",
       failedTitle: "无法打开源代码",
       failedMessage:

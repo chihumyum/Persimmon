@@ -260,7 +260,8 @@ export const ja = {
       copyright: "© 2026 Persimmon. All rights reserved.",
     },
     sourceCode: {
-      label: "ソースコードを見る",
+      label: "リポジトリを見る",
+      description: "Fork、Issue の報告、コードへの貢献を歓迎します",
       accessibility: "GitHub で Persimmon のソースコードを開く",
       failedTitle: "ソースコードを開けませんでした",
       failedMessage:

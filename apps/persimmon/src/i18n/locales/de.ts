@@ -264,7 +264,8 @@ export const de = {
       copyright: "© 2026 Persimmon. Alle Rechte vorbehalten.",
     },
     sourceCode: {
-      label: "Quellcode ansehen",
+      label: "Repository besuchen",
+      description: "Forke das Projekt, melde Probleme oder trage Code bei",
       accessibility: "Persimmon-Quellcode auf GitHub öffnen",
       failedTitle: "Quellcode konnte nicht geöffnet werden",
       failedMessage:

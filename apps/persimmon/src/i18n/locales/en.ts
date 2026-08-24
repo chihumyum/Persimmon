@@ -259,7 +259,8 @@ export const en = {
       copyright: "© 2026 Persimmon. All rights reserved.",
     },
     sourceCode: {
-      label: "View Source Code",
+      label: "Visit Repository",
+      description: "Fork the project, report issues, or contribute code",
       accessibility: "Open the Persimmon source code on GitHub",
       failedTitle: "Could Not Open Source Code",
       failedMessage:
