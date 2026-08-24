@@ -1,5 +1,5 @@
 diff --git a/android/build.gradle b/android/build.gradle
-index 0c4185fab0f13d2472429255a99751e504905441..082eb539ff68df67802face4ed87bce74dd597b9 100644
+index 6ff3a19b03c7a929664df3bc06b1ddd86ccb7670..3f5ad42eb42e42f56ddc583c4239afc3ced1ce4c 100644
 --- a/android/build.gradle
 +++ b/android/build.gradle
 @@ -39,6 +39,7 @@ dependencies {
@@ -11,10 +11,10 @@ index 0c4185fab0f13d2472429255a99751e504905441..082eb539ff68df67802face4ed87bce7
    implementation 'androidx.compose.material3:material3-android:1.5.0-alpha17'
    implementation 'androidx.lifecycle:lifecycle-runtime:2.10.0'
 diff --git a/android/src/main/java/expo/modules/ui/ExpoUIModule.kt b/android/src/main/java/expo/modules/ui/ExpoUIModule.kt
-index 5f2b07c5503ab320966da05119059d9694f03444..5fc2c098063adb8a381409f8835aa3327a27cc4a 100644
+index ef400a6cd3b53f2e7185ad789c0f29fb09e7a1fe..f371bf050aecafa87a9aa269a06710c4401631ee 100644
 --- a/android/src/main/java/expo/modules/ui/ExpoUIModule.kt
 +++ b/android/src/main/java/expo/modules/ui/ExpoUIModule.kt
-@@ -191,10 +191,18 @@ class ExpoUIModule : Module() {
+@@ -204,10 +204,18 @@ class ExpoUIModule : Module() {
        val hide by AsyncFunction()
        val expand by AsyncFunction()
        val partialExpand by AsyncFunction()
@@ -35,15 +35,17 @@ index 5f2b07c5503ab320966da05119059d9694f03444..5fc2c098063adb8a381409f8835aa332
      }
  
 diff --git a/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt b/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
-index e800ec2adafaa7120724b30b65ef37bfbe8a72c2..dddb23d211fabae0fd5049fb825841cf61978d5c 100644
+index e90edd3fd682f1a53a0950526ae63fe20f3efd24..e9a3a86a60f3ffaef50ec6b5e34c79b89b9b2272 100644
 --- a/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
 +++ b/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
-@@ -3,6 +3,13 @@
- package expo.modules.ui
- 
+@@ -6,8 +6,15 @@ import android.app.Activity
+ import android.app.Dialog
+ import android.content.Context
  import android.graphics.Color
 +import android.os.Build
+ import android.view.KeyEvent
 +import android.view.Window
+ import android.view.inputmethod.InputMethodManager
 +import androidx.activity.compose.BackHandler
 +import androidx.compose.foundation.layout.WindowInsets
 +import androidx.compose.foundation.layout.WindowInsetsSides
@@ -52,18 +54,15 @@ index e800ec2adafaa7120724b30b65ef37bfbe8a72c2..dddb23d211fabae0fd5049fb825841cf
  import androidx.compose.material3.BottomSheetDefaults
  import androidx.compose.material3.ExperimentalMaterial3Api
  import androidx.compose.material3.ModalBottomSheet
-@@ -11,7 +18,10 @@ import androidx.compose.material3.contentColorFor
- import androidx.compose.material3.rememberModalBottomSheetState
+@@ -17,6 +24,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
  import androidx.compose.runtime.Composable
+ import androidx.compose.runtime.DisposableEffect
  import androidx.compose.runtime.LaunchedEffect
 +import androidx.compose.runtime.SideEffect
  import androidx.compose.runtime.rememberCoroutineScope
-+import androidx.compose.ui.platform.LocalView
-+import androidx.compose.ui.window.DialogWindowProvider
- import expo.modules.kotlin.records.Field
- import expo.modules.kotlin.records.Record
- import expo.modules.kotlin.types.OptimizedRecord
-@@ -22,6 +32,13 @@ import expo.modules.kotlin.views.OptimizedComposeProps
+ import androidx.compose.ui.platform.LocalView
+ import androidx.compose.ui.window.DialogWindowProvider
+@@ -30,6 +38,13 @@ import expo.modules.kotlin.views.OptimizedComposeProps
  import kotlinx.coroutines.withContext
  import kotlin.coroutines.cancellation.CancellationException
  
@@ -77,7 +76,7 @@ index e800ec2adafaa7120724b30b65ef37bfbe8a72c2..dddb23d211fabae0fd5049fb825841cf
  @OptimizedRecord
  data class ModalBottomSheetPropertiesRecord(
    @Field val shouldDismissOnBackPress: Boolean = true,
-@@ -35,6 +52,7 @@ data class ModalBottomSheetViewProps(
+@@ -43,6 +58,7 @@ data class ModalBottomSheetViewProps(
    val containerColor: Color? = null,
    val contentColor: Color? = null,
    val scrimColor: Color? = null,
@@ -85,7 +84,7 @@ index e800ec2adafaa7120724b30b65ef37bfbe8a72c2..dddb23d211fabae0fd5049fb825841cf
    val showDragHandle: Boolean = true,
    val sheetGesturesEnabled: Boolean = true,
    val properties: ModalBottomSheetPropertiesRecord = ModalBottomSheetPropertiesRecord(),
-@@ -47,7 +65,8 @@ fun FunctionalComposableScope.ModalBottomSheetContent(
+@@ -96,7 +112,8 @@ fun FunctionalComposableScope.ModalBottomSheetContent(
    hide: AsyncFunctionHandle<Unit>,
    expand: AsyncFunctionHandle<Unit>,
    partialExpand: AsyncFunctionHandle<Unit>,
@@ -95,7 +94,7 @@ index e800ec2adafaa7120724b30b65ef37bfbe8a72c2..dddb23d211fabae0fd5049fb825841cf
  ) {
    val sheetState = rememberModalBottomSheetState(props.skipPartiallyExpanded)
    val scope = rememberCoroutineScope()
-@@ -107,11 +126,27 @@ fun FunctionalComposableScope.ModalBottomSheetContent(
+@@ -156,11 +173,27 @@ fun FunctionalComposableScope.ModalBottomSheetContent(
        else -> null
      },
      properties = ModalBottomSheetProperties(
@@ -121,11 +120,11 @@ index e800ec2adafaa7120724b30b65ef37bfbe8a72c2..dddb23d211fabae0fd5049fb825841cf
 +      }
 +      (parent as? DialogWindowProvider)?.window?.let(::configureNavigationBar)
 +    }
+     ForwardKeyEventsToActivity(appContext.currentActivity)
      Children(UIComposableScope(), filter = { !isSlotView(it) })
    }
- 
 diff --git a/build/jetpack-compose/ModalBottomSheet/index.d.ts b/build/jetpack-compose/ModalBottomSheet/index.d.ts
-index ddf89aa5ac11610459f6db8abd96a3673f01054f..32f0056aa6c8d3a4e8d55fd09761b258a2aec8fc 100644
+index ddf89aa5ac11610459f6db8abd96a3673f01054f..ceb651192b4bbde1023901921f943f37e936d4a7 100644
 --- a/build/jetpack-compose/ModalBottomSheet/index.d.ts
 +++ b/build/jetpack-compose/ModalBottomSheet/index.d.ts
 @@ -44,6 +44,12 @@ export interface ModalBottomSheetProps {
@@ -142,7 +141,7 @@ index ddf89aa5ac11610459f6db8abd96a3673f01054f..32f0056aa6c8d3a4e8d55fd09761b258
       * Immediately opens the bottom sheet in full screen.
       * @default false
 diff --git a/build/swift-ui/modifiers/presentationModifiers.d.ts b/build/swift-ui/modifiers/presentationModifiers.d.ts
-index 36de99f5d92b1b0f2c340ba4508109f1a0b6045b..b884f8e4a77cc3b98518379d1f12e6dc4720c1f6 100644
+index 36de99f5d92b1b0f2c340ba4508109f1a0b6045b..86867a437428ba3ae015d33265c6b370b700f6f5 100644
 --- a/build/swift-ui/modifiers/presentationModifiers.d.ts
 +++ b/build/swift-ui/modifiers/presentationModifiers.d.ts
 @@ -17,6 +17,7 @@ export type PresentationDetent = 'medium' | 'large' | {
@@ -162,7 +161,7 @@ index 36de99f5d92b1b0f2c340ba4508109f1a0b6045b..b884f8e4a77cc3b98518379d1f12e6dc
  /**
   * Controls the visibility of the drag indicator on a sheet.
 diff --git a/expo-module.config.json b/expo-module.config.json
-index d6d6fbf586eea92a69b7dfb6d44b17499a2ae388..0ebfddaa1dea66cfe4db659048f58939feae87a5 100644
+index 5627fcd9a1c515aaf3da2c3ce6dda92fbb851e21..0ebfddaa1dea66cfe4db659048f58939feae87a5 100644
 --- a/expo-module.config.json
 +++ b/expo-module.config.json
 @@ -6,12 +6,6 @@
@@ -173,34 +172,14 @@ index d6d6fbf586eea92a69b7dfb6d44b17499a2ae388..0ebfddaa1dea66cfe4db659048f58939
 -    "publication": {
 -      "groupId": "expo.modules.ui",
 -      "artifactId": "expo.modules.ui",
--      "version": "57.0.11",
+-      "version": "57.0.13",
 -      "repository": "local-maven-repo"
 -    }
 +    "modules": ["expo.modules.ui.ExpoUIModule"]
    }
  }
-diff --git a/expo-module.config.json.rej b/expo-module.config.json.rej
-new file mode 100644
-index 0000000000000000000000000000000000000000..50f1312f1456285fb61d0b9ad8b09d97f87cb861
---- /dev/null
-+++ b/expo-module.config.json.rej
-@@ -0,0 +1,14 @@
-+@@ -6,12 +6,6 @@
-+     "modules": ["ExpoUIModule"]
-+   },
-+   "android": {
-+-    "modules": ["expo.modules.ui.ExpoUIModule"],
-+-    "publication": {
-+-      "groupId": "expo.modules.ui",
-+-      "artifactId": "expo.modules.ui",
-+-      "version": "57.0.10",
-+-      "repository": "local-maven-repo"
-+-    }
-++    "modules": ["expo.modules.ui.ExpoUIModule"]
-+   }
-+ }
 diff --git a/ios/Modifiers/PresentationModifiers.swift b/ios/Modifiers/PresentationModifiers.swift
-index f38528425a883a5d4dc0c1ad85e62dd278fc24b3..3deb9b0757cd9c23081e846cdbcf4d79c6f010ed 100644
+index f38528425a883a5d4dc0c1ad85e62dd278fc24b3..3022d2108d2cc1768e7e1ef0afedd39cb0488043 100644
 --- a/ios/Modifiers/PresentationModifiers.swift
 +++ b/ios/Modifiers/PresentationModifiers.swift
 @@ -41,6 +41,7 @@ private func parsePresentationDetent(_ detent: Either<PresentationDetentPreset,
