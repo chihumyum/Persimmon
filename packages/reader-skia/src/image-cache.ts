@@ -21,6 +21,15 @@ export class DecodedImageCache {
   private readonly entries = new Map<string, CacheEntry>();
   private readonly pending = new Map<string, Promise<SkImage | null>>();
   private readonly unavailable = new Set<string>();
+  /**
+   * Assets the reader currently needs resident. `pinOnly` runs before the
+   * matching loads finish, so `load` must consult this set when it installs
+   * an image: an entry installed as unpinned is the first eviction candidate
+   * once the pinned pages alone exceed the byte budget, which silently drops
+   * the visible page back to "unrequested" and stalls page turns waiting for
+   * it.
+   */
+  private pinnedAssetIds: ReadonlySet<string> = new Set();
   private usageCounter = 0;
   private decodedBytes = 0;
   private contentRevision = 0;
@@ -102,7 +111,7 @@ export class DecodedImageCache {
             image,
             decodedBytes,
             lastUsed: ++this.usageCounter,
-            pinned: false,
+            pinned: this.pinnedAssetIds.has(assetId),
           });
           this.decodedBytes += decodedBytes;
           this.contentRevision += 1;
@@ -128,6 +137,7 @@ export class DecodedImageCache {
   }
 
   pinOnly(assetIds: ReadonlySet<string>): void {
+    this.pinnedAssetIds = assetIds;
     for (const [assetId, entry] of this.entries) {
       entry.pinned = assetIds.has(assetId);
       if (entry.pinned) {
@@ -141,6 +151,7 @@ export class DecodedImageCache {
     this.entries.clear();
     this.pending.clear();
     this.unavailable.clear();
+    this.pinnedAssetIds = new Set();
     this.decodedBytes = 0;
     this.contentRevision = 0;
   }

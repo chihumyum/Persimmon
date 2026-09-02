@@ -5,12 +5,14 @@ import { DecodedImageCache } from "./image-cache";
 vi.mock("@shopify/react-native-skia", () => ({
   Skia: {
     Data: {
-      fromBytes: () => ({ dispose: vi.fn() }),
+      fromBytes: (bytes: Uint8Array) => ({ bytes, dispose: vi.fn() }),
     },
     Image: {
-      MakeImageFromEncoded: () => ({
-        width: () => 4,
-        height: () => 8,
+      // Decoded size follows the encoded length so tests can steer how many
+      // bytes each installed image costs against the cache budget.
+      MakeImageFromEncoded: (data: { bytes: Uint8Array }) => ({
+        width: () => data.bytes.length,
+        height: () => 1,
       }),
     },
   },
@@ -56,5 +58,64 @@ describe("decoded image cache state", () => {
     await expect(cache.load("cover", loader)).resolves.toBe(first);
     expect(loader).toHaveBeenCalledTimes(1);
     expect(cache.revision).toBe(1);
+  });
+});
+
+describe("decoded image cache pinning", () => {
+  // A cover-heavy book: each pinned page image decodes to more than a third of
+  // the budget, so the pinned set alone overflows it.
+  const decodedBytesPerImage = 400;
+  const encodedLength = decodedBytesPerImage / 4;
+  const loader = async () => new Uint8Array(encodedLength);
+
+  it("keeps images resident when pinned before their load finishes", async () => {
+    const cache = new DecodedImageCache(1000);
+    const pinned = new Set(["page-1", "page-2", "page-3"]);
+    cache.pinOnly(pinned);
+
+    await Promise.all(
+      [...pinned].map((assetId) => cache.load(assetId, loader)),
+    );
+
+    for (const assetId of pinned) {
+      expect(cache.getStatus(assetId)).toBe("ready");
+      expect(cache.get(assetId)).toBeDefined();
+    }
+    expect(cache.sizeInBytes).toBe(3 * decodedBytesPerImage);
+  });
+
+  it("still evicts unpinned images to make room", async () => {
+    const cache = new DecodedImageCache(1000);
+    cache.pinOnly(new Set(["page-1", "page-2"]));
+    await cache.load("stale", loader);
+    await cache.load("page-1", loader);
+    await cache.load("page-2", loader);
+
+    expect(cache.getStatus("stale")).toBe("unrequested");
+    expect(cache.getStatus("page-1")).toBe("ready");
+    expect(cache.getStatus("page-2")).toBe("ready");
+    expect(cache.sizeInBytes).toBe(2 * decodedBytesPerImage);
+  });
+
+  it("installs a load that finishes after the pinned set moved on as unpinned", async () => {
+    const cache = new DecodedImageCache(1000);
+    let finishLoad: ((bytes: Uint8Array) => void) | undefined;
+    const slowLoader = () =>
+      new Promise<Uint8Array>((resolve) => {
+        finishLoad = resolve;
+      });
+
+    cache.pinOnly(new Set(["old"]));
+    const pending = cache.load("old", slowLoader);
+    cache.pinOnly(new Set(["page-1", "page-2"]));
+    await Promise.resolve();
+    finishLoad?.(new Uint8Array(encodedLength));
+    await pending;
+    await cache.load("page-1", loader);
+    await cache.load("page-2", loader);
+
+    expect(cache.getStatus("old")).toBe("unrequested");
+    expect(cache.getStatus("page-1")).toBe("ready");
+    expect(cache.getStatus("page-2")).toBe("ready");
   });
 });
