@@ -31,7 +31,8 @@ jobs:
     if: github.ref == 'refs/heads/main'
     environment: production
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    # The free EAS queue has taken close to three hours; GitHub caps a job at 360.
+    timeout-minutes: 360
 
     steps:
       - name: Check out repository
