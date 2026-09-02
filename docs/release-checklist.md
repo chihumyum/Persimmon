@@ -1,6 +1,6 @@
 # Release checklist
 
-Updated: 2026-08-19
+Updated: 2026-09-03
 
 This document separates source readiness, signed-build verification, public
 distribution, and app-store submission. Passing repository checks is not proof
@@ -35,7 +35,7 @@ Before creating a production build:
 ## Application identity
 
 - Bundle ID and Android application ID: `dev.chihum.persimmon`.
-- User-visible version: `0.1.0` until an intentional version change is made.
+- User-visible version: `0.1.1` until an intentional version change is made.
 - Apple development team default: `G7ZSY874L2`.
 - Public support address: `support@persimmon.cc`.
 - Android public releases must target SDK 36 and carry the recorded production
