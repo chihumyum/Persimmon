@@ -36,7 +36,7 @@
     "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm check:expo && pnpm check:native-bundles"
   },
   "devDependencies": {
-    "@eslint/js": "9.39.1",
+    "@eslint/js": "9.39.5",
     "@persimmon/epub-import": "workspace:*",
     "@types/node": "22.20.1",
     "eslint": "9.39.1",
