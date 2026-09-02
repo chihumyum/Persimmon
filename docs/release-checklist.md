@@ -27,7 +27,9 @@ Before creating a production build:
 - [ ] `pnpm install --frozen-lockfile` succeeds with Node 22.23.1 and pnpm
       10.17.1.
 - [ ] `pnpm verify` passes, including Expo Doctor and iOS/Android production
-      JavaScript bundles.
+      JavaScript bundles. The gate compares the lockfile with the installed Expo
+      version only; newer Expo SDK patch releases surface through the weekly
+      `expo-sdk-drift` issue and Dependabot instead of failing CI.
 - [ ] Gitleaks reports no unexplained findings.
 - [ ] Production dependency advisories have been reviewed; unresolved build tool
       findings are recorded with their reachability and upstream status.

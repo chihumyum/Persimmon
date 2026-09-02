@@ -14,7 +14,9 @@
     "native:ios:release:device": "bash scripts/install-ios-release-device.sh",
     "bundle:android": "expo export --platform android --output-dir .expo/bundle-check/android",
     "bundle:ios": "expo export --platform ios --output-dir .expo/bundle-check/ios",
-    "doctor": "expo-doctor",
+    "doctor": "EXPO_DOCTOR_SKIP_DEPENDENCY_VERSION_CHECK=1 expo-doctor",
+    "deps:check": "CI=1 EXPO_OFFLINE=1 expo install --check",
+    "deps:drift": "CI=1 expo install --check",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

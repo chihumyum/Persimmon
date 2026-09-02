@@ -22,7 +22,7 @@
     "crash:android": "tsx scripts/capture-android-crash.ts",
     "crash:android:bugreport": "tsx scripts/capture-android-crash.ts --bugreport",
     "stress:android:page-turn": "tsx scripts/stress-android-page-turn.ts",
-    "check:expo": "pnpm --filter @persimmon/app run doctor",
+    "check:expo": "pnpm --filter @persimmon/app run doctor && pnpm --filter @persimmon/app run deps:check",
     "check:native-bundles": "pnpm --filter @persimmon/app run bundle:ios && pnpm --filter @persimmon/app run bundle:android",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

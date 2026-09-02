@@ -14,9 +14,9 @@ overrides:
   uuid@7.0.3: 11.1.1
 
 patchedDependencies:
-  '@expo/ui@57.0.13':
+  '@expo/ui':
     hash: 51959f747b603c364cb52bf12c41e8f08241198adc8cf0c9cf88c4a88da40fb5
-    path: patches/@expo__ui@57.0.13.patch
+    path: patches/@expo__ui.patch
   '@shopify/react-native-skia@2.6.2':
     hash: 30d02479f6e96c23b85d73243cdc90ca32cf2c7a7aff6eccae56f2a1d8468e98
     path: patches/@shopify__react-native-skia@2.6.2.patch

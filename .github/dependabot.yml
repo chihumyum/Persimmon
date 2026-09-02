@@ -13,13 +13,22 @@ updates:
     ignore:
       # These packages carry version-specific local patches.
       # Upgrade them manually together with their files under patches/.
-      - dependency-name: "@expo/ui"
+      # The @expo/ui patch is keyed by name only, so it follows SDK patches.
       - dependency-name: "@shopify/react-native-skia"
       - dependency-name: "image-size"
-      # Expo SDK selects the compatible React Native family versions.
-      # Upgrade them through the Expo SDK workflow instead of independently.
+      # Expo SDK majors and the React Native family are upgraded together by
+      # hand. Dependabot may only follow the patch releases Expo publishes for
+      # the current SDK, which is what expo-doctor expects the lockfile to track.
+      - dependency-name: "expo*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@expo/*"
+        update-types: ["version-update:semver-major"]
       - dependency-name: "react-native*"
+        update-types:
+          ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "@react-native/*"
+        update-types:
+          ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       expo-and-react-native:
         patterns:

@@ -1,0 +1,89 @@
+name: Expo SDK drift
+
+# Advisory only. The blocking verify gate compares the lockfile with the
+# installed Expo version, so Expo publishing new SDK patch releases cannot turn
+# main red. This job asks Expo for the latest patches once a week and keeps a
+# single issue open while the lockfile is behind.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: expo-sdk-drift
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Compare the lockfile with the latest Expo SDK patches
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository and public submodules
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 10.17.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Ask Expo for newer SDK patch releases
+        id: drift
+        run: |
+          set +e
+          pnpm --filter @persimmon/app run deps:drift > "$RUNNER_TEMP/drift.txt" 2>&1
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/drift.txt"
+
+      - name: Ensure the tracking label exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create expo-sdk-drift \
+            --description "The lockfile is behind the latest Expo SDK patch releases" \
+            --color d93f0b --force
+
+      - name: Open or update the drift issue
+        if: steps.drift.outputs.status != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # shellcheck disable=SC2016 # the backticks are Markdown, not commands
+          body="$(printf '`expo install --check` found newer Expo SDK patch releases on %s.\n\n```\n%s\n```\n\nTo catch up, run `pnpm --filter @persimmon/app exec expo install --fix`, then `pnpm install`, confirm the patches under `patches/` still apply, and open a pull request. This is advisory: `pnpm verify` only checks the lockfile against the installed Expo version.' "$(date -u +%Y-%m-%d)" "$(cat "$RUNNER_TEMP/drift.txt")")"
+          number="$(gh issue list --label expo-sdk-drift --state open --json number --jq '.[0].number')"
+          if [[ -n "$number" ]]; then
+            gh issue edit "$number" --body "$body"
+          else
+            gh issue create \
+              --title "Expo SDK patch releases are ahead of the lockfile" \
+              --label expo-sdk-drift \
+              --body "$body"
+          fi
+
+      - name: Close the drift issue once the lockfile is current
+        if: steps.drift.outputs.status == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          number="$(gh issue list --label expo-sdk-drift --state open --json number --jq '.[0].number')"
+          if [[ -n "$number" ]]; then
+            gh issue close "$number" \
+              --comment "The lockfile now matches the latest Expo SDK patch releases."
+          fi
