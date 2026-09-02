@@ -8,10 +8,14 @@ Persimmon（柿子）是一个本地优先的 iOS / Android
 EPUB 阅读器。它不使用 WebView：可重排 EPUB 会先编译成平台无关、带版本的文档模型，再由共享分页器生成页面，最后交给 React
 Native Skia 原生绘制。
 
-Android APK 可以从本仓库的
-[Releases](https://github.com/chihumyum/Persimmon/releases) 或
-[Persimmon 官网](https://persimmon.cc) 下载。iOS App 可通过官网的 App
-Store 跳转链接下载。
+下载 Persimmon：
+
+- iOS：[App Store](https://apps.apple.com/us/app/persimmon-reader/id6800041021)
+- Android：[最新 APK](https://downloads.persimmon.cc/android/Persimmon-android-latest.apk)
+  （同目录下有 SHA-256 校验文件），或本仓库的
+  [Releases](https://github.com/chihumyum/Persimmon/releases)
+
+[Persimmon 官网](https://persimmon.cc) 提供同样的下载链接。
 
 ## 为什么是 Persimmon
 

@@ -12,8 +12,10 @@ that a new binary has been installed on physical devices or accepted by a store.
   stable Cloudflare R2 URL.
 - GitHub: future Android releases belong to `chihumyum/Persimmon`; the website
   repository is not an application release repository.
-- iOS: source and build tooling are present, but there is no public App Store or
-  TestFlight distribution.
+- iOS: Persimmon Reader is live on the App Store
+  (https://apps.apple.com/us/app/persimmon-reader/id6800041021, App Store
+  Connect app `6800041021`). New builds ship through `pnpm release:ios`,
+  Transporter, and App Review.
 - Google Play: no public listing is claimed.
 
 ## Source gate
@@ -66,16 +68,19 @@ verifies it without changing GitHub or R2.
 Never recreate a historical GitHub Release unless its artifact, tag, source
 commit, signing certificate, and checksum can all be proven to match.
 
-## iOS build boundary
+## iOS build and submission
 
-`pnpm release:ios` can request a production EAS build, but successful App Store
-distribution additionally requires an active Apple Developer membership, current
-agreements, valid distribution credentials and provisioning, an App Store
-Connect record, privacy metadata, screenshots, review information, and a
-physical-device acceptance pass for the exact archive.
-
-Until those steps are completed, documentation must say that iOS can be built
-from source rather than claiming public availability.
+1. `pnpm release:ios` requests a production EAS build for the clean, pushed
+   `main` commit and downloads the IPA and its SHA-256 to `dist/ios/`. EAS
+   manages the build number remotely; the user-visible version comes from
+   `apps/persimmon/app.json` and must be raised before any submission that
+   follows a released version.
+2. Upload the IPA with Transporter, attach the build to the matching version
+   record in App Store Connect, and submit it for review.
+3. Distribution credentials, provisioning, and the App Store Connect record
+   already exist. App Review still expects current agreements, privacy metadata,
+   screenshots, review information, and a physical-device acceptance pass for
+   the exact archive.
 
 ## Google Drive boundary
 
