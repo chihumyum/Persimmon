@@ -51,7 +51,9 @@ Before creating a production build:
 2. Manually dispatch the Android build-and-publish workflow from `main` in the
    `production` environment. Leave the EAS build ID blank to create a new
    `production-apk` build; provide a finished build ID only when recovering a
-   failed publication for the same source commit.
+   failed publication for the same source commit. Enable `build_locally` to
+   build on the GitHub runner with the same EAS production credentials when the
+   EAS queue is slow; leave the build ID blank.
 3. The workflow waits for EAS, verifies that the build belongs to the workflow
    commit, and checks the package name, version, target SDK, APK v2 signature,
    production certificate, and SHA-256.

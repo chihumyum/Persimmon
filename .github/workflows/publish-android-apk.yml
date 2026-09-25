@@ -3,6 +3,12 @@ name: Build and publish Android APK publicly (manual)
 on:
   workflow_dispatch:
     inputs:
+      build_locally:
+        description:
+          Build on the GitHub runner instead of waiting in the EAS queue
+        required: true
+        default: false
+        type: boolean
       eas_build_id:
         description:
           Optional finished EAS production-apk build ID (leave blank to build)
@@ -58,6 +64,13 @@ jobs:
         with:
           packages: platform-tools
 
+      - name: Set up Java for the runner build
+        if: inputs.build_locally
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
       - name: Install Android verification tools
         run: sdkmanager "build-tools;36.0.0"
 
@@ -71,6 +84,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build or select the exact production APK
+        if: ${{ !inputs.build_locally }}
         working-directory: apps/persimmon
         env:
           EAS_BUILD_ID: ${{ inputs.eas_build_id }}
@@ -107,7 +121,33 @@ jobs:
             echo "- Source commit: \`$GITHUB_SHA\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Build the signed APK on this runner
+        if: inputs.build_locally
+        working-directory: apps/persimmon
+        env:
+          EAS_BUILD_ID: ${{ inputs.eas_build_id }}
+        run: |
+          if [[ -n "$EAS_BUILD_ID" ]]; then
+            echo "Choose either a runner build or an existing EAS build ID."
+            exit 1
+          fi
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          eas build \
+            --platform android \
+            --profile production-apk \
+            --local \
+            --non-interactive \
+            --output "$GITHUB_WORKSPACE/dist/Persimmon-android-source.apk"
+          test -s "$GITHUB_WORKSPACE/dist/Persimmon-android-source.apk"
+          {
+            echo "### Android production build"
+            echo
+            echo "- Builder: GitHub runner using EAS production credentials"
+            echo "- Source commit: \`$GITHUB_SHA\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Download exact EAS artifact
+        if: ${{ !inputs.build_locally }}
         run: |
           build_url="$(jq -r '.artifacts.applicationArchiveUrl // .artifacts.buildUrl' "$RUNNER_TEMP/eas-build.json")"
           test -n "$build_url"
