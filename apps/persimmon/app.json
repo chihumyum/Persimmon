@@ -5,6 +5,17 @@
     "plugins": [
       "expo-router",
       "expo-system-ui",
+      "expo-font",
+      "expo-sharing",
+      "expo-splash-screen",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "enableSceneSupport": true
+          }
+        }
+      ],
       [
         "expo-localization",
         {
@@ -37,11 +48,12 @@
     ],
     "name": "Persimmon",
     "slug": "persimmon",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "dev.chihum.persimmon",
+      "buildNumber": "10",
       "icon": "./assets/icons/persimmon.icon",
       "supportsTablet": true,
       "privacyManifests": {

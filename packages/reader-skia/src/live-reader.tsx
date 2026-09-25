@@ -224,7 +224,6 @@ import {
   spreadPageTurnPaintPasses,
   type PageTurnFace,
 } from "./page-turn-stack";
-import { reduceNoteReturnAnchor, type NoteReturnAnchor } from "./note-return";
 import {
   compareTextPositions,
   createTextSelectionDocument,
@@ -277,9 +276,6 @@ export interface ReaderUiMessages {
   readonly returnToText: (label: string) => string;
   readonly jumpTo: (label: string) => string;
   readonly noteHint: string;
-  readonly returnToReference: (noteKind: string, label: string) => string;
-  readonly returnToTextButton: string;
-  readonly dismissReturnButton: (noteKind: string) => string;
 }
 
 export const DEFAULT_READER_UI_MESSAGES: ReaderUiMessages = {
@@ -297,12 +293,7 @@ export const DEFAULT_READER_UI_MESSAGES: ReaderUiMessages = {
   openNote: (noteKind, label) => `Open ${noteKind} ${label}`,
   returnToText: (label) => `Return to text ${label}`,
   jumpTo: (label) => `Go to ${label}`,
-  noteHint: "Opens the note and provides a button to return to the text",
-  returnToReference: (noteKind, label) =>
-    `Return to the ${noteKind} reference ${label}`,
-  returnToTextButton: "↩ Return to Text",
-  dismissReturnButton: (noteKind) =>
-    `Dismiss the return-to-${noteKind}-reference button`,
+  noteHint: "Opens the note",
 };
 
 export interface LiveReaderProps {
@@ -942,16 +933,6 @@ function LazyReaderEngine({
     () => readerGenerationRef.current === readerGeneration,
     [readerGeneration],
   );
-  const [noteReturnAnchor, setNoteReturnAnchor] = useState<
-    NoteReturnAnchor | undefined
-  >();
-  const clearNoteReturnAnchor = useCallback(
-    () =>
-      setNoteReturnAnchor((current) =>
-        reduceNoteReturnAnchor(current, { type: "cleared" }),
-      ),
-    [],
-  );
   const selectionDocument = useMemo(
     () => createTextSelectionDocument(book),
     [book],
@@ -1069,35 +1050,10 @@ function LazyReaderEngine({
   );
   const handleLinkPress = useCallback(
     (region: PageLinkRegion) => {
-      if (region.link.kind === "note-backlink" && noteReturnAnchor) {
-        if (jumpToPosition(noteReturnAnchor.position)) {
-          clearNoteReturnAnchor();
-        }
-        return;
-      }
-      if (!jumpToPosition(region.link.target)) {
-        return;
-      }
-      if (region.link.kind === "note-reference") {
-        setNoteReturnAnchor((current) =>
-          reduceNoteReturnAnchor(current, {
-            type: "note-opened",
-            position: region.source,
-            label: region.link.label,
-            ...(region.link.noteKind ? { noteKind: region.link.noteKind } : {}),
-          }),
-        );
-      } else {
-        clearNoteReturnAnchor();
-      }
+      jumpToPosition(region.link.target);
     },
-    [clearNoteReturnAnchor, jumpToPosition, noteReturnAnchor],
+    [jumpToPosition],
   );
-  const returnToNoteReference = useCallback(() => {
-    if (noteReturnAnchor && jumpToPosition(noteReturnAnchor.position)) {
-      clearNoteReturnAnchor();
-    }
-  }, [clearNoteReturnAnchor, jumpToPosition, noteReturnAnchor]);
 
   useEffect(
     () => () => {
@@ -1151,9 +1107,6 @@ function LazyReaderEngine({
       }
       mutateReaderState((current) =>
         resolveScheduledPageTurn(current, turnId, true),
-      );
-      setNoteReturnAnchor((current) =>
-        reduceNoteReturnAnchor(current, { type: "page-turned" }),
       );
     },
     [mutateReaderState, readerGenerationIsCurrent],
@@ -1387,21 +1340,9 @@ function LazyReaderEngine({
         return;
       }
       if (pageTurnAnimation === "none") {
-        let turned = false;
-        mutateReaderState((current) => {
-          const next = turnPageImmediately(
-            current,
-            requestedDirection,
-            adjacent,
-          );
-          turned = next !== current;
-          return next;
-        });
-        if (turned) {
-          setNoteReturnAnchor((current) =>
-            reduceNoteReturnAnchor(current, { type: "page-turned" }),
-          );
-        }
+        mutateReaderState((current) =>
+          turnPageImmediately(current, requestedDirection, adjacent),
+        );
         return;
       }
       deliveredTurnStartsRef.current.push(Date.now());
@@ -2995,9 +2936,6 @@ function LazyReaderEngine({
         presentationRequiredTurnIdsRef.current.add(turnId);
         presentedTurnIdsRef.current.add(turnId);
         mutateReaderState(() => createPageTurnSchedulerState(directEntry.to));
-        setNoteReturnAnchor((current) =>
-          reduceNoteReturnAnchor(current, { type: "page-turned" }),
-        );
         return;
       }
       if (event === "started") {
@@ -3021,9 +2959,6 @@ function LazyReaderEngine({
           presentationRequiredTurnIdsRef.current.add(turnId);
           presentedTurnIdsRef.current.add(turnId);
           mutateReaderState(() => createPageTurnSchedulerState(directEntry.to));
-          setNoteReturnAnchor((current) =>
-            reduceNoteReturnAnchor(current, { type: "page-turned" }),
-          );
         }
         presentationAckCountRef.current += 1;
         recordScheduledTurnLaneStarted(
@@ -4081,77 +4016,6 @@ function LazyReaderEngine({
             ]}
           />
         ))}
-        {noteReturnAnchor ? (
-          <View
-            style={[
-              styles.noteReturnControls,
-              {
-                backgroundColor: theme.panel,
-                borderColor: theme.border,
-                shadowColor: theme.shadow,
-              },
-              noteReturnAnchor.presentation === "compact"
-                ? styles.noteReturnControlsCompact
-                : styles.noteReturnControlsExpanded,
-            ]}
-          >
-            <Pressable
-              accessibilityLabel={uiMessages.returnToReference(
-                noteKindLabel(uiMessages, noteReturnAnchor.noteKind),
-                noteReturnAnchor.label,
-              )}
-              accessibilityRole="button"
-              hitSlop={6}
-              onPress={returnToNoteReference}
-              style={({ pressed }) => [
-                styles.noteReturnButton,
-                noteReturnAnchor.presentation === "compact"
-                  ? styles.noteReturnButtonCompact
-                  : styles.noteReturnButtonExpanded,
-                pressed && { backgroundColor: theme.panelRaised },
-              ]}
-            >
-              <Text
-                accessibilityElementsHidden
-                importantForAccessibility="no"
-                style={[styles.noteReturnText, { color: theme.accentStrong }]}
-              >
-                {noteReturnAnchor.presentation === "compact"
-                  ? "↩"
-                  : uiMessages.returnToTextButton}
-              </Text>
-            </Pressable>
-            <View
-              style={[
-                styles.noteReturnDivider,
-                { backgroundColor: theme.border },
-              ]}
-            />
-            <Pressable
-              accessibilityLabel={uiMessages.dismissReturnButton(
-                noteKindLabel(uiMessages, noteReturnAnchor.noteKind),
-              )}
-              accessibilityRole="button"
-              hitSlop={6}
-              onPress={clearNoteReturnAnchor}
-              style={({ pressed }) => [
-                styles.noteReturnDismissButton,
-                pressed && { backgroundColor: theme.panelRaised },
-              ]}
-            >
-              <Text
-                accessibilityElementsHidden
-                importantForAccessibility="no"
-                style={[
-                  styles.noteReturnDismissText,
-                  { color: theme.secondaryText },
-                ]}
-              >
-                ×
-              </Text>
-            </Pressable>
-          </View>
-        ) : null}
       </View>
     ) : null;
   return (
@@ -4459,67 +4323,6 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     zIndex: 12,
-  },
-  noteReturnButton: {
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 44,
-  },
-  noteReturnButtonCompact: {
-    width: 44,
-  },
-  noteReturnButtonExpanded: {
-    flex: 1,
-    paddingHorizontal: 14,
-  },
-  noteReturnControls: {
-    alignItems: "stretch",
-    backgroundColor: "rgba(251, 247, 240, 0.96)",
-    borderColor: "rgba(166, 79, 45, 0.28)",
-    borderRadius: 22,
-    borderWidth: StyleSheet.hairlineWidth,
-    bottom: 52,
-    flexDirection: "row",
-    overflow: "hidden",
-    position: "absolute",
-    elevation: 3,
-    shadowColor: "#3d3026",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.14,
-    shadowRadius: 6,
-  },
-  noteReturnControlsCompact: {
-    right: 16,
-    width: 88,
-  },
-  noteReturnControlsExpanded: {
-    right: 16,
-    width: 180,
-  },
-  noteReturnDismissButton: {
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 44,
-    width: 44,
-  },
-  noteReturnDismissText: {
-    color: "#8b6f62",
-    fontSize: 18,
-    fontWeight: "500",
-    lineHeight: 20,
-  },
-  noteReturnDivider: {
-    alignSelf: "stretch",
-    backgroundColor: "rgba(166, 79, 45, 0.18)",
-    width: StyleSheet.hairlineWidth,
-  },
-  noteReturnButtonPressed: {
-    backgroundColor: "rgba(244, 229, 216, 0.98)",
-  },
-  noteReturnText: {
-    color: "#9d4728",
-    fontSize: 13,
-    fontWeight: "600",
   },
   accessibilityProgress: {
     height: 1,

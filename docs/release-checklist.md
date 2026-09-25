@@ -1,6 +1,6 @@
 # Release checklist
 
-Updated: 2026-09-03
+Updated: 2026-09-25
 
 This document separates source readiness, signed-build verification, public
 distribution, and app-store submission. Passing repository checks is not proof
@@ -39,7 +39,7 @@ Before creating a production build:
 ## Application identity
 
 - Bundle ID and Android application ID: `dev.chihum.persimmon`.
-- User-visible version: `0.1.1` until an intentional version change is made.
+- User-visible version: `0.1.2` until an intentional version change is made.
 - Apple development team default: `G7ZSY874L2`.
 - Public support address: `support@persimmon.cc`.
 - Android public releases must target SDK 36 and carry the recorded production
@@ -72,6 +72,14 @@ commit, signing certificate, and checksum can all be proven to match.
 
 ## iOS build and submission
 
+Xcode 27 builds require the UIKit scene lifecycle to launch on iOS 27. Keep
+`expo-build-properties`' `ios.enableSceneSupport` enabled with Expo 57.0.23 or
+newer, as described in
+[Expo's migration guide](https://github.com/expo/fyi/blob/main/ios-scene-lifecycle.md).
+The local device installer regenerates the native project before building.
+Verify a cold launch on the device after installation; build and signature
+checks alone do not prove startup compatibility.
+
 1. `pnpm release:ios` requests a production EAS build for the clean, pushed
    `main` commit and downloads the IPA and its SHA-256 to `dist/ios/`. EAS
    manages the build number remotely; the user-visible version comes from
@@ -83,6 +91,14 @@ commit, signing certificate, and checksum can all be proven to match.
    already exist. App Review still expects current agreements, privacy metadata,
    screenshots, review information, and a physical-device acceptance pass for
    the exact archive.
+
+For a local Transporter build, set `ios.buildNumber` in the app config and
+reserve the same number with
+`eas build:version:set --platform ios --profile production` before prebuild.
+Archive the Release scheme with Xcode, then export with
+`method=app-store-connect`, `destination=export`, and
+`manageAppVersionAndBuildNumber=false`. This produces an IPA locally without
+uploading or submitting it; EAS builds continue to use the remote build number.
 
 ## Google Drive boundary
 

@@ -53,7 +53,6 @@ import type {
 import { resetReaderTypography } from "../reader/reader-typography-preview";
 import { ToolbarBreadcrumbCarousel } from "../reader/toolbar-breadcrumb-carousel";
 import { useAndroidReaderBack } from "../reader/use-android-reader-back";
-import { PageTurnTuningPanel } from "./page-turn-tuning-panel";
 import { ReadingSettingsSheet } from "./reading-settings-sheet";
 import {
   flattenNavigation,
@@ -61,7 +60,6 @@ import {
 } from "./table-of-contents-panel";
 
 const ReaderSurface = React.lazy(() => import("../reader/reader-surface"));
-const SHOW_PAGE_TURN_TUNING = false;
 
 interface Viewport {
   readonly width: number;
@@ -91,7 +89,6 @@ export interface ReaderScreenProps {
   readonly onPageTurnAnimationChange: (
     animation: ReaderPageTurnAnimation,
   ) => void;
-  readonly onPageTurnTuningChange: (tuning: ReaderPageTurnTuning) => void;
   readonly onRapidPageTurnEnabledChange: (enabled: boolean) => void;
   readonly onProgress: (progress: ReaderProgress) => void;
   readonly onRemoveFont: (familyId: string) => Promise<void>;
@@ -114,7 +111,6 @@ export function ReaderScreen({
   onImportFont,
   onLayoutChange,
   onPageTurnAnimationChange,
-  onPageTurnTuningChange,
   onRapidPageTurnEnabledChange,
   onProgress,
   onRemoveFont,
@@ -139,7 +135,6 @@ export function ReaderScreen({
     ReaderAppearanceSettings | undefined
   >();
   const [layoutTransitioning, setLayoutTransitioning] = useState(false);
-  const [tuningVisible, setTuningVisible] = useState(false);
   const layoutTransitioningRef = useRef(false);
   const pendingLayoutRef = useRef<ReaderLayoutMode | undefined>(undefined);
   const layoutFrameRef = useRef(0);
@@ -201,14 +196,13 @@ export function ReaderScreen({
       return;
     }
     setOverlay({ kind: "none" });
-    setTuningVisible(false);
   }, [overlay, returnFromTypographyPreview]);
   useAndroidReaderBack({
     // Native modal sheets own Android Back. Keeping the React Native handler
     // active at the same time can consume one press twice (navigate within the
     // sheet and then immediately close it).
     enabled: overlay.kind === "none",
-    panelVisible: overlay.kind !== "none" || tuningVisible,
+    panelVisible: overlay.kind !== "none",
     onBack,
     onClosePanels: closePanels,
   });
@@ -336,7 +330,6 @@ export function ReaderScreen({
       return;
     }
     if (controlsVisible) {
-      setTuningVisible(false);
       setOverlay({ kind: "none" });
     }
     setControlsVisible((visible) => !visible);
@@ -345,7 +338,6 @@ export function ReaderScreen({
     setTurning(nextTurning);
     if (nextTurning) {
       setControlsVisible(false);
-      setTuningVisible(false);
       setOverlay({ kind: "none" });
     }
   }, []);
@@ -353,7 +345,6 @@ export function ReaderScreen({
     setSelecting(nextSelecting);
     if (nextSelecting) {
       setControlsVisible(false);
-      setTuningVisible(false);
       setOverlay({ kind: "none" });
     }
   }, []);
@@ -463,7 +454,6 @@ export function ReaderScreen({
             icon="toc"
             label={t("reader.toolbar.toc")}
             onPress={() => {
-              setTuningVisible(false);
               setOverlay((current) =>
                 current.kind === "toc" ? { kind: "none" } : { kind: "toc" },
               );
@@ -484,7 +474,6 @@ export function ReaderScreen({
               icon="typography"
               label={t("reader.toolbar.settings")}
               onPress={() => {
-                setTuningVisible(false);
                 setOverlay((current) =>
                   current.kind === "settings"
                     ? { kind: "none" }
@@ -497,32 +486,8 @@ export function ReaderScreen({
               }}
               theme={theme}
             />
-            {SHOW_PAGE_TURN_TUNING ? (
-              <ReaderChromeButton
-                accessibilityLabel={t("reader.toolbar.tuningAccessibility")}
-                icon="tuning"
-                label={t("reader.toolbar.tuning")}
-                onPress={() => {
-                  setOverlay({ kind: "none" });
-                  setTuningVisible((visible) => !visible);
-                }}
-                theme={theme}
-              />
-            ) : null}
           </View>
         </View>
-      ) : null}
-
-      {!turning && !selecting && controlsVisible && tuningVisible ? (
-        <PageTurnTuningPanel
-          theme={theme}
-          bottom={
-            insets.bottom + uiSize.readerChrome + uiSize.readerChromePanelGap
-          }
-          tuning={pageTurnTuning}
-          onChange={onPageTurnTuningChange}
-          onClose={() => setTuningVisible(false)}
-        />
       ) : null}
 
       <ReadingSettingsSheet

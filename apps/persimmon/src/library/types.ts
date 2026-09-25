@@ -182,7 +182,7 @@ export const DEFAULT_READER_CLICK_PAGE_TURN_TUNING: ReaderClickPageTurnTuning =
     liftVelocity: 0.5,
     liftToLeft: 4,
     curvatureRelaxation: 10,
-    playbackSpeed: 1,
+    playbackSpeed: 1.1,
   };
 
 export const DEFAULT_READER_GESTURE_PAGE_TURN_TUNING: ReaderGesturePageTurnTuning =
@@ -193,9 +193,9 @@ export const DEFAULT_READER_GESTURE_PAGE_TURN_TUNING: ReaderGesturePageTurnTunin
     curvatureRelaxation: 10,
     pageWeight: 1,
     commitThreshold: 0.8,
-    minimumSpeedScale: 1,
+    minimumSpeedScale: 1.25,
     maximumSpeedScale: 5,
-    velocityGain: 0.2,
+    velocityGain: 0.25,
     idleDecaySeconds: 0.1,
   };
 
@@ -205,10 +205,10 @@ export const DEFAULT_READER_REVERSE_CLICK_PAGE_TURN_TUNING: ReaderReverseClickPa
     curvatureRelaxation: 10,
     incomingLandingStartProgress: 0.15,
     incomingRevealStartProgress: 0,
-    incomingRevealEndProgress: 0.18,
+    incomingRevealEndProgress: 0.15,
     incomingSettleDurationSeconds: 0.7,
     incomingSettleEasingPower: 3,
-    playbackSpeed: 1,
+    playbackSpeed: 1.1,
   };
 
 export const DEFAULT_READER_REVERSE_GESTURE_PAGE_TURN_TUNING: ReaderReverseGesturePageTurnTuning =

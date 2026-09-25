@@ -12,7 +12,7 @@ describe("automatic page turn tuning", () => {
       liftVelocity: 0.5,
       liftToLeft: 4,
       curvatureRelaxation: 10,
-      playbackSpeed: 1,
+      playbackSpeed: 1.1,
     });
     expect(
       DEFAULT_AUTOMATIC_PAGE_TURN_TUNING.liftVelocity *

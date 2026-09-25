@@ -172,7 +172,7 @@ index 5627fcd9a1c515aaf3da2c3ce6dda92fbb851e21..0ebfddaa1dea66cfe4db659048f58939
 -    "publication": {
 -      "groupId": "expo.modules.ui",
 -      "artifactId": "expo.modules.ui",
--      "version": "57.0.13",
+-      "version": "57.0.20",
 -      "repository": "local-maven-repo"
 -    }
 +    "modules": ["expo.modules.ui.ExpoUIModule"]

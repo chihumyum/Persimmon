@@ -22,10 +22,10 @@ export const DEFAULT_REVERSE_AUTOMATIC_PAGE_TURN_TUNING: ReverseAutomaticPageTur
     curvatureRelaxation: 10,
     incomingLandingStartProgress: 0.15,
     incomingRevealStartProgress: 0,
-    incomingRevealEndProgress: 0.18,
+    incomingRevealEndProgress: 0.15,
     incomingSettleDurationSeconds: 0.7,
     incomingSettleEasingPower: 3,
-    playbackSpeed: 1,
+    playbackSpeed: 1.1,
   };
 
 export function normalizeReverseAutomaticPageTurnTuning(

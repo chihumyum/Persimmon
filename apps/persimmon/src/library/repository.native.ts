@@ -438,11 +438,17 @@ class NativeLibraryRepository implements LibraryRepository {
     if (!serialized) {
       return normalizeSettings(undefined);
     }
+    let stored: unknown;
     try {
-      return normalizeSettings(JSON.parse(serialized));
+      stored = JSON.parse(serialized);
     } catch {
       return normalizeSettings(undefined);
     }
+    const settings = normalizeSettings(stored);
+    if (JSON.stringify(settings) !== serialized) {
+      await this.saveSettings(settings);
+    }
+    return settings;
   }
 
   async saveSettings(settings: ReaderSettings): Promise<void> {

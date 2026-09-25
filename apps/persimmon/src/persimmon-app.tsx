@@ -44,7 +44,6 @@ import {
   type ReaderAppearanceSettings,
   type ReaderColorMode,
   type ReaderPageTurnAnimation,
-  type ReaderPageTurnTuning,
   type ReaderSettings,
   type ReaderThemeName,
 } from "./library/types";
@@ -578,12 +577,6 @@ export function PersimmonApp() {
     },
     [updateReaderSettings],
   );
-  const updatePageTurnTuning = useCallback(
-    (pageTurnTuning: ReaderPageTurnTuning) => {
-      updateReaderSettings({ pageTurnTuning });
-    },
-    [updateReaderSettings],
-  );
   const updatePageTurnAnimation = useCallback(
     (pageTurnAnimation: ReaderPageTurnAnimation) => {
       updateReaderSettings({ pageTurnAnimation });
@@ -749,7 +742,6 @@ export function PersimmonApp() {
         onImportFont={importFont}
         onLayoutChange={updateLayout}
         onPageTurnAnimationChange={updatePageTurnAnimation}
-        onPageTurnTuningChange={updatePageTurnTuning}
         onRapidPageTurnEnabledChange={updateRapidPageTurnEnabled}
         onProgress={updateProgress}
         onRemoveFont={removeFont}

@@ -13,10 +13,10 @@ describe("reverse page turn tuning", () => {
       curvatureRelaxation: 10,
       incomingLandingStartProgress: 0.15,
       incomingRevealStartProgress: 0,
-      incomingRevealEndProgress: 0.18,
+      incomingRevealEndProgress: 0.15,
       incomingSettleDurationSeconds: 0.7,
       incomingSettleEasingPower: 3,
-      playbackSpeed: 1,
+      playbackSpeed: 1.1,
     });
     const normalized = normalizeReverseAutomaticPageTurnTuning({
       releaseX: 2,

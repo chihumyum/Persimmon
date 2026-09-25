@@ -22,7 +22,7 @@ export const DEFAULT_AUTOMATIC_PAGE_TURN_TUNING: AutomaticPageTurnTuning = {
   liftVelocity: 0.5,
   liftToLeft: 4,
   curvatureRelaxation: 10,
-  playbackSpeed: 1,
+  playbackSpeed: 1.1,
 };
 
 export function normalizeAutomaticPageTurnTuning(

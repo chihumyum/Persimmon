@@ -8,6 +8,13 @@ derived_data="${PERSIMMON_IOS_DERIVED_DATA:-$app_root/ios/build/release-device}"
 development_team="${PERSIMMON_APPLE_TEAM_ID:-G7ZSY874L2}"
 app_path="$derived_data/Build/Products/Release-iphoneos/Persimmon.app"
 
+# Apply config plugins before building an existing generated project, including
+# the scene lifecycle required by the iOS 27 SDK.
+(
+  cd "$app_root"
+  CI=1 pnpm exec expo prebuild --platform ios --no-install --no-clean
+)
+
 # pnpm patch hashes are part of a native package's real path. Refresh the Pods
 # project before building so it cannot keep compiling a superseded patched
 # dependency after `pnpm install` changes that path.

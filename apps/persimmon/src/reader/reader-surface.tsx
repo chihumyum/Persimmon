@@ -139,11 +139,6 @@ function FontBackedReaderSurface({
         t("reader.accessibility.returnToText", { label }),
       jumpTo: (label) => t("reader.accessibility.jumpTo", { label }),
       noteHint: t("reader.accessibility.noteHint"),
-      returnToReference: (noteKind, label) =>
-        t("reader.accessibility.returnToReference", { noteKind, label }),
-      returnToTextButton: t("reader.accessibility.returnToTextButton"),
-      dismissReturnButton: (noteKind) =>
-        t("reader.accessibility.dismissReturnButton", { noteKind }),
     }),
     [i18n.resolvedLanguage, t],
   );

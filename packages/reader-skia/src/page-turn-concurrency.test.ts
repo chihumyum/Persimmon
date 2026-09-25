@@ -17,13 +17,13 @@ describe("page turn concurrency", () => {
         DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
         1,
       ),
-    ).toBe(947);
+    ).toBe(861);
     expect(
       estimateAutomaticPageTurnDurationMs(
         DEFAULT_AUTOMATIC_PAGE_TURN_TUNING,
         -1,
       ),
-    ).toBe(723);
+    ).toBe(657);
     expect(
       estimateAutomaticPageTurnDurationMs(
         { ...DEFAULT_AUTOMATIC_PAGE_TURN_TUNING, releaseX: 1 },
@@ -42,7 +42,7 @@ describe("page turn concurrency", () => {
     expect(
       calculatePageTurnConcurrency(DEFAULT_AUTOMATIC_PAGE_TURN_TUNING, 150),
     ).toEqual({
-      estimatedTapDurationMs: 947,
+      estimatedTapDurationMs: 861,
       minimumTurnIntervalMs: 150,
       maximumConcurrentTapTurns: 10,
       maximumConcurrentTurns: 11,

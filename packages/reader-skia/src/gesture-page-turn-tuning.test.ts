@@ -15,9 +15,9 @@ describe("gesture page turn tuning", () => {
       curvatureRelaxation: 10,
       pageWeight: 1,
       commitThreshold: 0.8,
-      minimumSpeedScale: 1,
+      minimumSpeedScale: 1.25,
       maximumSpeedScale: 5,
-      velocityGain: 0.2,
+      velocityGain: 0.25,
       idleDecaySeconds: 0.1,
     });
   });
