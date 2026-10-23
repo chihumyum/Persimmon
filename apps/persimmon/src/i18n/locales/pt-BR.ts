@@ -280,7 +280,14 @@ export const ptBR = {
       title: "Sumário",
       jumpAccessibility: "Ir para {{label}}",
     },
-    layout: { spreadToggle: "Layout de duas páginas" },
+    layout: {
+      title: "Layout da página",
+      auto: "Automático",
+      single: "Uma página",
+      spread: "Duas páginas",
+      autoDescription: "Duas páginas em janelas largas",
+      valueAccessibility: "Layout da página, atualmente {{value}}",
+    },
     animation: { natural: "Virada de página natural" },
     rapidPageTurn: { title: "Deslize na borda para folhear" },
     settings: {

@@ -287,7 +287,14 @@ export const fr = {
       title: "Sommaire",
       jumpAccessibility: "Aller à {{label}}",
     },
-    layout: { spreadToggle: "Disposition sur deux pages" },
+    layout: {
+      title: "Mise en page",
+      auto: "Automatique",
+      single: "Une page",
+      spread: "Deux pages",
+      autoDescription: "Deux pages dans les fenêtres larges",
+      valueAccessibility: "Mise en page, actuellement {{value}}",
+    },
     animation: { natural: "Tour de page naturel" },
     rapidPageTurn: { title: "Balayage du bord pour feuilleter" },
     settings: {

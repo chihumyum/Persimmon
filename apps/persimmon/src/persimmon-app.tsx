@@ -571,9 +571,9 @@ export function PersimmonApp() {
     },
     [setLanguagePreference],
   );
-  const updateLayout = useCallback(
-    (layout: ReaderSettings["layout"]) => {
-      updateReaderSettings({ layout });
+  const updateLayoutPreference = useCallback(
+    (layoutPreference: ReaderSettings["layoutPreference"]) => {
+      updateReaderSettings({ layoutPreference });
     },
     [updateReaderSettings],
   );
@@ -722,7 +722,7 @@ export function PersimmonApp() {
         entry={activeEntry}
         appearance={readerSettings.appearance}
         resolvedColorScheme={resolvedColorScheme}
-        layout={readerSettings.layout}
+        layoutPreference={readerSettings.layoutPreference}
         pageTurnAnimation={readerSettings.pageTurnAnimation}
         rapidPageTurnEnabled={readerSettings.rapidPageTurnEnabled}
         pageTurnTuning={readerSettings.pageTurnTuning}
@@ -740,7 +740,7 @@ export function PersimmonApp() {
         onAppearanceChange={updateAppearance}
         onDownloadFont={downloadFont}
         onImportFont={importFont}
-        onLayoutChange={updateLayout}
+        onLayoutPreferenceChange={updateLayoutPreference}
         onPageTurnAnimationChange={updatePageTurnAnimation}
         onRapidPageTurnEnabledChange={updateRapidPageTurnEnabled}
         onProgress={updateProgress}

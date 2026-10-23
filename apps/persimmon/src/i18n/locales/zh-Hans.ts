@@ -266,7 +266,12 @@ export const zhHans = {
       jumpAccessibility: "跳转到 {{label}}",
     },
     layout: {
-      spreadToggle: "双栏布局",
+      title: "页面布局",
+      auto: "自动",
+      single: "单页",
+      spread: "双页",
+      autoDescription: "宽屏时显示双页",
+      valueAccessibility: "页面布局，当前{{value}}",
     },
     animation: {
       natural: "自然翻页",

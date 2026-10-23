@@ -284,7 +284,12 @@ export const ja = {
       jumpAccessibility: "{{label}}へ移動",
     },
     layout: {
-      spreadToggle: "2ページレイアウト",
+      title: "ページレイアウト",
+      auto: "自動",
+      single: "1ページ",
+      spread: "2ページ",
+      autoDescription: "横長の画面では2ページ表示",
+      valueAccessibility: "ページレイアウト、現在{{value}}",
     },
     animation: {
       natural: "自然なページめくり",

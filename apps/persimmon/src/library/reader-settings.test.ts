@@ -74,13 +74,33 @@ describe("reader settings", () => {
     expect(DEFAULT_READER_PAGE_TURN_TUNING).toEqual(expected);
   });
 
+  it("moves the legacy layout toggle onto the layout preference", () => {
+    expect(normalizeSettings({ layout: "single" }).layoutPreference).toBe(
+      "auto",
+    );
+    expect(normalizeSettings({ layout: "spread" }).layoutPreference).toBe(
+      "spread",
+    );
+    expect(normalizeSettings({}).layoutPreference).toBe("auto");
+  });
+
+  it("keeps an explicit layout preference over the legacy toggle", () => {
+    expect(
+      normalizeSettings({ layout: "spread", layoutPreference: "single" })
+        .layoutPreference,
+    ).toBe("single");
+    expect(
+      normalizeSettings({ layoutPreference: "sideways" }).layoutPreference,
+    ).toBe("auto");
+  });
+
   it("migrates old settings with default page-turn tuning", () => {
     expect(normalizeSettings({ fontSize: 22, layout: "spread" })).toEqual({
       appearance: {
         ...DEFAULT_READER_APPEARANCE,
         fontSize: 22,
       },
-      layout: "spread",
+      layoutPreference: "spread",
       pageTurnAnimation: "natural",
       rapidPageTurnEnabled: true,
       pageTurnTuning: DEFAULT_READER_PAGE_TURN_TUNING,
@@ -125,7 +145,7 @@ describe("reader settings", () => {
         textAlignment: "end",
         progressDisplay: "both",
       },
-      layout: "single",
+      layoutPreference: "auto",
       pageTurnAnimation: "natural",
       rapidPageTurnEnabled: true,
       pageTurnTuning: DEFAULT_READER_PAGE_TURN_TUNING,
@@ -204,7 +224,7 @@ describe("reader settings", () => {
   it("overwrites saved directional tuning while preserving reading preferences", () => {
     const saved = {
       appearance: { ...DEFAULT_READER_APPEARANCE, fontSize: 24, theme: "cool" },
-      layout: "spread",
+      layoutPreference: "single",
       pageTurnAnimation: "none",
       rapidPageTurnEnabled: false,
       pageTurnTuning: {

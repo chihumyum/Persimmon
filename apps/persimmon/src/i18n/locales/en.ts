@@ -283,7 +283,12 @@ export const en = {
       jumpAccessibility: "Go to {{label}}",
     },
     layout: {
-      spreadToggle: "Two-Page Layout",
+      title: "Page Layout",
+      auto: "Automatic",
+      single: "Single Page",
+      spread: "Two Pages",
+      autoDescription: "Two pages in wide windows",
+      valueAccessibility: "Page layout, currently {{value}}",
     },
     animation: {
       natural: "Natural Page Turn",

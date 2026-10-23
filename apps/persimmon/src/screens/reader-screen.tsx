@@ -1,8 +1,8 @@
 import type { BookPosition } from "@persimmon/book-core";
 import type { FontFamilyRecord } from "@persimmon/font-core";
 import {
-  PAGE_DECORATION_LINE_HEIGHT,
-  PAGE_DECORATION_TOP_OFFSET,
+  pageDecorationHeaderY,
+  pageDecorationInlineMargin,
   type ReaderLayoutMode,
   type ReaderProgress,
 } from "@persimmon/reader-skia";
@@ -20,18 +20,30 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
-  StatusBar,
   StyleSheet,
   useWindowDimensions,
   View,
   type LayoutChangeEvent,
 } from "react-native";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { scheduleOnRN } from "react-native-worklets";
 import { useTranslation } from "react-i18next";
 
+import { useDuoLayout } from "../../modules/persimmon-duo-layout";
+import { AppStatusBar } from "../../modules/persimmon-status-bar";
 import { ReaderChromeButton } from "../components/reader-chrome-button";
 import {
-  appTopControlOffsetForWidth,
+  systemColumnCenterInset,
+  systemColumnOcclusionBottom,
+} from "../components/system-column";
+import {
+  appTopControlOffset,
   uiScreen,
   uiSize,
   uiSpace,
@@ -45,13 +57,23 @@ import type {
   ReaderPageTurnAnimation,
   ReaderPageTurnTuning,
 } from "../library/types";
+import type { ReaderLayoutPreference } from "../library/types";
 import { navigationPathForPosition } from "../reader/navigation-path";
+import {
+  nextStableReaderGeometry,
+  readerChromeLayout,
+  readerPageFrameInsets,
+  readerSystemColumn,
+  type StableReaderGeometry,
+} from "../reader/reader-chrome-layout";
 import type {
   ReaderOverlayState,
   ReaderSettingsTab,
 } from "../reader/reader-overlay-state";
+import { effectiveReaderLayout } from "../reader/reader-layout-mode";
 import { resetReaderTypography } from "../reader/reader-typography-preview";
-import { ToolbarBreadcrumbCarousel } from "../reader/toolbar-breadcrumb-carousel";
+import { ReaderChromeTitle } from "../reader/reader-chrome-title";
+import { toolbarBreadcrumbLabel } from "../reader/toolbar-breadcrumb";
 import { useAndroidReaderBack } from "../reader/use-android-reader-back";
 import { ReadingSettingsSheet } from "./reading-settings-sheet";
 import {
@@ -60,6 +82,19 @@ import {
 } from "./table-of-contents-panel";
 
 const ReaderSurface = React.lazy(() => import("../reader/reader-surface"));
+
+const CHROME_SHOW_TIMING = {
+  duration: 260,
+  easing: Easing.out(Easing.cubic),
+};
+const CHROME_HIDE_TIMING = {
+  duration: 220,
+  easing: Easing.inOut(Easing.cubic),
+};
+/** A page turn or selection only gives the buttons a quick fade. */
+const CHROME_INTERRUPT_TIMING = { duration: 120 };
+/** How much smaller the buttons are when fully hidden. */
+const CHROME_BUTTON_SCALE = 0.14;
 
 interface Viewport {
   readonly width: number;
@@ -74,7 +109,7 @@ export interface ReaderScreenProps {
   readonly entry: LibraryBookSummary;
   readonly appearance: ReaderAppearanceSettings;
   readonly resolvedColorScheme: ResolvedReaderColorScheme;
-  readonly layout: ReaderLayoutMode;
+  readonly layoutPreference: ReaderLayoutPreference;
   readonly pageTurnAnimation: ReaderPageTurnAnimation;
   readonly rapidPageTurnEnabled: boolean;
   readonly pageTurnTuning: ReaderPageTurnTuning;
@@ -85,7 +120,9 @@ export interface ReaderScreenProps {
   readonly onAppearanceChange: (appearance: ReaderAppearanceSettings) => void;
   readonly onDownloadFont: (familyId: string) => Promise<string>;
   readonly onImportFont: () => Promise<string | undefined>;
-  readonly onLayoutChange: (layout: ReaderLayoutMode) => void;
+  readonly onLayoutPreferenceChange: (
+    preference: ReaderLayoutPreference,
+  ) => void;
   readonly onPageTurnAnimationChange: (
     animation: ReaderPageTurnAnimation,
   ) => void;
@@ -98,7 +135,7 @@ export function ReaderScreen({
   entry,
   appearance,
   resolvedColorScheme,
-  layout,
+  layoutPreference,
   pageTurnAnimation,
   rapidPageTurnEnabled,
   pageTurnTuning,
@@ -109,7 +146,7 @@ export function ReaderScreen({
   onAppearanceChange,
   onDownloadFont,
   onImportFont,
-  onLayoutChange,
+  onLayoutPreferenceChange,
   onPageTurnAnimationChange,
   onRapidPageTurnEnabledChange,
   onProgress,
@@ -117,8 +154,63 @@ export function ReaderScreen({
 }: ReaderScreenProps) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
-  const { width: windowWidth } = useWindowDimensions();
-  const topControlOffset = appTopControlOffsetForWidth(windowWidth);
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const duoLayout = useDuoLayout();
+  const [overlay, setOverlay] = useState<ReaderOverlayState>({ kind: "none" });
+  // Reader geometry follows the live window and safe area, except under an
+  // open sheet: a sheet may bring the status bar back, and that must not
+  // repaginate the book or move the controls.
+  const liveColumn = readerSystemColumn(insets, uiSize.control);
+  const [stableGeometry, setStableGeometry] = useState<StableReaderGeometry>();
+  const nextGeometry = nextStableReaderGeometry(
+    stableGeometry,
+    `${windowWidth}x${windowHeight}`,
+    {
+      top: insets.top,
+      left: insets.left,
+      bottom: insets.bottom,
+      right: insets.right,
+      columnOcclusionBottom: liveColumn
+        ? systemColumnOcclusionBottom(
+            duoLayout.occlusions,
+            windowWidth,
+            liveColumn.side,
+            liveColumn.width,
+          )
+        : 0,
+    },
+    overlay.kind !== "none",
+  );
+  if (nextGeometry !== stableGeometry) {
+    setStableGeometry(nextGeometry);
+  }
+  const readerInsets = nextGeometry.geometry;
+  const horizontalInsets = {
+    left: readerInsets.left,
+    right: readerInsets.right,
+  };
+  // A system column beside the reader (the iPhone Duo outer display) only
+  // holds the camera and the hidden status bar while reading, so the page
+  // runs beneath it. The reader controls still sit in the column, over the
+  // page.
+  const chromeColumn = readerSystemColumn(horizontalInsets, uiSize.control);
+  const readingInsets = chromeColumn
+    ? { ...horizontalInsets, [chromeColumn.side]: 0 }
+    : horizontalInsets;
+  // The layout the window and preference ask for. `frameLayout` follows it
+  // through a transition that commits the resized page frame and the new
+  // layout to the engine together, so a fold or rotation paginates once.
+  const targetLayout = effectiveReaderLayout(layoutPreference, {
+    width: windowWidth,
+    height: windowHeight,
+    insets: readingInsets,
+  });
+  const targetLayoutRef = useRef(targetLayout);
+  targetLayoutRef.current = targetLayout;
+  const [frameLayout, setFrameLayout] = useState(targetLayout);
+  const frameLayoutRef = useRef(frameLayout);
+  frameLayoutRef.current = frameLayout;
+  const topControlOffset = appTopControlOffset(windowWidth, readerInsets.top);
   const theme = useMemo(
     () => resolveReaderTheme(appearance.theme, resolvedColorScheme),
     [appearance.theme, resolvedColorScheme],
@@ -128,7 +220,6 @@ export function ReaderScreen({
   const [turning, setTurning] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
-  const [overlay, setOverlay] = useState<ReaderOverlayState>({ kind: "none" });
   const [lastSettingsTab, setLastSettingsTab] =
     useState<ReaderSettingsTab>("typography");
   const [typographyDraft, setTypographyDraft] = useState<
@@ -136,7 +227,6 @@ export function ReaderScreen({
   >();
   const [layoutTransitioning, setLayoutTransitioning] = useState(false);
   const layoutTransitioningRef = useRef(false);
-  const pendingLayoutRef = useRef<ReaderLayoutMode | undefined>(undefined);
   const layoutFrameRef = useRef(0);
   const [navigationTarget, setNavigationTarget] = useState<
     BookPosition | undefined
@@ -216,76 +306,96 @@ export function ReaderScreen({
   useEffect(
     () => () => {
       cancelLayoutFrame();
-      pendingLayoutRef.current = undefined;
       layoutTransitioningRef.current = false;
     },
     [cancelLayoutFrame],
   );
-  useEffect(() => {
-    if (pendingLayoutRef.current !== layout) {
-      return;
-    }
-    // The container can resize after the layout setting changes. Commit that
-    // measured viewport and the reader mode together. The Skia engine stays
-    // mounted and replaces only geometry-dependent pagination and captures.
-    cancelLayoutFrame();
-    layoutFrameRef.current = requestAnimationFrame(() => {
-      layoutFrameRef.current = requestAnimationFrame(() => {
-        layoutFrameRef.current = 0;
-        const measuredViewport = measuredViewportRef.current;
-        if (measuredViewport) {
-          setReaderFrame({ ...measuredViewport, layout });
-        }
-        pendingLayoutRef.current = undefined;
-        layoutTransitioningRef.current = false;
-        setLayoutTransitioning(false);
-      });
-    });
-  }, [cancelLayoutFrame, layout]);
-  const handleLayoutChange = useCallback(
+  // Commits the measured viewport and `nextLayout` together two frames after
+  // the page frame resized, so the transition overlay is on screen first. The
+  // Skia engine stays mounted and replaces only geometry-dependent pagination
+  // and captures.
+  const finishLayoutTransition = useCallback(
     (nextLayout: ReaderLayoutMode) => {
-      if (
-        nextLayout === layout ||
-        layoutTransitioningRef.current ||
-        turning ||
-        selecting
-      ) {
-        return;
-      }
-      pendingLayoutRef.current = nextLayout;
-      layoutTransitioningRef.current = true;
-      setLayoutTransitioning(true);
       cancelLayoutFrame();
       layoutFrameRef.current = requestAnimationFrame(() => {
         layoutFrameRef.current = requestAnimationFrame(() => {
           layoutFrameRef.current = 0;
-          onLayoutChange(nextLayout);
+          const measuredViewport = measuredViewportRef.current;
+          if (measuredViewport) {
+            setReaderFrame({ ...measuredViewport, layout: nextLayout });
+          }
+          layoutTransitioningRef.current = false;
+          setLayoutTransitioning(false);
         });
       });
     },
-    [cancelLayoutFrame, layout, onLayoutChange, selecting, turning],
+    [cancelLayoutFrame],
   );
-
-  const measureReader = useCallback(
-    (event: LayoutChangeEvent) => {
-      const { width, height } = event.nativeEvent.layout;
-      if (width > 0 && height > 0) {
-        const measuredViewport = { width, height };
-        measuredViewportRef.current = measuredViewport;
-        if (layoutTransitioningRef.current) {
-          return;
+  // A fold, rotation, Split View or new preference can change the layout at
+  // any time. Page turns and selections finish on the layout they started
+  // with; the switch follows as soon as they end.
+  useEffect(() => {
+    if (
+      targetLayout === frameLayout ||
+      layoutTransitioning ||
+      turning ||
+      selecting
+    ) {
+      return;
+    }
+    layoutTransitioningRef.current = true;
+    setLayoutTransitioning(true);
+    cancelLayoutFrame();
+    layoutFrameRef.current = requestAnimationFrame(() => {
+      layoutFrameRef.current = requestAnimationFrame(() => {
+        layoutFrameRef.current = 0;
+        const nextLayout = targetLayoutRef.current;
+        if (nextLayout === frameLayoutRef.current) {
+          finishLayoutTransition(nextLayout);
+        } else {
+          setFrameLayout(nextLayout);
         }
-        setReaderFrame((current) =>
-          current?.width === width &&
-          current.height === height &&
-          current.layout === layout
-            ? current
-            : { ...measuredViewport, layout },
-        );
-      }
-    },
-    [layout],
-  );
+      });
+    });
+  }, [
+    cancelLayoutFrame,
+    finishLayoutTransition,
+    frameLayout,
+    layoutTransitioning,
+    selecting,
+    targetLayout,
+    turning,
+  ]);
+  useEffect(() => {
+    if (layoutTransitioningRef.current) {
+      finishLayoutTransition(frameLayout);
+    }
+  }, [finishLayoutTransition, frameLayout]);
+
+  const measureReader = useCallback((event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
+    if (width <= 0 || height <= 0) {
+      return;
+    }
+    const measuredViewport = { width, height };
+    measuredViewportRef.current = measuredViewport;
+    // While a layout switch is pending, the transition commits the final
+    // size together with the new layout.
+    if (
+      layoutTransitioningRef.current ||
+      targetLayoutRef.current !== frameLayoutRef.current
+    ) {
+      return;
+    }
+    const layout = frameLayoutRef.current;
+    setReaderFrame((current) =>
+      current?.width === width &&
+      current.height === height &&
+      current.layout === layout
+        ? current
+        : { ...measuredViewport, layout },
+    );
+  }, []);
 
   const jumpTo = useCallback((position: BookPosition) => {
     setNavigationTarget(position);
@@ -321,6 +431,27 @@ export function ReaderScreen({
   const toolbarHeaderEnabled =
     displayedAppearance.progressDisplay === "header" ||
     displayedAppearance.progressDisplay === "both";
+  const chromeLayout = readerChromeLayout({
+    windowWidth,
+    insets: horizontalInsets,
+    headerLabel: toolbarBreadcrumbLabel(toolbarNavigationLabels),
+    topControlOffset,
+    columnOcclusionBottom: readerInsets.columnOcclusionBottom,
+    columnCenterInset: chromeColumn
+      ? systemColumnCenterInset(
+          duoLayout.occlusions,
+          windowWidth,
+          chromeColumn.side,
+          chromeColumn.width,
+        )
+      : 0,
+    metrics: {
+      control: uiSize.control,
+      edgeInset: uiScreen.horizontalInset,
+      gap: uiSpace.sm,
+    },
+  });
+  const pageFrameInsets = readerPageFrameInsets(frameLayout, readingInsets);
   const loadResource = useCallback(
     (assetId: string) => opened.source.getResource(assetId),
     [opened.source],
@@ -349,20 +480,64 @@ export function ReaderScreen({
     }
   }, []);
 
+  // The reader chrome (buttons and toolbar title) animates in and out with
+  // one progress value and stays mounted until the hide animation ends. A
+  // page turn or selection hides it faster and never blocks the gesture.
+  const chromeShown = controlsVisible && !turning && !selecting;
+  const chromeInterrupted = turning || selecting;
+  const chromeProgress = useSharedValue(chromeShown ? 1 : 0);
+  const [chromeMounted, setChromeMounted] = useState(chromeShown);
+  const chromeRendered = chromeShown || chromeMounted;
+  const unmountChrome = useCallback(() => setChromeMounted(false), []);
+  useEffect(() => {
+    if (chromeShown) {
+      setChromeMounted(true);
+      chromeProgress.value = withTiming(1, CHROME_SHOW_TIMING);
+      return;
+    }
+    chromeProgress.value = withTiming(
+      0,
+      chromeInterrupted ? CHROME_INTERRUPT_TIMING : CHROME_HIDE_TIMING,
+      (finished) => {
+        if (finished) {
+          scheduleOnRN(unmountChrome);
+        }
+      },
+    );
+  }, [chromeInterrupted, chromeProgress, chromeShown, unmountChrome]);
+  const chromeButtonStyle = useAnimatedStyle(() => ({
+    opacity: chromeProgress.value,
+    transform: [
+      { scale: 1 - CHROME_BUTTON_SCALE * (1 - chromeProgress.value) },
+    ],
+  }));
+  const decorationMargin = pageDecorationInlineMargin(
+    displayedAppearance.horizontalMargin,
+    readerFrame?.width ??
+      windowWidth - pageFrameInsets.left - pageFrameInsets.right,
+    frameLayout === "spread" ? 2 : 1,
+  );
+
   return (
     <View style={[styles.readerScreen, { backgroundColor: theme.surrounding }]}>
-      <StatusBar
-        backgroundColor="transparent"
+      <AppStatusBar
         barStyle={
           theme.colorScheme === "dark" ? "light-content" : "dark-content"
         }
-        translucent
+        hidden
       />
 
-      <View style={styles.readerStage}>
+      <View style={[styles.readerStage, { backgroundColor: theme.paper }]}>
         <View
           onLayout={measureReader}
-          style={[styles.readerPage, { backgroundColor: theme.paper }]}
+          style={[
+            styles.readerPage,
+            {
+              backgroundColor: theme.paper,
+              left: pageFrameInsets.left,
+              right: pageFrameInsets.right,
+            },
+          ]}
         >
           {readerFrame ? (
             <Suspense
@@ -387,8 +562,8 @@ export function ReaderScreen({
                 pageTurnAnimation={pageTurnAnimation}
                 rapidPageTurnEnabled={rapidPageTurnEnabled}
                 theme={theme}
-                topInset={insets.top}
-                bottomInset={insets.bottom}
+                topInset={readerInsets.top}
+                bottomInset={readerInsets.bottom}
                 toolbarVisible={controlsVisible}
                 automaticPageTurnTuning={pageTurnTuning.click.forward}
                 reverseAutomaticPageTurnTuning={pageTurnTuning.click.backward}
@@ -420,25 +595,33 @@ export function ReaderScreen({
         </View>
       </View>
 
-      {!turning && !selecting && controlsVisible && toolbarHeaderEnabled ? (
-        <View
-          pointerEvents="none"
-          style={[
-            styles.toolbarHeaderRow,
-            { top: insets.top + PAGE_DECORATION_TOP_OFFSET },
-          ]}
-        >
-          <ToolbarBreadcrumbCarousel
-            color={theme.decoration}
-            labels={toolbarNavigationLabels}
-          />
-        </View>
+      {toolbarHeaderEnabled && chromeRendered && !chromeInterrupted ? (
+        <ReaderChromeTitle
+          color={theme.decoration}
+          paperColor={theme.paper}
+          progress={chromeProgress}
+          readingFrame={{
+            left: pageFrameInsets.left + decorationMargin,
+            right: pageFrameInsets.right + decorationMargin,
+          }}
+          toolbarFrame={chromeLayout.header}
+          toolbarLabels={toolbarNavigationLabels}
+          top={pageDecorationHeaderY(readerInsets.top, readerInsets.bottom)}
+          windowWidth={windowWidth}
+        />
       ) : null}
 
-      {!turning && !selecting && controlsVisible ? (
-        <View
-          pointerEvents="box-none"
-          style={[styles.topControls, { top: topControlOffset }]}
+      {chromeRendered ? (
+        <Animated.View
+          pointerEvents={chromeShown ? "box-none" : "none"}
+          style={[
+            styles.topControls,
+            {
+              [chromeLayout.back.side]: chromeLayout.back.offset,
+              top: chromeLayout.back.top,
+            },
+            chromeButtonStyle,
+          ]}
         >
           <ReaderChromeButton
             accessibilityLabel={t("reader.toolbar.backAccessibility")}
@@ -448,27 +631,34 @@ export function ReaderScreen({
             theme={theme}
             tintColor={theme.accentStrong}
           />
-          <ReaderChromeButton
-            accessibilityLabel={t("reader.toolbar.tocAccessibility")}
-            disabled={navigationRows.length === 0}
-            icon="toc"
-            label={t("reader.toolbar.toc")}
-            onPress={() => {
-              setOverlay((current) =>
-                current.kind === "toc" ? { kind: "none" } : { kind: "toc" },
-              );
-            }}
-            theme={theme}
-          />
-        </View>
+        </Animated.View>
       ) : null}
 
-      {!turning && !selecting && controlsVisible ? (
-        <View
-          pointerEvents="box-none"
-          style={[styles.bottomControls, { bottom: insets.bottom }]}
+      {chromeRendered ? (
+        <Animated.View
+          pointerEvents={chromeShown ? "box-none" : "none"}
+          style={[
+            styles.bottomControls,
+            {
+              bottom: readerInsets.bottom,
+              right: chromeLayout.trailingButtonsRight,
+            },
+            chromeButtonStyle,
+          ]}
         >
           <View pointerEvents="box-none" style={styles.controlGroup}>
+            <ReaderChromeButton
+              accessibilityLabel={t("reader.toolbar.tocAccessibility")}
+              disabled={navigationRows.length === 0}
+              icon="toc"
+              label={t("reader.toolbar.toc")}
+              onPress={() => {
+                setOverlay((current) =>
+                  current.kind === "toc" ? { kind: "none" } : { kind: "toc" },
+                );
+              }}
+              theme={theme}
+            />
             <ReaderChromeButton
               accessibilityLabel={t("reader.toolbar.settingsAccessibility")}
               icon="typography"
@@ -487,7 +677,7 @@ export function ReaderScreen({
               theme={theme}
             />
           </View>
-        </View>
+        </Animated.View>
       ) : null}
 
       <ReadingSettingsSheet
@@ -496,7 +686,7 @@ export function ReaderScreen({
         bottomInset={insets.bottom}
         fontFamilies={fontFamilies}
         hasBookFonts={Object.keys(opened.book.fontFamilies ?? {}).length > 0}
-        layout={layout}
+        layoutPreference={layoutPreference}
         page={overlay.kind === "settings" ? overlay.page : "root"}
         pageTurnAnimation={pageTurnAnimation}
         rapidPageTurnEnabled={rapidPageTurnEnabled}
@@ -519,7 +709,7 @@ export function ReaderScreen({
         }}
         onDownloadFont={onDownloadFont}
         onImportFont={onImportFont}
-        onLayoutChange={handleLayoutChange}
+        onLayoutPreferenceChange={onLayoutPreferenceChange}
         onPageChange={(page) =>
           setOverlay((current) =>
             current.kind === "settings" ? { ...current, page } : current,
@@ -574,9 +764,10 @@ const styles = StyleSheet.create({
   },
   readerPage: {
     borderRadius: 0,
-    flex: 1,
+    bottom: 0,
     overflow: "hidden",
-    width: "100%",
+    position: "absolute",
+    top: 0,
   },
   readerTransitionOverlay: {
     alignItems: "center",
@@ -593,39 +784,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   readerStage: {
-    alignItems: "center",
     flex: 1,
     padding: 0,
   },
   topControls: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    left: uiScreen.horizontalInset,
     position: "absolute",
-    right: uiScreen.horizontalInset,
     zIndex: 20,
   },
   bottomControls: {
-    alignItems: "center",
-    flexDirection: "row",
     position: "absolute",
-    right: uiScreen.horizontalInset,
-    zIndex: 20,
-  },
-  toolbarHeaderRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    height: PAGE_DECORATION_LINE_HEIGHT,
-    justifyContent: "center",
-    left: uiScreen.horizontalInset + uiSize.control + uiSpace.sm,
-    pointerEvents: "none",
-    position: "absolute",
-    right: uiScreen.horizontalInset + uiSize.control + uiSpace.sm,
     zIndex: 20,
   },
   controlGroup: {
-    flexDirection: "row",
+    flexDirection: "column",
     gap: uiSpace.sm,
     pointerEvents: "box-none",
   },

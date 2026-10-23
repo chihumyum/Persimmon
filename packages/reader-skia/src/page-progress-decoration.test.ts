@@ -4,7 +4,6 @@ import {
   createPageProgressDecoration,
   progressDisplayHasFooter,
   progressDisplayHasHeader,
-  progressDisplayForToolbar,
 } from "./page-progress-decoration";
 
 describe("page progress decoration", () => {
@@ -74,13 +73,6 @@ describe("page progress decoration", () => {
       pageCount: 11,
       percentage: 64,
     });
-  });
-
-  it("moves the configured header into the toolbar while preserving the footer", () => {
-    expect(progressDisplayForToolbar("header", true)).toBe("hidden");
-    expect(progressDisplayForToolbar("both", true)).toBe("footer");
-    expect(progressDisplayForToolbar("footer", true)).toBe("footer");
-    expect(progressDisplayForToolbar("both", false)).toBe("both");
   });
 
   it("reports the visible decoration faces for every display mode", () => {

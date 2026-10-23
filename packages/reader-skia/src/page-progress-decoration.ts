@@ -74,23 +74,6 @@ export function createPageProgressDecoration({
   };
 }
 
-export function progressDisplayForToolbar(
-  display: ReaderProgressDisplay,
-  toolbarVisible: boolean,
-): ReaderProgressDisplay {
-  if (!toolbarVisible) {
-    return display;
-  }
-  switch (display) {
-    case "header":
-      return "hidden";
-    case "both":
-      return "footer";
-    default:
-      return display;
-  }
-}
-
 export function progressDisplayHasHeader(
   display: ReaderProgressDisplay,
 ): boolean {

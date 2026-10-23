@@ -48,7 +48,8 @@ export {
   PAGE_DECORATION_HEIGHT_MULTIPLIER,
   PAGE_DECORATION_LETTER_SPACING,
   PAGE_DECORATION_LINE_HEIGHT,
-  PAGE_DECORATION_TOP_OFFSET,
+  pageDecorationHeaderY,
+  pageDecorationInlineMargin,
 } from "./page-decoration-metrics";
 export {
   DEFAULT_READER_UI_MESSAGES,

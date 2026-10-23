@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { uiMotion, uiSheet, uiSize, uiSpace, uiTypography } from "./ui-tokens";
+import {
+  appTopControlOffset,
+  uiMotion,
+  uiScreen,
+  uiSheet,
+  uiSize,
+  uiSpace,
+  uiTypography,
+} from "./ui-tokens";
 
 describe("application design tokens", () => {
   it("keeps the spacing scale ordered and based on whole pixels", () => {
@@ -71,5 +79,18 @@ describe("application design tokens", () => {
     }
     expect(uiMotion.fast).toBeLessThan(uiMotion.standard);
     expect(uiMotion.standard).toBeLessThan(uiMotion.deliberate);
+  });
+
+  it("only clears a status bar that actually sits above the content", () => {
+    expect(appTopControlOffset(402, 62)).toBe(uiScreen.compactTopControlOffset);
+    expect(appTopControlOffset(1024, 24)).toBe(
+      uiScreen.regularTopControlOffset,
+    );
+    expect(appTopControlOffset(466, 0)).toBe(
+      uiScreen.uncoveredTopControlOffset,
+    );
+    expect(appTopControlOffset(951, 0)).toBe(
+      uiScreen.uncoveredTopControlOffset,
+    );
   });
 });

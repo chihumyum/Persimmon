@@ -3,7 +3,6 @@ import {
   type FontFamilyRecord,
 } from "@persimmon/font-core";
 import type {
-  ReaderLayoutMode,
   ReaderPageTurnAnimation,
   ReaderTheme,
   ReaderThemeName,
@@ -50,6 +49,7 @@ import {
 import type {
   ReaderAppearanceSettings,
   ReaderColorMode,
+  ReaderLayoutPreference,
   ReaderProgressDisplay,
   ReaderTextAlignment,
 } from "../library/types";
@@ -109,7 +109,7 @@ interface ReadingSettingsSheetProps {
   readonly bottomInset: number;
   readonly fontFamilies: readonly FontFamilyRecord[];
   readonly hasBookFonts: boolean;
-  readonly layout: ReaderLayoutMode;
+  readonly layoutPreference: ReaderLayoutPreference;
   readonly page: ReaderSettingsPage;
   readonly pageTurnAnimation: ReaderPageTurnAnimation;
   readonly rapidPageTurnEnabled: boolean;
@@ -121,7 +121,9 @@ interface ReadingSettingsSheetProps {
   readonly onClose: () => void;
   readonly onDownloadFont: (familyId: string) => Promise<string>;
   readonly onImportFont: () => Promise<string | undefined>;
-  readonly onLayoutChange: (layout: ReaderLayoutMode) => void;
+  readonly onLayoutPreferenceChange: (
+    preference: ReaderLayoutPreference,
+  ) => void;
   readonly onPageChange: (page: ReaderSettingsPage) => void;
   readonly onRapidPageTurnEnabledChange: (enabled: boolean) => void;
   readonly onRemoveFont: (familyId: string) => Promise<void>;
@@ -453,7 +455,7 @@ export function ReadingSettingsSheet({
   bottomInset,
   fontFamilies,
   hasBookFonts,
-  layout,
+  layoutPreference,
   page,
   pageTurnAnimation,
   rapidPageTurnEnabled,
@@ -465,7 +467,7 @@ export function ReadingSettingsSheet({
   onClose,
   onDownloadFont,
   onImportFont,
-  onLayoutChange,
+  onLayoutPreferenceChange,
   onPageChange,
   onRapidPageTurnEnabledChange,
   onRemoveFont,
@@ -476,19 +478,21 @@ export function ReadingSettingsSheet({
   onTypographyReset,
 }: ReadingSettingsSheetProps) {
   const { t } = useTranslation();
-  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const { height: windowHeight } = useWindowDimensions();
   const contentBottomInset = Platform.OS === "android" ? 0 : bottomInset;
-  const settingsSnapPoints = useMemo<(string | number)[]>(() => {
-    const isLargeLandscape =
-      windowWidth > windowHeight && Math.min(windowWidth, windowHeight) >= 600;
-    return [
-      isLargeLandscape
-        ? MINIMUM_TYPOGRAPHY_SHEET_HEIGHT
-        : `${Math.round(uiSheet.readerSettingsTypographyHeightRatio * 100)}%`,
+  // The typography preview keeps a fixed minimum so its pickers and labels
+  // fit on short windows such as the iPhone Duo outer display.
+  const settingsSnapPoints = useMemo<(string | number)[]>(
+    () => [
+      Math.max(
+        MINIMUM_TYPOGRAPHY_SHEET_HEIGHT,
+        Math.round(uiSheet.readerSettingsTypographyHeightRatio * windowHeight),
+      ),
       `${Math.round(uiSheet.readerSettingsRootHeightRatio * 100)}%`,
       `${Math.round(uiSheet.readerSettingsFontHeightRatio * 100)}%`,
-    ];
-  }, [windowHeight, windowWidth]);
+    ],
+    [windowHeight],
+  );
   const [closingPage, setClosingPage] = useState(page);
   const contentPage = visible ? page : closingPage;
   const [displayedContent, setDisplayedContent] =
@@ -661,11 +665,11 @@ export function ReadingSettingsSheet({
     onAppearanceChange(resetReadingAppearance(appearanceRef.current));
     onAnimationChange("natural");
     onRapidPageTurnEnabledChange(true);
-    onLayoutChange("single");
+    onLayoutPreferenceChange("auto");
   }, [
     onAnimationChange,
     onAppearanceChange,
-    onLayoutChange,
+    onLayoutPreferenceChange,
     onRapidPageTurnEnabledChange,
   ]);
 
@@ -797,12 +801,12 @@ export function ReadingSettingsSheet({
               ]}
             >
               <ReadingPageSettings
-                layout={layout}
+                layoutPreference={layoutPreference}
                 pageTurnAnimation={pageTurnAnimation}
                 rapidPageTurnEnabled={rapidPageTurnEnabled}
                 theme={theme}
                 onAnimationChange={onAnimationChange}
-                onLayoutChange={onLayoutChange}
+                onLayoutPreferenceChange={onLayoutPreferenceChange}
                 onRapidPageTurnEnabledChange={onRapidPageTurnEnabledChange}
               />
               <View

@@ -5,6 +5,38 @@ import {
 
 import type { ReaderAppearance } from "./reader-appearance";
 
+const DEFAULT_PAGE_PADDING = createDefaultPageLayoutSpec({
+  width: 1,
+  height: 1,
+}).padding;
+/** Space between a safe-area edge and the first or last line of text. */
+const SAFE_AREA_TEXT_CLEARANCE = 34;
+export interface ReaderPageVerticalPadding {
+  readonly top: number;
+  readonly bottom: number;
+}
+
+/**
+ * Where the text block starts and ends: the default page margin, pushed
+ * further in when the safe area (status bar, Dynamic Island, home indicator)
+ * would otherwise crowd it.
+ */
+export function readerPageVerticalPadding(
+  topInset: number,
+  bottomInset: number,
+): ReaderPageVerticalPadding {
+  return {
+    top: Math.max(
+      DEFAULT_PAGE_PADDING.top,
+      topInset + SAFE_AREA_TEXT_CLEARANCE,
+    ),
+    bottom: Math.max(
+      DEFAULT_PAGE_PADDING.bottom,
+      bottomInset + SAFE_AREA_TEXT_CLEARANCE,
+    ),
+  };
+}
+
 export function createReaderLayoutSpec(
   width: number,
   height: number,
@@ -20,12 +52,13 @@ export function createReaderLayoutSpec(
     ...new Set([appearance.fontFamily, "Noto Serif SC", "Noto Sans Math"]),
   ];
   const bookFontFamilyNames = appearance.bookFontFamilyNames;
+  const verticalPadding = readerPageVerticalPadding(topInset, bottomInset);
   return {
     ...spec,
     padding: {
-      top: Math.max(spec.padding.top, topInset + 34),
+      top: verticalPadding.top,
       right: inlineMargin,
-      bottom: Math.max(spec.padding.bottom, bottomInset + 34),
+      bottom: verticalPadding.bottom,
       left: inlineMargin,
     },
     body: {

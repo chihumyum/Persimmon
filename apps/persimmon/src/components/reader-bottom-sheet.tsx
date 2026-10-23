@@ -1,10 +1,23 @@
 import BottomSheet, {
   type BottomSheetMethods,
 } from "@expo/ui/community/bottom-sheet";
-import { useEffect, useRef, useState } from "react";
-import { Platform, StyleSheet, useWindowDimensions, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Keyboard,
+  Platform,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useDuoLayout } from "../../modules/persimmon-duo-layout";
+import { useAppStatusBarHidden } from "../../modules/persimmon-status-bar";
+import { readerSystemColumn } from "../reader/reader-chrome-layout";
 import type { ReaderBottomSheetProps } from "./reader-bottom-sheet.types";
+import { clampSheetSnapPoints } from "./sheet-snap-points";
+import { systemColumnOcclusionBottom } from "./system-column";
+import { uiBreakpoint, uiSize, uiSpace } from "./ui-tokens";
 
 /**
  * Keeps the app-facing Reader UI independent from the native sheet provider.
@@ -24,7 +37,59 @@ export function ReaderBottomSheet({
   visible,
   onDismiss,
 }: ReaderBottomSheetProps) {
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const duoLayout = useDuoLayout();
+  // The sheet keeps the status bar the way the screen under it has it, so a
+  // reader sheet leaves it hidden and only has to clear the camera.
+  const statusBarHidden = useAppStatusBarHidden();
+  // A compact window with a system column (the iPhone Duo outer display)
+  // stops its sheets below the camera, and below the status bar too when the
+  // screen shows it, so their rows and close button can run through the
+  // column the way they do on every other iPhone.
+  const column =
+    Platform.OS === "ios" && windowWidth < uiBreakpoint.compact
+      ? readerSystemColumn(insets, uiSize.control)
+      : undefined;
+  const columnOcclusionBottom = column
+    ? systemColumnOcclusionBottom(
+        statusBarHidden ? duoLayout.occlusions : duoLayout.peakOcclusions,
+        windowWidth,
+        column.side,
+        column.width,
+      )
+    : 0;
+  const maximumSheetHeight = windowHeight - columnOcclusionBottom - uiSpace.xl;
+  const sheetSnapPoints = useMemo(
+    () =>
+      columnOcclusionBottom > 0
+        ? clampSheetSnapPoints(snapPoints, windowHeight, maximumSheetHeight)
+        : snapPoints,
+    [columnOcclusionBottom, maximumSheetHeight, snapPoints, windowHeight],
+  );
+  // The keyboard slides a sheet up, back into the camera and status bar.
+  // While it is pushed there, the content steps back beside the column so
+  // the header and close button stay reachable.
+  const [contentHeight, setContentHeight] = useState(0);
+  const [keyboardTop, setKeyboardTop] = useState<number>();
+  useEffect(() => {
+    if (columnOcclusionBottom <= 0) {
+      return;
+    }
+    const shown = Keyboard.addListener("keyboardWillShow", (event) =>
+      setKeyboardTop(event.endCoordinates.screenY),
+    );
+    const hidden = Keyboard.addListener("keyboardWillHide", () =>
+      setKeyboardTop(undefined),
+    );
+    return () => {
+      shown.remove();
+      hidden.remove();
+    };
+  }, [columnOcclusionBottom]);
+  const raisedIntoColumn =
+    keyboardTop !== undefined &&
+    keyboardTop - contentHeight < columnOcclusionBottom;
   const sheetRef = useRef<BottomSheetMethods>(null);
   const visibleRef = useRef(visible);
   const closingForVisibilityRef = useRef(false);
@@ -75,8 +140,10 @@ export function ReaderBottomSheet({
       enableHandlePanningGesture={allowsUserResizing}
       enablePanDownToClose={dismissible && allowsUserResizing}
       handleComponent={null}
+      ignoresHorizontalSafeArea={columnOcclusionBottom > 0}
+      statusBarHidden={statusBarHidden}
       index={-1}
-      snapPoints={contentSizedOnAndroid ? undefined : snapPoints}
+      snapPoints={contentSizedOnAndroid ? undefined : sheetSnapPoints}
       onClose={() => {
         if (closingForVisibilityRef.current && visibleRef.current) {
           closingForVisibilityRef.current = false;
@@ -91,12 +158,18 @@ export function ReaderBottomSheet({
       }}
     >
       <View
-        style={
+        style={[
           androidHeight === undefined
             ? styles.content
-            : { height: androidHeight }
-        }
+            : { height: androidHeight },
+          column &&
+            raisedIntoColumn &&
+            (column.side === "left"
+              ? { paddingLeft: column.width }
+              : { paddingRight: column.width }),
+        ]}
         testID={testID}
+        onLayout={(event) => setContentHeight(event.nativeEvent.layout.height)}
       >
         {children}
       </View>

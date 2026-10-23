@@ -125,9 +125,9 @@ describe("native page-decoration ownership", () => {
       bottomInset: 0,
     });
 
-    expect(decoration.headerTitle).toMatchObject({ x: 24, width: 352 });
-    expect(decoration.footerPage).toMatchObject({ x: 24, width: 352 });
-    expect(decoration.footerPercentage).toMatchObject({ x: 24, width: 352 });
+    expect(decoration.headerTitle).toMatchObject({ x: 16, width: 368 });
+    expect(decoration.footerPage).toMatchObject({ x: 16, width: 368 });
+    expect(decoration.footerPercentage).toMatchObject({ x: 16, width: 368 });
     expect(mocks.paragraphStyles).toEqual([
       expect.objectContaining({ textAlign: "center" }),
       expect.objectContaining({ textAlign: "center" }),
@@ -155,9 +155,9 @@ describe("native page-decoration ownership", () => {
       bottomInset: 0,
     });
 
-    expect(decoration.headerTitle).toMatchObject({ x: 24, width: 752 });
-    expect(decoration.footerPage).toMatchObject({ x: 24, width: 752 });
-    expect(decoration.footerPercentage).toMatchObject({ x: 24, width: 752 });
+    expect(decoration.headerTitle).toMatchObject({ x: 16, width: 768 });
+    expect(decoration.footerPage).toMatchObject({ x: 16, width: 768 });
+    expect(decoration.footerPercentage).toMatchObject({ x: 16, width: 768 });
     expect(mocks.paragraphStyles).toEqual([
       expect.objectContaining({ textAlign: "center" }),
       expect.objectContaining({ textAlign: "center" }),

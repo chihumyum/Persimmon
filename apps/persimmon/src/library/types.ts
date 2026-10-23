@@ -87,9 +87,16 @@ export interface StoredBookManifest {
   readonly originalByteLength: number;
 }
 
+/**
+ * How the reader lays out pages. `auto` picks a two-page spread only in
+ * windows wide enough for it; the others are explicit choices (see
+ * `effectiveReaderLayout`).
+ */
+export type ReaderLayoutPreference = "auto" | "single" | "spread";
+
 export interface ReaderSettings {
   readonly appearance: ReaderAppearanceSettings;
-  readonly layout: "single" | "spread";
+  readonly layoutPreference: ReaderLayoutPreference;
   readonly pageTurnAnimation: ReaderPageTurnAnimation;
   readonly rapidPageTurnEnabled: boolean;
   readonly pageTurnTuning: ReaderPageTurnTuning;
@@ -256,7 +263,7 @@ export const DEFAULT_READER_APPEARANCE: ReaderAppearanceSettings = {
 
 export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   appearance: DEFAULT_READER_APPEARANCE,
-  layout: "single",
+  layoutPreference: "auto",
   pageTurnAnimation: "natural",
   rapidPageTurnEnabled: true,
   pageTurnTuning: DEFAULT_READER_PAGE_TURN_TUNING,

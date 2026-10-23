@@ -15,7 +15,9 @@ import {
   PAGE_DECORATION_FONT_SIZE,
   PAGE_DECORATION_HEIGHT_MULTIPLIER,
   PAGE_DECORATION_LETTER_SPACING,
-  PAGE_DECORATION_TOP_OFFSET,
+  pageDecorationFooterY,
+  pageDecorationHeaderY,
+  pageDecorationInlineMargin,
 } from "./page-decoration-metrics";
 import type { ReaderProgressDisplay } from "./reader-appearance";
 import {
@@ -72,8 +74,11 @@ export function createSkiaPageDecoration({
 }: CreateSkiaPageDecorationInput): SkiaPageDecoration {
   const normalizedPagesPerView = Math.max(1, Math.floor(pagesPerView));
   const pageWidth = width / normalizedPagesPerView;
-  const maximumInlineMargin = Math.max(8, (pageWidth - 96) / 2);
-  const margin = Math.min(inlineMargin, maximumInlineMargin);
+  const margin = pageDecorationInlineMargin(
+    inlineMargin,
+    width,
+    normalizedPagesPerView,
+  );
   const pageContentWidth = Math.max(1, pageWidth - margin * 2);
   // A spread is one reading view for navigation and progress. Keep its
   // decoration on the view axis instead of assigning the header to the left
@@ -82,7 +87,8 @@ export function createSkiaPageDecoration({
     normalizedPagesPerView > 1
       ? Math.max(1, width - margin * 2)
       : pageContentWidth;
-  const headerY = topInset + PAGE_DECORATION_TOP_OFFSET;
+  const headerY = pageDecorationHeaderY(topInset, bottomInset);
+  const footerY = pageDecorationFooterY(height, topInset, bottomInset);
 
   const headerTitle = createDecorationParagraph(
     model.sectionTitle,
@@ -136,13 +142,13 @@ export function createSkiaPageDecoration({
     footerPage: {
       paragraph: footerPage,
       x: margin,
-      y: height - bottomInset - 12 - footerPage.getHeight(),
+      y: footerY,
       width: decorationWidth,
     },
     footerPercentage: {
       paragraph: footerPercentage,
       x: margin,
-      y: height - bottomInset - 12 - footerPercentage.getHeight(),
+      y: footerY,
       width: decorationWidth,
     },
     dispose() {

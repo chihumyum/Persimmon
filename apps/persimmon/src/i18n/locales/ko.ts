@@ -273,7 +273,14 @@ export const ko = {
       title: "목차",
       jumpAccessibility: "{{label}}로 이동",
     },
-    layout: { spreadToggle: "두 페이지 레이아웃" },
+    layout: {
+      title: "페이지 레이아웃",
+      auto: "자동",
+      single: "한 페이지",
+      spread: "두 페이지",
+      autoDescription: "넓은 화면에서는 두 페이지로 표시",
+      valueAccessibility: "페이지 레이아웃, 현재 {{value}}",
+    },
     animation: { natural: "자연스러운 페이지 넘김" },
     rapidPageTurn: { title: "가장자리 스와이프로 빠르게 넘기기" },
     settings: {

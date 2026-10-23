@@ -287,7 +287,14 @@ export const de = {
       title: "Inhalt",
       jumpAccessibility: "Zu {{label}} gehen",
     },
-    layout: { spreadToggle: "Zweiseitiges Layout" },
+    layout: {
+      title: "Seitenlayout",
+      auto: "Automatisch",
+      single: "Eine Seite",
+      spread: "Zwei Seiten",
+      autoDescription: "Zwei Seiten in breiten Fenstern",
+      valueAccessibility: "Seitenlayout, derzeit {{value}}",
+    },
     animation: { natural: "Natürlicher Seitenwechsel" },
     rapidPageTurn: { title: "Am Rand wischen zum Blättern" },
     settings: {

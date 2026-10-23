@@ -291,7 +291,12 @@ export const es = {
       jumpAccessibility: "Ir a {{label}}",
     },
     layout: {
-      spreadToggle: "Diseño de dos páginas",
+      title: "Diseño de página",
+      auto: "Automático",
+      single: "Una página",
+      spread: "Dos páginas",
+      autoDescription: "Dos páginas en ventanas anchas",
+      valueAccessibility: "Diseño de página, actualmente {{value}}",
     },
     animation: {
       natural: "Paso de página natural",

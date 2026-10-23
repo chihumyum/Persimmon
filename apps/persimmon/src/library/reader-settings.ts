@@ -5,6 +5,7 @@ import {
   DEFAULT_READER_SETTINGS,
   type ReaderAppearanceSettings,
   type ReaderColorMode,
+  type ReaderLayoutPreference,
   type ReaderProgressDisplay,
   type ReaderSettings,
   type ReaderTextAlignment,
@@ -26,8 +27,7 @@ export function normalizeSettings(value: unknown): ReaderSettings {
 
   return {
     appearance: normalizeAppearance(appearanceSource),
-    layout:
-      "layout" in value && value.layout === "spread" ? "spread" : "single",
+    layoutPreference: layoutPreference(value),
     pageTurnAnimation:
       "pageTurnAnimation" in value && value.pageTurnAnimation === "none"
         ? "none"
@@ -40,6 +40,23 @@ export function normalizeSettings(value: unknown): ReaderSettings {
     // Product tuning replaces all values saved by the retired debug panel.
     pageTurnTuning: DEFAULT_READER_PAGE_TURN_TUNING,
   };
+}
+
+function layoutPreference(value: object): ReaderLayoutPreference {
+  if ("layoutPreference" in value) {
+    const preference = value.layoutPreference;
+    if (
+      preference === "auto" ||
+      preference === "single" ||
+      preference === "spread"
+    ) {
+      return preference;
+    }
+  }
+  // Settings saved before the automatic layout only stored "single" or
+  // "spread". "single" was the untouched default for nearly everyone, so it
+  // becomes "auto"; a chosen spread stays a spread.
+  return "layout" in value && value.layout === "spread" ? "spread" : "auto";
 }
 
 function normalizeAppearance(value: object): ReaderAppearanceSettings {

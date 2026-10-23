@@ -24,9 +24,20 @@ export const uiScreen = {
   compactTopControlOffset: 50,
   horizontalInset: 12,
   regularTopControlOffset: 60,
+  /**
+   * Top offset when no status bar sits above the content, such as beside the
+   * iPhone Duo's vertical bar or while the reader hides the status bar.
+   */
+  uncoveredTopControlOffset: 24,
 } as const;
 
-export function appTopControlOffsetForWidth(windowWidth: number): number {
+export function appTopControlOffset(
+  windowWidth: number,
+  topInset: number,
+): number {
+  if (topInset <= 0) {
+    return uiScreen.uncoveredTopControlOffset;
+  }
   return windowWidth < uiBreakpoint.compact
     ? uiScreen.compactTopControlOffset
     : uiScreen.regularTopControlOffset;

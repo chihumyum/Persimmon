@@ -109,7 +109,6 @@ import {
   createPageProgressDecoration,
   progressDisplayHasFooter,
   progressDisplayHasHeader,
-  progressDisplayForToolbar,
   type PageProgressDecoration,
   type PageProgressPresentation,
 } from "./page-progress-decoration";
@@ -522,10 +521,10 @@ function LazyReaderEngine({
   const progressPresentation: PageProgressPresentation = toolbarVisible
     ? "toolbar"
     : "reading";
-  const visibleProgressDisplay = progressDisplayForToolbar(
-    appearance.progressDisplay,
-    toolbarVisible,
-  );
+  // The page keeps its header while the toolbar shows. The app's toolbar
+  // title covers it on a paper-colored strip, so the two can crossfade
+  // without either renderer handing the title to the other.
+  const visibleProgressDisplay = appearance.progressDisplay;
   const decorationFontFamily =
     appearance.decorationFontFamily ?? appearance.fontFamily;
   const backend = useMemo(

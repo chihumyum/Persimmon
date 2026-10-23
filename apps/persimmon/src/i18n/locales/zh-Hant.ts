@@ -261,7 +261,14 @@ export const zhHant = {
       title: "目錄",
       jumpAccessibility: "前往 {{label}}",
     },
-    layout: { spreadToggle: "雙頁版面" },
+    layout: {
+      title: "頁面版面",
+      auto: "自動",
+      single: "單頁",
+      spread: "雙頁",
+      autoDescription: "寬螢幕時顯示雙頁",
+      valueAccessibility: "頁面版面，目前{{value}}",
+    },
     animation: { natural: "自然翻頁" },
     rapidPageTurn: { title: "邊緣滑動快速翻頁" },
     settings: {

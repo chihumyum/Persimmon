@@ -5,15 +5,18 @@ import {
   Easing,
   Platform,
   ScrollView,
-  StatusBar,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 
+import { useDuoLayout } from "../../modules/persimmon-duo-layout";
+import { AppStatusBar } from "../../modules/persimmon-status-bar";
 import {
   showBookMenu,
   type BookMenuAction,
@@ -24,13 +27,22 @@ import { LibraryNativeFilterControl } from "../components/library-native-filter-
 import { LibraryNativeSortControl } from "../components/library-native-sort-control";
 import { LibraryNativeSyncNotice } from "../components/library-native-sync-notice";
 import { LibraryNativeToolbarButton } from "../components/library-native-toolbar-button";
+import { uiShadow } from "../components/ui-shadow";
 import {
-  appTopControlOffsetForWidth,
+  appTopControlOffset,
   uiBreakpoint,
   uiScreen,
+  uiSize,
   uiSpace,
 } from "../components/ui-tokens";
 import type { AppLanguagePreference } from "../i18n";
+import {
+  cornerStatusRowTop,
+  libraryChrome,
+  nextScrollChromeState,
+  trailingOcclusionReserve,
+  type ScrollChromeState,
+} from "../library/library-chrome-layout";
 import {
   dismissGoogleDrivePrompt,
   loadBookMetadataVisible,
@@ -169,20 +181,27 @@ function ImportBanner({
   );
 }
 
+/** How far the library scrolls before the floating toolbar actions react. */
+const TOOLBAR_ACTIONS_SCROLL_DISTANCE = 24;
+/** Extra scroll room so the last row clears a floating import or sync notice. */
+const FLOATING_NOTICE_CLEARANCE = 68;
+
 type FloatingLibraryNotice =
   | { readonly kind: "import"; readonly status: LibraryImportStatus }
   | { readonly kind: "sync"; readonly status: GoogleDriveSyncStatus };
 
 function FloatingLibraryBanner({
   bottom,
-  horizontalPadding,
+  insetLeft,
+  insetRight,
   notice,
   theme,
   onClose,
   onOpenSettings,
 }: {
   readonly bottom: number;
-  readonly horizontalPadding: number;
+  readonly insetLeft: number;
+  readonly insetRight: number;
   readonly notice?: FloatingLibraryNotice;
   readonly theme: ReaderTheme;
   readonly onClose?: () => void;
@@ -251,7 +270,8 @@ function FloatingLibraryBanner({
         {
           bottom,
           opacity: transition,
-          paddingHorizontal: horizontalPadding,
+          paddingLeft: insetLeft,
+          paddingRight: insetRight,
           transform: [
             {
               translateY: transition.interpolate({
@@ -339,12 +359,52 @@ export function LibraryScreen({
 }: LibraryScreenProps) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const duoLayout = useDuoLayout();
   const { width: windowWidth } = useWindowDimensions();
   const compact = windowWidth < uiBreakpoint.compact;
-  const topControlOffset = appTopControlOffsetForWidth(windowWidth);
+  const topControlOffset =
+    cornerStatusRowTop(
+      insets.top,
+      duoLayout.occlusions,
+      windowWidth,
+      uiSize.control,
+      uiSpace.sm,
+    ) ?? appTopControlOffset(windowWidth, insets.top);
   const horizontalPadding = uiScreen.horizontalInset;
+  const chrome = libraryChrome({
+    windowWidth,
+    compactBreakpoint: uiBreakpoint.compact,
+    insets,
+    verticalBarEdge: duoLayout.verticalBarEdge,
+    occlusions: duoLayout.occlusions,
+    control: uiSize.control,
+    gap: uiSpace.sm,
+    topControlOffset,
+  });
+  const contentLeft = horizontalPadding + insets.left;
+  const contentRight = horizontalPadding + insets.right;
+  const toolbarActionsRight = Math.max(
+    contentRight,
+    trailingOcclusionReserve(
+      duoLayout.occlusions,
+      windowWidth,
+      topControlOffset,
+      uiSize.control,
+    ) + uiSpace.sm,
+  );
+  const contentMaxWidth = 1200 + contentLeft + contentRight;
+  const contentCenteringInset = Math.max(
+    0,
+    (windowWidth - contentMaxWidth) / 2,
+  );
+  const bottomBarBottom = Math.max(insets.bottom, uiSpace.md);
+  const bottomBarClearance =
+    bottomBarBottom + uiSize.segmentedControl + uiSpace.xxl;
   const gridGap = compact ? 13 : 25;
-  const availableWidth = Math.min(1200, windowWidth - horizontalPadding * 2);
+  const availableWidth = Math.min(
+    1200,
+    windowWidth - contentLeft - contentRight,
+  );
   const columnCount = compact
     ? availableWidth >= 270
       ? 3
@@ -409,6 +469,38 @@ export function LibraryScreen({
   const sortLabel =
     sortOptions.find((option) => option.value === sort)?.label ??
     t("library.sort.default");
+  const toolbarActionsTransition = useRef(new Animated.Value(1)).current;
+  const scrollChromeRef = useRef<ScrollChromeState>({
+    visible: true,
+    anchor: 0,
+  });
+  const [toolbarActionsVisible, setToolbarActionsVisible] = useState(true);
+
+  useEffect(() => {
+    const animation = Animated.timing(toolbarActionsTransition, {
+      duration: toolbarActionsVisible ? 200 : 160,
+      easing: toolbarActionsVisible
+        ? Easing.out(Easing.cubic)
+        : Easing.in(Easing.cubic),
+      toValue: toolbarActionsVisible ? 1 : 0,
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [toolbarActionsTransition, toolbarActionsVisible]);
+
+  const updateToolbarActionsForScroll = (
+    event: NativeSyntheticEvent<NativeScrollEvent>,
+  ) => {
+    const next = nextScrollChromeState(
+      scrollChromeRef.current,
+      event.nativeEvent.contentOffset.y,
+      uiSize.control,
+      TOOLBAR_ACTIONS_SCROLL_DISTANCE,
+    );
+    scrollChromeRef.current = next;
+    setToolbarActionsVisible(next.visible);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -531,57 +623,71 @@ export function LibraryScreen({
     onOpen(bookId);
   };
 
+  const libraryActions = (
+    <>
+      <LibraryNativeToolbarButton
+        accessibilityLabel={t("library.actions.searchAccessibility")}
+        icon="search"
+        onPress={() => setSearchVisible(true)}
+        theme={theme}
+      />
+      <LibraryNativeToolbarButton
+        accessibilityLabel={t("library.actions.openSettingsAccessibility")}
+        icon="settings"
+        onPress={() => setSettingsVisible(true)}
+        theme={theme}
+      />
+      <LibraryNativeToolbarButton
+        accessibilityLabel={t("library.actions.importAccessibility")}
+        disabled={importing}
+        icon="add"
+        loading={importing}
+        onPress={onImport}
+        theme={theme}
+        tintColor={importing ? theme.accentStrong : theme.controlText}
+      />
+    </>
+  );
+  const sortControl = (
+    <LibraryNativeSortControl
+      accessibilityLabel={t("library.sort.currentAccessibility", {
+        label: sortLabel,
+      })}
+      options={sortOptions}
+      theme={theme}
+      value={sort}
+      onChange={setSort}
+    />
+  );
+
   return (
     <View style={[styles.screen, { backgroundColor: theme.surrounding }]}>
-      <StatusBar
-        backgroundColor="transparent"
+      <AppStatusBar
         barStyle={
           theme.colorScheme === "dark" ? "light-content" : "dark-content"
         }
-        translucent
       />
       <ScrollView
         contentContainerStyle={[
           styles.content,
           {
-            maxWidth: 1200 + horizontalPadding * 2,
-            paddingHorizontal: horizontalPadding,
+            maxWidth: contentMaxWidth,
+            paddingBottom: floatingNotice
+              ? bottomBarClearance + FLOATING_NOTICE_CLEARANCE
+              : bottomBarClearance,
+            paddingLeft: contentLeft,
+            paddingRight: contentRight,
             paddingTop: topControlOffset,
           },
-          compact && styles.contentCompact,
-          floatingNotice && styles.contentWithFloatingSyncBanner,
         ]}
+        scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
+        onScroll={updateToolbarActionsForScroll}
       >
         <View style={styles.header}>
           <Text style={[styles.headerTitle, { color: theme.text }]}>
             {t("library.title")}
           </Text>
-          <View style={styles.headerActions}>
-            <LibraryNativeToolbarButton
-              accessibilityLabel={t("library.actions.searchAccessibility")}
-              icon="search"
-              onPress={() => setSearchVisible(true)}
-              theme={theme}
-            />
-            <LibraryNativeToolbarButton
-              accessibilityLabel={t(
-                "library.actions.openSettingsAccessibility",
-              )}
-              icon="settings"
-              onPress={() => setSettingsVisible(true)}
-              theme={theme}
-            />
-            <LibraryNativeToolbarButton
-              accessibilityLabel={t("library.actions.importAccessibility")}
-              disabled={importing}
-              icon="add"
-              loading={importing}
-              onPress={onImport}
-              theme={theme}
-              tintColor={importing ? theme.accentStrong : theme.controlText}
-            />
-          </View>
         </View>
 
         {error ? (
@@ -609,25 +715,6 @@ export function LibraryScreen({
             />
           </View>
         ) : null}
-
-        <View style={styles.controls}>
-          <LibraryNativeFilterControl
-            accessibilityLabel={t("library.title")}
-            options={filterOptions}
-            theme={theme}
-            value={filter}
-            onChange={setFilter}
-          />
-          <LibraryNativeSortControl
-            accessibilityLabel={t("library.sort.currentAccessibility", {
-              label: sortLabel,
-            })}
-            options={sortOptions}
-            theme={theme}
-            value={sort}
-            onChange={setSort}
-          />
-        </View>
 
         <View style={[styles.grid, { columnGap: gridGap, rowGap: 30 }]}>
           {gridEntries.map(({ entry, visible }) => {
@@ -665,9 +752,86 @@ export function LibraryScreen({
         ) : null}
       </ScrollView>
 
+      {chrome.kind === "column" ? (
+        <View
+          pointerEvents="box-none"
+          style={[
+            styles.actionColumn,
+            {
+              [chrome.side]: chrome.centerInset - uiSize.control / 2,
+              width: uiSize.control,
+            },
+          ]}
+        >
+          <View
+            pointerEvents="box-none"
+            style={[styles.actionColumnGroup, { top: chrome.top }]}
+          >
+            {sortControl}
+          </View>
+          <View
+            pointerEvents="box-none"
+            style={[styles.actionColumnGroup, { bottom: bottomBarBottom }]}
+          >
+            {libraryActions}
+          </View>
+        </View>
+      ) : (
+        <Animated.View
+          pointerEvents={toolbarActionsVisible ? "box-none" : "none"}
+          style={[
+            styles.floatingActions,
+            {
+              opacity: toolbarActionsTransition,
+              right: Math.max(
+                contentCenteringInset + contentRight,
+                toolbarActionsRight,
+              ),
+              top: topControlOffset,
+              transform: [
+                {
+                  translateY: toolbarActionsTransition.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-8, 0],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          {libraryActions}
+        </Animated.View>
+      )}
+
+      <View
+        pointerEvents="box-none"
+        style={[
+          styles.bottomBarLayer,
+          {
+            bottom: bottomBarBottom,
+            left: contentLeft,
+            right: contentRight,
+          },
+        ]}
+      >
+        <View pointerEvents="box-none" style={styles.bottomBar}>
+          <View style={[styles.filterBar, uiShadow(theme, "chrome")]}>
+            <LibraryNativeFilterControl
+              accessibilityLabel={t("library.title")}
+              options={filterOptions}
+              theme={theme}
+              value={filter}
+              onChange={setFilter}
+            />
+          </View>
+          {chrome.kind === "toolbar" ? sortControl : null}
+        </View>
+      </View>
+
       <FloatingLibraryBanner
-        bottom={Math.max(insets.bottom, uiSpace.md)}
-        horizontalPadding={horizontalPadding}
+        bottom={bottomBarBottom + uiSize.segmentedControl + uiSpace.md}
+        insetLeft={contentLeft}
+        insetRight={contentRight}
         notice={floatingNotice}
         theme={theme}
         onClose={
@@ -725,23 +889,46 @@ export function LibraryScreen({
 }
 
 const styles = StyleSheet.create({
-  content: {
-    alignSelf: "center",
-    paddingBottom: 64,
-    width: "100%",
+  actionColumn: {
+    bottom: 0,
+    position: "absolute",
+    top: 0,
+    zIndex: 20,
   },
-  contentCompact: {
-    paddingBottom: 42,
-  },
-  contentWithFloatingSyncBanner: {
-    paddingBottom: 132,
-  },
-  controls: {
+  actionColumnGroup: {
     alignItems: "center",
+    gap: uiSpace.sm,
+    left: 0,
+    position: "absolute",
+    right: 0,
+  },
+  bottomBar: {
+    alignItems: "center",
+    alignSelf: "center",
     flexDirection: "row",
     gap: uiSpace.md,
-    justifyContent: "space-between",
-    marginBottom: 25,
+    maxWidth: 560,
+    width: "100%",
+  },
+  bottomBarLayer: {
+    position: "absolute",
+    zIndex: 20,
+  },
+  content: {
+    alignSelf: "center",
+    width: "100%",
+  },
+  filterBar: {
+    flex: 1,
+    flexDirection: "row",
+    minWidth: 0,
+  },
+  floatingActions: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: uiSpace.sm,
+    position: "absolute",
+    zIndex: 20,
   },
   grid: {
     flexDirection: "row",
@@ -751,13 +938,8 @@ const styles = StyleSheet.create({
   header: {
     alignItems: "center",
     flexDirection: "row",
-    justifyContent: "space-between",
     marginBottom: 26,
-  },
-  headerActions: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: uiSpace.sm,
+    minHeight: uiSize.control,
   },
   headerTitle: {
     fontFamily: Platform.select({ android: "sans-serif", ios: "System" }),
