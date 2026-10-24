@@ -1,6 +1,6 @@
 # Release checklist
 
-Updated: 2026-09-25
+Updated: 2026-10-24
 
 This document separates source readiness, signed-build verification, public
 distribution, and app-store submission. Passing repository checks is not proof
@@ -39,7 +39,7 @@ Before creating a production build:
 ## Application identity
 
 - Bundle ID and Android application ID: `dev.chihum.persimmon`.
-- User-visible version: `0.1.2` until an intentional version change is made.
+- User-visible version: `0.1.3` until an intentional version change is made.
 - Apple development team default: `G7ZSY874L2`.
 - Public support address: `support@persimmon.cc`.
 - Android public releases must target SDK 36 and carry the recorded production
@@ -78,9 +78,12 @@ Xcode 27 builds require the UIKit scene lifecycle to launch on iOS 27. Keep
 `expo-build-properties`' `ios.enableSceneSupport` enabled with Expo 57.0.23 or
 newer, as described in
 [Expo's migration guide](https://github.com/expo/fyi/blob/main/ios-scene-lifecycle.md).
-The local device installer regenerates the native project before building.
-Verify a cold launch on the device after installation; build and signature
-checks alone do not prove startup compatibility.
+The `production` EAS profile pins the `macos-tahoe-26.6-xcode-27.1` image: only
+builds against the iOS 27.1 SDK get the full-screen iPhone Duo layout, while
+Expo SDK 57's default image still ships Xcode 26.6. The local device installer
+regenerates the native project before building. Verify a cold launch on the
+device after installation; build and signature checks alone do not prove startup
+compatibility.
 
 1. `pnpm release:ios` requests a production EAS build for the clean, pushed
    `main` commit and downloads the IPA and its SHA-256 to `dist/ios/`. EAS
