@@ -295,7 +295,6 @@ export const es = {
       auto: "Automático",
       single: "Una página",
       spread: "Dos páginas",
-      autoDescription: "Dos páginas en ventanas anchas",
       valueAccessibility: "Diseño de página, actualmente {{value}}",
     },
     animation: {

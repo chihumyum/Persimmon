@@ -287,7 +287,6 @@ export const en = {
       auto: "Automatic",
       single: "Single Page",
       spread: "Two Pages",
-      autoDescription: "Two pages in wide windows",
       valueAccessibility: "Page layout, currently {{value}}",
     },
     animation: {

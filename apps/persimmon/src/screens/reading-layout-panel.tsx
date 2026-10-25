@@ -49,11 +49,6 @@ export function ReadingPageSettings({
         accessibilityLabel={t("reader.layout.valueAccessibility", {
           value: layoutLabel,
         })}
-        description={
-          layoutPreference === "auto"
-            ? t("reader.layout.autoDescription")
-            : undefined
-        }
         options={layoutOptions}
         theme={theme}
         title={t("reader.layout.title")}

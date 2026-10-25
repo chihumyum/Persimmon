@@ -288,7 +288,6 @@ export const ja = {
       auto: "自動",
       single: "1ページ",
       spread: "2ページ",
-      autoDescription: "横長の画面では2ページ表示",
       valueAccessibility: "ページレイアウト、現在{{value}}",
     },
     animation: {

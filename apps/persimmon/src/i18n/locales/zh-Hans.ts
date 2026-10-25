@@ -270,7 +270,6 @@ export const zhHans = {
       auto: "自动",
       single: "单页",
       spread: "双页",
-      autoDescription: "宽屏时显示双页",
       valueAccessibility: "页面布局，当前{{value}}",
     },
     animation: {

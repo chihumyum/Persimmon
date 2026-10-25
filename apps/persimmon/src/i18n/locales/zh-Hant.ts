@@ -266,7 +266,6 @@ export const zhHant = {
       auto: "自動",
       single: "單頁",
       spread: "雙頁",
-      autoDescription: "寬螢幕時顯示雙頁",
       valueAccessibility: "頁面版面，目前{{value}}",
     },
     animation: { natural: "自然翻頁" },

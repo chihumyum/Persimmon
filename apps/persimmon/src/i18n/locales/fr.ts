@@ -292,7 +292,6 @@ export const fr = {
       auto: "Automatique",
       single: "Une page",
       spread: "Deux pages",
-      autoDescription: "Deux pages dans les fenêtres larges",
       valueAccessibility: "Mise en page, actuellement {{value}}",
     },
     animation: { natural: "Tour de page naturel" },

@@ -285,7 +285,6 @@ export const ptBR = {
       auto: "Automático",
       single: "Uma página",
       spread: "Duas páginas",
-      autoDescription: "Duas páginas em janelas largas",
       valueAccessibility: "Layout da página, atualmente {{value}}",
     },
     animation: { natural: "Virada de página natural" },

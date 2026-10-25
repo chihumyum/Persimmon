@@ -292,7 +292,6 @@ export const de = {
       auto: "Automatisch",
       single: "Eine Seite",
       spread: "Zwei Seiten",
-      autoDescription: "Zwei Seiten in breiten Fenstern",
       valueAccessibility: "Seitenlayout, derzeit {{value}}",
     },
     animation: { natural: "Natürlicher Seitenwechsel" },
