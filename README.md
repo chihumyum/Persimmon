@@ -1,3 +1,6 @@
+
+
+
 # Persimmon
 
 <p align="right"><a href="./README.zh-CN.md">简体中文</a></p>
@@ -30,6 +33,12 @@ The [Persimmon website](https://persimmon.cc) carries the same links.
 <p align="center">
 
 https://github.com/user-attachments/assets/a7dd5166-b9cd-491d-8166-04f7361ee171
+
+</p>
+
+<p align="center">
+
+https://github.com/user-attachments/assets/2160afbc-aa1e-44f1-b170-25472f0765a3
 
 </p>
 
