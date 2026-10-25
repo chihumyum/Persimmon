@@ -45,6 +45,7 @@ function resolvedSpreadGesture(
     translationX,
     true,
     interactionWidth,
+    !rapidPageTurnEnabled,
   );
   return normalDirection === undefined ? "none" : `normal:${normalDirection}`;
 }
@@ -162,13 +163,13 @@ describe("page riffle gesture", () => {
     expect(resolvedSpreadGesture(0.75, -40)).toBe("normal:1");
   });
 
-  it("does not restore spread weak grips when rapid turns are disabled", () => {
-    expect(resolvedSpreadGesture(0.1, -40, false)).toBe("none");
+  it("accepts both directions on either spread page when rapid turns are disabled", () => {
+    expect(resolvedSpreadGesture(0.1, -40, false)).toBe("normal:1");
     expect(resolvedSpreadGesture(0.1, 40, false)).toBe("normal:-1");
-    expect(resolvedSpreadGesture(0.375, -40, false)).toBe("none");
-    expect(resolvedSpreadGesture(0.625, 40, false)).toBe("none");
+    expect(resolvedSpreadGesture(0.375, -40, false)).toBe("normal:1");
+    expect(resolvedSpreadGesture(0.625, 40, false)).toBe("normal:-1");
     expect(resolvedSpreadGesture(0.9, -40, false)).toBe("normal:1");
-    expect(resolvedSpreadGesture(0.9, 40, false)).toBe("none");
+    expect(resolvedSpreadGesture(0.9, 40, false)).toBe("normal:-1");
   });
 
   it("normalizes both outside zones against the complete interaction width", () => {

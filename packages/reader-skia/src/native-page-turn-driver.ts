@@ -688,6 +688,7 @@ export function useNativePageTurnDriver({
           event.translationX,
           spread,
           width,
+          !rapidPageTurnEnabled,
         );
         if (!gestureRequestHandled.value && direction !== undefined) {
           const canTurn = direction === 1 ? canTurnForward : canTurnBackward;
@@ -968,6 +969,7 @@ export function useNativePageTurnDriver({
                   event.translationX,
                   spread,
                   width,
+                  !rapidPageTurnEnabled,
                 );
           const canTurn =
             terminalDirection === 1 ? canTurnForward : canTurnBackward;

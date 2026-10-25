@@ -77,6 +77,26 @@ describe("page turn gesture direction", () => {
     ).toBe(1);
   });
 
+  it("accepts either spread page when no outward edge swipe is reserved", () => {
+    const interactionWidth = 800;
+
+    expect(
+      normalPageTurnDirectionForTouch(600, 40, true, interactionWidth, true),
+    ).toBe(-1);
+    expect(
+      normalPageTurnDirectionForTouch(200, -40, true, interactionWidth, true),
+    ).toBe(1);
+    expect(
+      normalPageTurnDirectionForTouch(0, 40, true, interactionWidth, true),
+    ).toBe(-1);
+    expect(
+      normalPageTurnDirectionForTouch(800, -40, true, interactionWidth, true),
+    ).toBe(1);
+    expect(
+      normalPageTurnDirectionForTouch(801, 40, true, interactionWidth, true),
+    ).toBeUndefined();
+  });
+
   it("keeps both ordinary directions available in single-page layout", () => {
     expect(normalPageTurnDirectionForTouch(300, -40, false, 400)).toBe(1);
     expect(normalPageTurnDirectionForTouch(100, 40, false, 400)).toBe(-1);
@@ -133,6 +153,54 @@ describe("page turn gesture direction", () => {
         interactionWidth,
       ),
     ).toBe(1);
+  });
+
+  it("mirrors facing-page spread drags onto a full grip of the turning sheet", () => {
+    const physicalPageWidth = 400;
+    const interactionWidth = 800;
+
+    // A backward drag on the right page grips the left sheet as far from the
+    // spine as the finger is.
+    expect(
+      pageTurnStartBookXForTouch(
+        720,
+        -1,
+        true,
+        physicalPageWidth,
+        interactionWidth,
+      ),
+    ).toBeCloseTo(
+      pageTurnStartBookXForTouch(
+        80,
+        -1,
+        true,
+        physicalPageWidth,
+        interactionWidth,
+      ),
+      8,
+    );
+    expect(
+      pageTurnStartBookXForTouch(
+        80,
+        1,
+        true,
+        physicalPageWidth,
+        interactionWidth,
+      ),
+    ).toBeCloseTo(0.9, 8);
+    for (const localX of [0, 200, 399, 400, 401, 600, 800]) {
+      for (const direction of [1, -1] as const) {
+        const startBookX = pageTurnStartBookXForTouch(
+          localX,
+          direction,
+          true,
+          physicalPageWidth,
+          interactionWidth,
+        );
+        expect(startBookX).toBeGreaterThanOrEqual(0.5);
+        expect(startBookX).toBeLessThanOrEqual(1);
+      }
+    }
   });
 
   it("preserves the original single-page touch mapping", () => {

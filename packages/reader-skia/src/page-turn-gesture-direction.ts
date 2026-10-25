@@ -29,12 +29,17 @@ export function pageTurnDirectionFromTranslation(
  * left physical page only turns right and the right physical page only turns
  * left. The exact spine coordinate belongs to the right page so the two halves
  * remain a deterministic, non-overlapping partition.
+ *
+ * Without rapid page turns no outward edge swipe is reserved, so a spread may
+ * accept either direction on either page (`acceptsEitherPage`). The grip is
+ * then mirrored onto the turning sheet by `pageTurnStartBookXForTouch`.
  */
 export function normalPageTurnDirectionForTouch(
   localX: number,
   translationX: number,
   spread: boolean,
   interactionWidth: number,
+  acceptsEitherPage = false,
 ): PageTurnDirection | undefined {
   "worklet";
   const direction = pageTurnDirectionFromTranslation(translationX);
@@ -49,6 +54,9 @@ export function normalPageTurnDirectionForTouch(
     localX > interactionWidth
   ) {
     return undefined;
+  }
+  if (acceptsEitherPage) {
+    return direction;
   }
   const startsOnLeftPage = localX < interactionWidth * 0.5;
   if (direction === -1) {
@@ -85,11 +93,13 @@ export function pageTurnTerminalDirection(
 /**
  * Maps a touch origin onto the sheet that will be turned.
  *
- * A spread always uses the complete two-page interaction width. Combined with
- * `normalPageTurnDirectionForTouch`, every valid ordinary drag therefore starts
- * at bookX 0.5..1 and has a full grip; the old near-spine weak-grip range cannot
- * be reached, regardless of whether rapid page turns are enabled. A single page
- * preserves its original physical-page mapping.
+ * A spread always uses the complete two-page interaction width and grips the
+ * turning sheet at the touch's distance from the spine. A drag on the turning
+ * sheet's own page maps directly; a drag on the facing page is mirrored across
+ * the spine. Every spread drag therefore starts at bookX 0.5..1 and has a full
+ * grip; the old near-spine weak-grip range cannot be reached, regardless of
+ * whether rapid page turns are enabled. A single page preserves its original
+ * physical-page mapping.
  */
 export function pageTurnStartBookXForTouch(
   localX: number,
@@ -102,7 +112,7 @@ export function pageTurnStartBookXForTouch(
   const clampUnit = (value: number): number => Math.min(1, Math.max(0, value));
   if (spread) {
     const normalizedX = clampUnit(localX / Math.max(1, interactionWidth));
-    return direction === 1 ? normalizedX : 1 - normalizedX;
+    return 0.5 + Math.abs(normalizedX - 0.5);
   }
   return direction === 1
     ? clampUnit(localX / physicalPageWidth)
