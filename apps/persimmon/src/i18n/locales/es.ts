@@ -331,6 +331,12 @@ export const es = {
       textAlignmentEnd: "Al final",
       textAlignmentValueAccessibility:
         "Alineación del texto, actualmente {{value}}",
+      firstLineIndent: "Sangría de primera línea",
+      firstLineIndentNone: "Ninguna",
+      firstLineIndentOne: "1 cuadratín",
+      firstLineIndentTwo: "2 cuadratines",
+      firstLineIndentValueAccessibility:
+        "Sangría de primera línea, actualmente {{value}}",
     },
     fonts: {
       section: "Fuente",

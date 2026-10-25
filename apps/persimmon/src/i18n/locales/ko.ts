@@ -307,6 +307,11 @@ export const ko = {
       textAlignmentJustify: "양쪽 맞춤",
       textAlignmentEnd: "끝 맞춤",
       textAlignmentValueAccessibility: "본문 정렬, 현재 {{value}}",
+      firstLineIndent: "첫 줄 들여쓰기",
+      firstLineIndentNone: "없음",
+      firstLineIndentOne: "1자",
+      firstLineIndentTwo: "2자",
+      firstLineIndentValueAccessibility: "첫 줄 들여쓰기, 현재 {{value}}",
     },
     fonts: {
       section: "글꼴",

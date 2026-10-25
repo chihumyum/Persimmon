@@ -321,6 +321,12 @@ export const en = {
       textAlignmentJustify: "Justified",
       textAlignmentEnd: "End",
       textAlignmentValueAccessibility: "Text alignment, currently {{value}}",
+      firstLineIndent: "First-line indent",
+      firstLineIndentNone: "None",
+      firstLineIndentOne: "1 em",
+      firstLineIndentTwo: "2 em",
+      firstLineIndentValueAccessibility:
+        "First-line indent, currently {{value}}",
     },
     fonts: {
       section: "Font",

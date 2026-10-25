@@ -321,6 +321,11 @@ export const ja = {
       textAlignmentJustify: "両端揃え",
       textAlignmentEnd: "行末揃え",
       textAlignmentValueAccessibility: "本文の配置、現在は{{value}}です",
+      firstLineIndent: "字下げ",
+      firstLineIndentNone: "なし",
+      firstLineIndentOne: "1字",
+      firstLineIndentTwo: "2字",
+      firstLineIndentValueAccessibility: "字下げ、現在は{{value}}です",
     },
     fonts: {
       section: "フォント",

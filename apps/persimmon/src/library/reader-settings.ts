@@ -3,8 +3,10 @@ import {
   DEFAULT_READER_APPEARANCE,
   DEFAULT_READER_PAGE_TURN_TUNING,
   DEFAULT_READER_SETTINGS,
+  READER_FIRST_LINE_INDENTS,
   type ReaderAppearanceSettings,
   type ReaderColorMode,
+  type ReaderFirstLineIndent,
   type ReaderLayoutPreference,
   type ReaderProgressDisplay,
   type ReaderSettings,
@@ -104,8 +106,17 @@ function normalizeAppearance(value: object): ReaderAppearanceSettings {
       DEFAULT_READER_APPEARANCE.horizontalMargin,
     ),
     textAlignment: readerTextAlignment(value),
+    firstLineIndent: readerFirstLineIndent(value),
     progressDisplay: readerProgressDisplay(value),
   };
+}
+
+function readerFirstLineIndent(value: object): ReaderFirstLineIndent {
+  const indent = "firstLineIndent" in value ? value.firstLineIndent : undefined;
+  return (
+    READER_FIRST_LINE_INDENTS.find((candidate) => candidate === indent) ??
+    DEFAULT_READER_APPEARANCE.firstLineIndent
+  );
 }
 
 function readerTextAlignment(value: object): ReaderTextAlignment {

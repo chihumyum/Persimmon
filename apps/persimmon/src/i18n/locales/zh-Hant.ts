@@ -295,6 +295,11 @@ export const zhHant = {
       textAlignmentJustify: "兩端對齊",
       textAlignmentEnd: "結束邊對齊",
       textAlignmentValueAccessibility: "正文對齊方式，目前為 {{value}}",
+      firstLineIndent: "首行縮排",
+      firstLineIndentNone: "無",
+      firstLineIndentOne: "1 字元",
+      firstLineIndentTwo: "2 字元",
+      firstLineIndentValueAccessibility: "首行縮排，目前為 {{value}}",
     },
     fonts: {
       section: "字型",

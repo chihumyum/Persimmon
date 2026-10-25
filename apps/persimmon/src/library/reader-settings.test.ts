@@ -119,6 +119,7 @@ describe("reader settings", () => {
           paragraphSpacing: -1,
           horizontalMargin: 999,
           textAlignment: "end",
+          firstLineIndent: 2,
           progressDisplay: "both",
         },
         layout: "unknown",
@@ -143,6 +144,7 @@ describe("reader settings", () => {
         paragraphSpacing: 0,
         horizontalMargin: 320,
         textAlignment: "end",
+        firstLineIndent: 2,
         progressDisplay: "both",
       },
       layoutPreference: "auto",
@@ -183,6 +185,20 @@ describe("reader settings", () => {
         appearance: { theme: "cool" },
       }).appearance.theme,
     ).toBe("cool");
+  });
+
+  it("defaults missing or unsupported first-line indents to none", () => {
+    expect(normalizeSettings({}).appearance.firstLineIndent).toBe(0);
+    for (const firstLineIndent of [1.5, -1, "2", 3, Number.NaN]) {
+      expect(
+        normalizeSettings({ appearance: { firstLineIndent } }).appearance
+          .firstLineIndent,
+      ).toBe(0);
+    }
+    expect(
+      normalizeSettings({ appearance: { firstLineIndent: 1 } }).appearance
+        .firstLineIndent,
+    ).toBe(1);
   });
 
   it("defaults unknown text alignment values to following the book", () => {

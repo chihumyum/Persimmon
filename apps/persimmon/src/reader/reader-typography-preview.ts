@@ -51,6 +51,7 @@ export function resetReaderTypography(
   return {
     ...numericReset,
     textAlignment: DEFAULT_READER_APPEARANCE.textAlignment,
+    firstLineIndent: DEFAULT_READER_APPEARANCE.firstLineIndent,
   };
 }
 
@@ -60,6 +61,7 @@ export function readerTypographyEquals(
 ): boolean {
   return (
     left.textAlignment === right.textAlignment &&
+    left.firstLineIndent === right.firstLineIndent &&
     TYPOGRAPHY_KEYS.every((key) => left[key] === right[key])
   );
 }

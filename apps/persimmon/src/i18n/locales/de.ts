@@ -322,6 +322,12 @@ export const de = {
       textAlignmentJustify: "Blocksatz",
       textAlignmentEnd: "Am Ende",
       textAlignmentValueAccessibility: "Textausrichtung, derzeit {{value}}",
+      firstLineIndent: "Einzug der ersten Zeile",
+      firstLineIndentNone: "Kein",
+      firstLineIndentOne: "1 Geviert",
+      firstLineIndentTwo: "2 Geviert",
+      firstLineIndentValueAccessibility:
+        "Einzug der ersten Zeile, derzeit {{value}}",
     },
     fonts: {
       section: "Schriftart",

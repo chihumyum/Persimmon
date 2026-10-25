@@ -104,6 +104,10 @@ export interface ReaderSettings {
 
 export type ReaderProgressDisplay = "footer" | "header" | "both" | "hidden";
 
+/** First-line indent choices for body paragraphs, measured in em. */
+export const READER_FIRST_LINE_INDENTS = [0, 1, 2] as const;
+export type ReaderFirstLineIndent = (typeof READER_FIRST_LINE_INDENTS)[number];
+
 export interface ReaderAppearanceSettings {
   readonly theme: ReaderThemeName;
   readonly colorMode: ReaderColorMode;
@@ -113,6 +117,7 @@ export interface ReaderAppearanceSettings {
   readonly paragraphSpacing: number;
   readonly horizontalMargin: number;
   readonly textAlignment: ReaderTextAlignment;
+  readonly firstLineIndent: ReaderFirstLineIndent;
   readonly progressDisplay: ReaderProgressDisplay;
 }
 
@@ -258,6 +263,7 @@ export const DEFAULT_READER_APPEARANCE: ReaderAppearanceSettings = {
   paragraphSpacing: 0.9,
   horizontalMargin: 32,
   textAlignment: "book",
+  firstLineIndent: 0,
   progressDisplay: "footer",
 };
 

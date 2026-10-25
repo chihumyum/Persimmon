@@ -10,6 +10,8 @@ export interface ReaderAppearance {
   readonly lineHeight: number;
   /** Gap between adjacent body paragraphs, measured in em. */
   readonly paragraphSpacing: number;
+  /** Indent before the first line of body paragraphs, measured in em. */
+  readonly firstLineIndent: number;
   /** Symmetric start/end padding on the text inline axis, in layout pixels. */
   readonly inlineMargin: number;
   readonly textAlignment: ReaderTextAlignment;
@@ -21,6 +23,7 @@ export const DEFAULT_LIVE_READER_APPEARANCE: ReaderAppearance = {
   fontSize: 20,
   lineHeight: 1.65,
   paragraphSpacing: 0.9,
+  firstLineIndent: 0,
   inlineMargin: 32,
   textAlignment: "book",
   progressDisplay: "footer",

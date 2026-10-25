@@ -152,6 +152,7 @@ function FontBackedReaderSurface({
       fontSize: appearance.fontSize,
       lineHeight: appearance.lineHeight,
       paragraphSpacing: appearance.paragraphSpacing,
+      firstLineIndent: appearance.firstLineIndent,
       inlineMargin: appearance.horizontalMargin,
       textAlignment: appearance.textAlignment,
       progressDisplay: appearance.progressDisplay,

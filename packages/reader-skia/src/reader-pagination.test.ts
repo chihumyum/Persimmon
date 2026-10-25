@@ -8,6 +8,7 @@ const appearance: ReaderAppearance = {
   fontSize: 24,
   lineHeight: 1.8,
   paragraphSpacing: 1.2,
+  firstLineIndent: 0,
   inlineMargin: 44,
   textAlignment: "book",
   progressDisplay: "both",
@@ -66,6 +67,16 @@ describe("reader pagination style", () => {
     ).toBe("justify");
     expect(createReaderLayoutSpec(400, 800, appearance)).not.toHaveProperty(
       "bodyAlignmentOverride",
+    );
+  });
+
+  it("scales the first-line indent with the body font size", () => {
+    expect(
+      createReaderLayoutSpec(400, 800, { ...appearance, firstLineIndent: 2 })
+        .bodyFirstLineIndent,
+    ).toBe(48);
+    expect(createReaderLayoutSpec(400, 800, appearance)).not.toHaveProperty(
+      "bodyFirstLineIndent",
     );
   });
 });

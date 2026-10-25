@@ -27,6 +27,8 @@ export interface TypographyPreset {
   weight?: 400 | 500 | 600 | 700;
   style?: "normal" | "italic";
   align?: "start" | "center" | "justify" | "end";
+  /** Space before the first line of the paragraph, in layout pixels. */
+  firstLineIndent?: number;
 }
 
 export interface PageLayoutSpec {
@@ -43,6 +45,12 @@ export interface PageLayoutSpec {
   paragraphGapMode?: "publisher" | "reader";
   /** Reader preference that overrides publisher alignment for body paragraphs. */
   bodyAlignmentOverride?: "start" | "justify" | "end";
+  /**
+   * Reader preference that indents the first line of start-aligned and
+   * justified body paragraphs, in layout pixels. Paragraphs whose text already
+   * opens with whitespace (such as CJK full-width spaces) keep their own indent.
+   */
+  bodyFirstLineIndent?: number;
   headingBefore: number;
   headingAfter: number;
   imageGap: number;

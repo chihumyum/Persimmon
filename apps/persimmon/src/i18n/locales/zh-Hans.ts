@@ -303,6 +303,11 @@ export const zhHans = {
       textAlignmentJustify: "两端对齐",
       textAlignmentEnd: "结束边对齐",
       textAlignmentValueAccessibility: "正文对齐方式，当前{{value}}",
+      firstLineIndent: "首行缩进",
+      firstLineIndentNone: "无",
+      firstLineIndentOne: "1 字符",
+      firstLineIndentTwo: "2 字符",
+      firstLineIndentValueAccessibility: "首行缩进，当前{{value}}",
     },
     fonts: {
       section: "字体",

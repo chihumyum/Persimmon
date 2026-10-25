@@ -545,6 +545,7 @@ function LazyReaderEngine({
       fontSize: appearance.fontSize,
       lineHeight: appearance.lineHeight,
       paragraphSpacing: appearance.paragraphSpacing,
+      firstLineIndent: appearance.firstLineIndent,
       inlineMargin: appearance.inlineMargin,
       textAlignment: appearance.textAlignment,
       progressDisplay: "hidden",
@@ -553,6 +554,7 @@ function LazyReaderEngine({
       appearance.fontFamily,
       appearance.bookFontFamilyNames,
       appearance.fontSize,
+      appearance.firstLineIndent,
       appearance.inlineMargin,
       appearance.lineHeight,
       appearance.paragraphSpacing,
@@ -4132,6 +4134,7 @@ export function LiveReader({
     resolvedAppearance.fontSize,
     resolvedAppearance.lineHeight,
     resolvedAppearance.paragraphSpacing,
+    resolvedAppearance.firstLineIndent,
     resolvedAppearance.inlineMargin,
     resolvedAppearance.textAlignment,
     // Progress decorations are baked into page-turn textures and native Pager

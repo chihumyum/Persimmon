@@ -96,6 +96,11 @@ export function createReaderLayoutSpec(
     },
     paragraphGap: appearance.fontSize * appearance.paragraphSpacing,
     paragraphGapMode: "reader",
+    ...(appearance.firstLineIndent > 0
+      ? {
+          bodyFirstLineIndent: appearance.fontSize * appearance.firstLineIndent,
+        }
+      : {}),
     ...(appearance.textAlignment === "book"
       ? {}
       : { bodyAlignmentOverride: appearance.textAlignment }),

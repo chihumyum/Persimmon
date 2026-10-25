@@ -324,6 +324,12 @@ export const fr = {
       textAlignmentEnd: "Fin",
       textAlignmentValueAccessibility:
         "Alignement du texte, actuellement {{value}}",
+      firstLineIndent: "Retrait de première ligne",
+      firstLineIndentNone: "Aucun",
+      firstLineIndentOne: "1 cadratin",
+      firstLineIndentTwo: "2 cadratins",
+      firstLineIndentValueAccessibility:
+        "Retrait de première ligne, actuellement {{value}}",
     },
     fonts: {
       section: "Police",

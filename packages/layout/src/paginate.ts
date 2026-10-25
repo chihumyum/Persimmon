@@ -82,6 +82,9 @@ function validateLayoutSpec(spec: PageLayoutSpec): Rect {
   assertFiniteNonNegative(spec.headingBefore, "headingBefore");
   assertFiniteNonNegative(spec.headingAfter, "headingAfter");
   assertFiniteNonNegative(spec.imageGap, "imageGap");
+  if (spec.bodyFirstLineIndent !== undefined) {
+    assertFiniteNonNegative(spec.bodyFirstLineIndent, "bodyFirstLineIndent");
+  }
 
   if (
     !Number.isFinite(spec.imageMaxHeightRatio) ||
@@ -113,6 +116,23 @@ function validateLayoutSpec(spec: PageLayoutSpec): Rect {
   };
 }
 
+function bodyFirstLineIndentFor(
+  block: TextBlockIR,
+  alignment: TypographyPreset["align"],
+  spec: PageLayoutSpec,
+): number {
+  const indent = spec.bodyFirstLineIndent ?? 0;
+  if (
+    block.kind !== "paragraph" ||
+    indent <= 0 ||
+    alignment === "center" ||
+    alignment === "end"
+  ) {
+    return 0;
+  }
+  return /^\s/u.test(block.runs[0]?.text ?? " ") ? 0 : indent;
+}
+
 function styleForBlock(
   block: TextBlockIR,
   spec: PageLayoutSpec,
@@ -127,9 +147,11 @@ function styleForBlock(
     block.kind === "paragraph" && spec.bodyAlignmentOverride
       ? spec.bodyAlignmentOverride
       : block.style?.textAlign;
+  const firstLineIndent = bodyFirstLineIndentFor(block, alignment, spec);
   return {
     ...base,
     ...(alignment ? { align: alignment } : {}),
+    ...(firstLineIndent > 0 ? { firstLineIndent } : {}),
     ...(block.style?.fontWeight ? { weight: block.style.fontWeight } : {}),
     ...(block.style?.fontStyle ? { style: block.style.fontStyle } : {}),
   };

@@ -49,6 +49,7 @@ import {
 import type {
   ReaderAppearanceSettings,
   ReaderColorMode,
+  ReaderFirstLineIndent,
   ReaderLayoutPreference,
   ReaderProgressDisplay,
   ReaderTextAlignment,
@@ -632,6 +633,18 @@ export function ReadingSettingsSheet({
     textAlignmentOptions.find(
       (option) => option.value === appearance.textAlignment,
     )?.label ?? textAlignmentOptions[0]!.label;
+  const firstLineIndentOptions: readonly {
+    readonly value: `${ReaderFirstLineIndent}`;
+    readonly label: string;
+  }[] = [
+    { value: "0", label: t("reader.settings.firstLineIndentNone") },
+    { value: "1", label: t("reader.settings.firstLineIndentOne") },
+    { value: "2", label: t("reader.settings.firstLineIndentTwo") },
+  ];
+  const firstLineIndentLabel =
+    firstLineIndentOptions.find(
+      (option) => option.value === `${appearance.firstLineIndent}`,
+    )?.label ?? firstLineIndentOptions[0]!.label;
   const colorModeOptions: readonly {
     readonly value: ReaderColorMode;
     readonly label: string;
@@ -766,6 +779,23 @@ export function ReadingSettingsSheet({
               title={t("reader.settings.textAlignment")}
               value={appearance.textAlignment}
               onChange={(value) => update("textAlignment", value)}
+            />
+            <View style={[styles.divider, { backgroundColor: theme.border }]} />
+            <ReaderSettingsMenuRow<`${ReaderFirstLineIndent}`>
+              accessibilityLabel={t(
+                "reader.settings.firstLineIndentValueAccessibility",
+                { value: firstLineIndentLabel },
+              )}
+              options={firstLineIndentOptions}
+              theme={theme}
+              title={t("reader.settings.firstLineIndent")}
+              value={`${appearance.firstLineIndent}`}
+              onChange={(value) =>
+                update(
+                  "firstLineIndent",
+                  Number(value) as ReaderFirstLineIndent,
+                )
+              }
             />
             <View style={[styles.divider, { backgroundColor: theme.border }]} />
             <SettingsRow

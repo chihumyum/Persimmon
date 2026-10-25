@@ -297,6 +297,118 @@ describe("paginateBook", () => {
     expect(inputs.map((input) => input.style.align)).toEqual(["center", "end"]);
   });
 
+  it("indents the first line of body paragraphs that read from the start", () => {
+    const inputs: ParagraphLayoutInput[] = [];
+    const fixed = createFixedBackend(20, 20);
+    const backend: ParagraphLayoutBackend<FixedHandle> = {
+      layout(input) {
+        inputs.push(input);
+        return fixed.layout(input);
+      },
+    };
+    const book: BookIR = {
+      schemaVersion: BOOK_IR_VERSION,
+      id: "reader-indent-test",
+      revisionId: "v1",
+      title: "Reader indent",
+      assets: {},
+      sections: [
+        {
+          id: "chapter",
+          blocks: [
+            {
+              kind: "heading",
+              level: 1,
+              id: "heading",
+              runs: [{ text: "Heading" }],
+            },
+            { kind: "paragraph", id: "body", runs: [{ text: "Body" }] },
+            {
+              kind: "paragraph",
+              id: "justified",
+              runs: [{ text: "Justified" }],
+              style: { textAlign: "justify" },
+            },
+            {
+              kind: "paragraph",
+              id: "centered",
+              runs: [{ text: "Centered" }],
+              style: { textAlign: "center" },
+            },
+            {
+              kind: "paragraph",
+              id: "pre-indented",
+              runs: [{ text: "\u3000\u3000已有缩进" }],
+            },
+          ],
+        },
+      ],
+    };
+
+    paginateBook(book, { ...layoutSpec, bodyFirstLineIndent: 40 }, backend);
+
+    expect(
+      inputs.map((input) => [input.text, input.style.firstLineIndent]),
+    ).toEqual([
+      ["Heading", undefined],
+      ["Body", 40],
+      ["Justified", 40],
+      ["Centered", undefined],
+      ["\u3000\u3000已有缩进", undefined],
+    ]);
+  });
+
+  it("lets an explicit body alignment decide whether paragraphs are indented", () => {
+    const inputs: ParagraphLayoutInput[] = [];
+    const fixed = createFixedBackend(20, 20);
+    const backend: ParagraphLayoutBackend<FixedHandle> = {
+      layout(input) {
+        inputs.push(input);
+        return fixed.layout(input);
+      },
+    };
+    const book: BookIR = {
+      schemaVersion: BOOK_IR_VERSION,
+      id: "reader-indent-alignment-test",
+      revisionId: "v1",
+      title: "Reader indent alignment",
+      assets: {},
+      sections: [
+        {
+          id: "chapter",
+          blocks: [
+            {
+              kind: "paragraph",
+              id: "centered",
+              runs: [{ text: "Centered" }],
+              style: { textAlign: "center" },
+            },
+          ],
+        },
+      ],
+    };
+
+    paginateBook(
+      book,
+      {
+        ...layoutSpec,
+        bodyAlignmentOverride: "justify",
+        bodyFirstLineIndent: 40,
+      },
+      backend,
+    );
+    paginateBook(
+      book,
+      { ...layoutSpec, bodyAlignmentOverride: "end", bodyFirstLineIndent: 40 },
+      backend,
+    );
+
+    expect(inputs.map((input) => input.style.firstLineIndent)).toEqual([
+      40,
+      undefined,
+    ]);
+  });
+
   it("creates precise link hit regions while paginating one linked section", () => {
     const inputs: ParagraphLayoutInput[] = [];
     const backend: ParagraphLayoutBackend<FixedHandle> = {

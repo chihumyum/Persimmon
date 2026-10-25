@@ -316,6 +316,12 @@ export const ptBR = {
       textAlignmentEnd: "Fim",
       textAlignmentValueAccessibility:
         "Alinhamento do texto, atualmente {{value}}",
+      firstLineIndent: "Recuo da primeira linha",
+      firstLineIndentNone: "Nenhum",
+      firstLineIndentOne: "1 eme",
+      firstLineIndentTwo: "2 emes",
+      firstLineIndentValueAccessibility:
+        "Recuo da primeira linha, atualmente {{value}}",
     },
     fonts: {
       section: "Fonte",

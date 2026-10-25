@@ -10,7 +10,9 @@ import type {
 import {
   FontSlant,
   FontWeight,
+  PlaceholderAlignment,
   Skia,
+  TextBaseline,
   TextDecoration,
   TextAlign,
   type SkParagraph,
@@ -109,17 +111,63 @@ function paragraphStyleOf(
   };
 }
 
+/**
+ * SkParagraph has no text-indent. A first-line indent is an empty placeholder
+ * before the first run, which occupies one UTF-16 unit of Skia's text buffer;
+ * every index crossing this backend is shifted so BookIR offsets stay exact.
+ */
+function indentPlaceholderLength(input: ParagraphLayoutInput): number {
+  return (input.style.firstLineIndent ?? 0) > 0 ? 1 : 0;
+}
+
+function textOffsetFromSkia(
+  input: ParagraphLayoutInput,
+  skiaIndex: number,
+): number {
+  return Math.min(
+    input.text.length,
+    Math.max(0, skiaIndex - indentPlaceholderLength(input)),
+  );
+}
+
 function lineGeometry(
+  input: ParagraphLayoutInput,
   line: ReturnType<SkParagraph["getLineMetrics"]>[number],
 ): MeasuredLine {
   return {
-    startOffset: line.startIndex,
-    endOffset: line.endIncludingNewline,
-    visibleEndOffset: line.endExcludingWhitespaces,
+    startOffset: textOffsetFromSkia(input, line.startIndex),
+    endOffset: textOffsetFromSkia(input, line.endIncludingNewline),
+    visibleEndOffset: textOffsetFromSkia(input, line.endExcludingWhitespaces),
     top: line.baseline - line.ascent,
     bottom: line.baseline + line.descent,
     baseline: line.baseline,
   };
+}
+
+function hitTestParagraph(
+  input: ParagraphLayoutInput,
+  paragraph: SkParagraph,
+  x: number,
+  y: number,
+): number {
+  return normalizeUtf16Boundary(
+    input.text,
+    textOffsetFromSkia(input, paragraph.getGlyphPositionAtCoordinate(x, y)),
+  );
+}
+
+function paragraphRectsForRange(
+  input: ParagraphLayoutInput,
+  paragraph: SkParagraph,
+  startOffset: number,
+  endOffset: number,
+): readonly Rect[] {
+  const shift = indentPlaceholderLength(input);
+  const start = normalizeUtf16Boundary(input.text, startOffset, "backward");
+  const end = normalizeUtf16Boundary(input.text, endOffset, "forward");
+  return paragraph
+    .getRectsForRange(start + shift, end + shift)
+    .map(({ x, y, width, height }) => ({ x, y, width, height }));
 }
 
 function buildParagraph(
@@ -133,6 +181,15 @@ function buildParagraph(
     fontProvider,
   );
   try {
+    if (indentPlaceholderLength(input) > 0) {
+      builder.addPlaceholder(
+        input.style.firstLineIndent,
+        0,
+        PlaceholderAlignment.Baseline,
+        TextBaseline.Alphabetic,
+        0,
+      );
+    }
     for (const run of input.runs) {
       builder.pushStyle(textStyleOf(input, theme, locale, run));
       builder.addText(run.text);
@@ -163,19 +220,12 @@ function measuredParagraph(
     key: input.key,
     width: input.width,
     height: paragraph.getHeight(),
-    lines: paragraph.getLineMetrics().map(lineGeometry),
+    lines: paragraph.getLineMetrics().map((line) => lineGeometry(input, line)),
     hitTest(x, y) {
-      return normalizeUtf16Boundary(
-        input.text,
-        paragraph.getGlyphPositionAtCoordinate(x, y),
-      );
+      return hitTestParagraph(input, paragraph, x, y);
     },
     rectsForRange(startOffset, endOffset): readonly Rect[] {
-      const start = normalizeUtf16Boundary(input.text, startOffset, "backward");
-      const end = normalizeUtf16Boundary(input.text, endOffset, "forward");
-      return paragraph
-        .getRectsForRange(start, end)
-        .map(({ x, y, width, height }) => ({ x, y, width, height }));
+      return paragraphRectsForRange(input, paragraph, startOffset, endOffset);
     },
   };
 }
@@ -234,26 +284,15 @@ export function createSkiaParagraphBackend(
           return materialized();
         },
         hitTest(x, y) {
-          return normalizeUtf16Boundary(
-            input.text,
-            materialized().getGlyphPositionAtCoordinate(x, y),
-          );
+          return hitTestParagraph(input, materialized(), x, y);
         },
         rectsForRange(startOffset, endOffset): readonly Rect[] {
-          const start = normalizeUtf16Boundary(
-            input.text,
+          return paragraphRectsForRange(
+            input,
+            materialized(),
             startOffset,
-            "backward",
+            endOffset,
           );
-          const end = normalizeUtf16Boundary(input.text, endOffset, "forward");
-          return materialized()
-            .getRectsForRange(start, end)
-            .map(({ x, y, width, height }) => ({
-              x,
-              y,
-              width,
-              height,
-            }));
         },
       };
       retireMaterializedParagraph.set(measured, () => {

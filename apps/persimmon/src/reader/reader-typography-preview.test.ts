@@ -19,6 +19,7 @@ const changed: ReaderAppearanceSettings = {
   lineHeight: 1.4,
   paragraphSpacing: 1.7,
   textAlignment: "justify",
+  firstLineIndent: 2,
 };
 
 describe("Reader typography preview model", () => {
@@ -55,5 +56,6 @@ describe("Reader typography preview model", () => {
     expect(readerTypographyEquals(reset, DEFAULT_READER_APPEARANCE)).toBe(true);
     expect(reset.font.selectedFontId).toBe("custom");
     expect(reset.textAlignment).toBe("book");
+    expect(reset.firstLineIndent).toBe(0);
   });
 });
