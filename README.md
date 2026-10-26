@@ -4,6 +4,10 @@
 
 <p align="center"><em>Read. Nothing else.</em></p>
 
+<p align="center">
+  <img src="./docs/media/persimmon-page-turn.gif" width="640" alt="Persimmon's interactive page-turn animation" />
+</p>
+
 Persimmon is a local-first EPUB reader for iOS and Android. It compiles
 reflowable EPUB books into a platform-independent document model, paginates them
 without a WebView, and renders the result with React Native Skia.

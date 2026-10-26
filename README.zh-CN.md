@@ -4,6 +4,10 @@
 
 <p align="center"><em>Read. Nothing else.</em></p>
 
+<p align="center">
+  <img src="./docs/media/persimmon-page-turn.gif" width="640" alt="Persimmon 交互式翻页动画" />
+</p>
+
 Persimmon（柿子）是一个本地优先的 iOS / Android
 EPUB 阅读器。它不使用 WebView：可重排 EPUB 会先编译成平台无关、带版本的文档模型，再由共享分页器生成页面，最后交给 React
 Native Skia 原生绘制。
