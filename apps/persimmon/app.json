@@ -48,7 +48,7 @@
     ],
     "name": "Persimmon",
     "slug": "persimmon",
-    "version": "0.1.4",
+    "version": "0.1.5",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "ios": {
