@@ -121,7 +121,9 @@ export function nextScrollChromeState(
  * How far from the trailing screen edge a row of controls has to stay to
  * clear a system occlusion in that corner, such as the stacked status bar the
  * iPhone Duo inner display keeps in its top-right corner in portrait. The
- * Dynamic Island of other iPhones sits centered above the row and is ignored.
+ * Dynamic Island of other iPhones sits centered above the row and is ignored,
+ * and so is a status strip spanning the top edge: no sideways shift clears
+ * it, and counting it would push the whole row off the leading edge.
  */
 export function trailingOcclusionReserve(
   occlusions: readonly LayoutRect[],
@@ -132,6 +134,7 @@ export function trailingOcclusionReserve(
   return occlusions
     .filter(
       (rect) =>
+        rect.x > windowWidth / 2 &&
         rect.x + rect.width >= windowWidth - 1 &&
         rect.y < rowTop + rowHeight &&
         rect.y + rect.height > rowTop,

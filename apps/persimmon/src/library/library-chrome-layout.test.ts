@@ -156,6 +156,20 @@ describe("trailing occlusion reserve", () => {
     ).toBe(0);
   });
 
+  it("ignores a status strip that spans the top edge", () => {
+    expect(
+      trailingOcclusionReserve(
+        [
+          { x: 0, y: 0, width: 440, height: 62 },
+          { x: 160, y: 11, width: 120, height: 37 },
+        ],
+        440,
+        50,
+        50,
+      ),
+    ).toBe(0);
+  });
+
   it("ignores a corner occlusion that ends above the row", () => {
     expect(
       trailingOcclusionReserve(
